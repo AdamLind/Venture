@@ -284,7 +284,7 @@ app.get(
   }
 );
 
-// --- UPDATED ENDPOINT: Filter by Multiple Tags (Fixes Missing Columns) ---
+// --- UPDATED ENDPOINT: Filter by Multiple Tags ---
 app.get(
   "/api/ideas/filter",
   async (req: Request, res: Response<any[] | {error: string}>) => {
@@ -350,5 +350,5 @@ app.get("/api/tags", async (req: Request, res: Response) => {
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
   // Reminder for React Native: use the correct IP address for your local network
-  console.log(`Ideas endpoint: http(ipAddress):${port}/api/ideas`);
+  console.log(`Ideas endpoint: http://(ipAddress):${port}/api/ideas`);
 });
