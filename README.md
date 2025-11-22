@@ -31,7 +31,7 @@ I developed this app using React Native. React Native is a cross-platform langua
 * Generation Algorithm: I've developed most of the UI, now I need to sort out the logic behind it.
 * Database: I need to build a large, clean dataset to make the app work well.
 
-##===========================================================
+## ===========================================================
 
 # SQL Relational Database Overview
 
