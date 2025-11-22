@@ -76,6 +76,7 @@ export default function IdeaDetailScreen() {
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
 
   useEffect(() => {
+    // Load in the tags and set the correct state using that data
     const loadData = async () => {
       try {
         const tagsResponse = await fetch(TAGS_URL);
@@ -98,6 +99,7 @@ export default function IdeaDetailScreen() {
     loadData();
   }, [initialIdea.idea_id]);
 
+  // Set the state for a specific tag to be pushed to the database
   const toggleTag = (id: number) => {
     setSelectedTagIds((prev) => {
       if (prev.includes(id)) return prev.filter((tagId) => tagId !== id);
@@ -105,6 +107,7 @@ export default function IdeaDetailScreen() {
     });
   };
 
+  // Format the price input to match US currency
   const formatInputPrice = (value: string): string => {
     const cleaned = value.replace(/[^0-9.]/g, "");
     const parts = cleaned.split(".");
@@ -114,6 +117,7 @@ export default function IdeaDetailScreen() {
     return cleaned;
   };
 
+  // Logic to handle a save on the frontend and update data on the database
   const handleSave = async () => {
     if (initialIdea.idea_id === -1) return Alert.alert("Error", "Invalid ID.");
 
@@ -160,6 +164,7 @@ export default function IdeaDetailScreen() {
     }
   };
 
+  // Handle a delete on the frontend and update the backend accordingly
   const handleDelete = () => {
     if (initialIdea.idea_id === -1)
       return Alert.alert("Error", "Invalid idea ID.");
