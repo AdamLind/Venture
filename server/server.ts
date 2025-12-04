@@ -284,25 +284,22 @@ app.get(
   }
 );
 
-// --- UPDATED ENDPOINT: Filter by Multiple Tags ---
+// --- UPDATED ENDPOINT: Safer Grouping Logic ---
 app.get(
   "/api/ideas/filter",
-  async (req: Request, res: Response<any[] | {error: string}>) => {
+  async (req: Request, res: Response<any[] | { error: string }>) => {
     try {
-      const {tags} = req.query;
+      const { tags } = req.query;
 
-      if (!tags || typeof tags !== "string") {
-        return res
-          .status(400)
-          .json({error: "Please provide a comma-separated tags parameter."});
+      if (!tags || typeof tags !== 'string') {
+        return res.status(400).json({ error: "Invalid tags parameter." });
       }
 
-      // Clean up the input
-      const tagList = tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter((t) => t !== "");
+      const tagList = tags.split(',').map(t => t.trim()).filter(t => t !== '');
       const tagCount = tagList.length;
+
+      // Log the attempt to your terminal so you can see it happening
+      console.log(`Filtering for ${tagCount} tags:`, tagList);
 
       const queryText = `
             SELECT 
@@ -311,14 +308,20 @@ app.get(
                 d.description, 
                 d.activity_type,
                 d.est_price_per_person::text,
-                u.username as creator_username
+                u.username as creator_username,
+                d.latitude,
+                d.longitude
             FROM date_ideas d
             LEFT JOIN users u ON d.user_id = u.user_id
             JOIN idea_tags it ON d.idea_id = it.idea_id
             JOIN tags t ON it.tag_id = t.tag_id
             
-            WHERE t.name = ANY($1)
+            -- We cast the parameter to text[] to be absolutely safe
+            WHERE t.name = ANY($1::text[])
             
+            -- SIMPLIFIED GROUP BY: 
+            -- Grouping by the Primary Key (d.idea_id) covers all columns in 'd'.
+            -- We only need to add columns from other tables (u.username).
             GROUP BY d.idea_id, u.username
             
             HAVING COUNT(DISTINCT t.tag_id) = $2
@@ -327,11 +330,14 @@ app.get(
         `;
 
       const result = await pool.query(queryText, [tagList, tagCount]);
-
+      
+      console.log(`Found ${result.rows.length} matches.`); // Debug log
       res.json(result.rows);
-    } catch (err) {
-      console.error("Database query error in /api/ideas/filter:", err);
-      res.status(500).json({error: "Failed to retrieve filtered ideas."});
+
+    } catch (err: any) {
+      // Log the ACTUAL SQL error to your terminal
+      console.error("SQL Error in /filter:", err.message); 
+      res.status(500).json({ error: "Database error during filter." });
     }
   }
 );

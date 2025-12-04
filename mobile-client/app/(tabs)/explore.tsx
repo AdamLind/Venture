@@ -4,21 +4,24 @@ import {
   View,
   Text,
   FlatList,
-  ActivityIndicator,
   ScrollView,
   StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/build/Ionicons";
 import {useRef, useState, useEffect, useCallback} from "react";
-import {useRouter, useNavigation} from "expo-router";
+import {useRouter, useFocusEffect} from "expo-router";
+import MapView, {Marker, Callout} from "react-native-maps";
 
-// --- INTERFACES ---
+// --- TYPES & CONSTANTS ---
 interface DateIdea {
   idea_id: number;
   title: string;
   activity_type: "STAY_IN" | "GO_OUT";
   est_price_per_person: string;
   creator_username: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
 }
 
 interface Tag {
@@ -36,98 +39,96 @@ const formatPrice = (priceString: string): string => {
   return isNaN(price) || price === 0 ? "Free" : `$${price.toFixed(2)}`;
 };
 
-export default function ExploreScreen() {
-  const inputRef = useRef<TextInput>(null);
-  const [query, setQuery] = useState("");
-  const [ideas, setIdeas] = useState<DateIdea[]>([]);
+// --- SKELETON COMPONENT ---
+const SkeletonIdea = () => (
+  <View className="bg-zinc-900 p-5 rounded-2xl mb-4 border border-zinc-800">
+    <View className="flex-row justify-between items-start mb-3">
+      <View className="h-6 w-3/4 bg-zinc-800/50 rounded-md" />
+      <View className="h-5 w-16 bg-zinc-800/50 rounded-full" />
+    </View>
+    <View className="flex-row justify-between items-center pt-3 border-t border-zinc-800">
+      <View className="h-4 w-20 bg-zinc-800/50 rounded-md" />
+    </View>
+  </View>
+);
 
+export default function ExploreScreen() {
+  const router = useRouter();
+  const inputRef = useRef<TextInput>(null);
+
+  // --- STATE ---
+  const [ideas, setIdeas] = useState<DateIdea[]>([]);
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  const [query, setQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const router = useRouter();
-  const navigation = useNavigation();
-
-  // --- 1. Fetch Available Tags on Mount ---
+  // --- FETCHING ---
   useEffect(() => {
-    const fetchTags = async () => {
-      try {
-        const response = await fetch(TAGS_URL);
-        const data = await response.json();
-        setAvailableTags(data);
-      } catch (e) {
-        console.log("Error fetching tags", e);
-      }
-    };
-    fetchTags();
+    fetch(TAGS_URL)
+      .then((res) => res.json())
+      .then((data) => Array.isArray(data) && setAvailableTags(data))
+      .catch((err) => console.log("Tag error:", err));
   }, []);
 
-  // --- 2. Modified Fetch Logic ---
-  const fetchIdeas = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      let url = IDEA_URL;
+  useFocusEffect(
+    useCallback(() => {
+      const controller = new AbortController();
+      const fetchIdeas = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+          const url =
+            selectedTags.length > 0
+              ? `${FILTER_URL}?tags=${selectedTags.join(",")}`
+              : IDEA_URL;
+          const response = await fetch(url, {signal: controller.signal});
+          if (!response.ok) throw new Error("Server Error");
+          const data = await response.json();
+          setIdeas(Array.isArray(data) ? data : []);
+        } catch (e: any) {
+          if (e.name !== "AbortError") {
+            setError(e.message);
+          }
+        } finally {
+          if (!controller.signal.aborted) {
+            setIsLoading(false);
+            setIsInitialLoad(false);
+          }
+        }
+      };
+      fetchIdeas();
+      return () => controller.abort();
+    }, [selectedTags])
+  );
 
-      if (selectedTags.length > 0) {
-        const tagString = selectedTags.join(",");
-        url = `${FILTER_URL}?tags=${tagString}`;
-      }
-
-      const response = await fetch(url);
-      if (!response.ok)
-        throw new Error(`HTTP error! Status: ${response.status}`);
-
-      const data = await response.json();
-      setIdeas(data);
-    } catch (e: any) {
-      console.error("Failed to fetch ideas:", e);
-      setError(e.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedTags]);
-
-  // --- 3. Toggle Tag Selection ---
   const toggleTag = (tagName: string) => {
-    setSelectedTags((prev) => {
-      if (prev.includes(tagName)) {
-        return prev.filter((t) => t !== tagName);
-      } else {
-        return [...prev, tagName];
-      }
-    });
+    setSelectedTags((prev) =>
+      prev.includes(tagName)
+        ? prev.filter((t) => t !== tagName)
+        : [...prev, tagName]
+    );
   };
 
-  // Refetch when screen focuses OR when tags change
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("focus", fetchIdeas);
-    fetchIdeas();
-    return unsubscribe;
-  }, [navigation, fetchIdeas]);
-
-  // --- Render Functions ---
-  const renderIdea = ({item}: {item: DateIdea}) => (
+  // --- UI COMPONENTS ---
+  const renderIdeaItem = ({item}: {item: DateIdea}) => (
     <Pressable
       onPress={() =>
         router.push({
           pathname: "/detail/[id]",
-          params: {
-            id: item.idea_id.toString(),
-            idea: JSON.stringify(item),
-          },
+          params: {id: item.idea_id.toString(), idea: JSON.stringify(item)},
         })
       }
       className="bg-zinc-900 p-5 rounded-2xl mb-4 border border-zinc-800 active:bg-zinc-800/80"
     >
       <View className="flex-row justify-between items-start mb-3">
-        <Text className="text-lg font-bold text-white flex-shrink pr-2 leading-tight">
+        <Text className="text-lg font-bold text-white flex-shrink pr-2">
           {item.title}
         </Text>
-        {/* Styled Badge matching the Detail Screen aesthetics */}
         <View
           className={`px-3 py-1 rounded-full border ${
             item.activity_type === "STAY_IN"
@@ -136,7 +137,7 @@ export default function ExploreScreen() {
           }`}
         >
           <Text
-            className={`text-[10px] font-bold uppercase tracking-wider ${
+            className={`text-[10px] font-bold uppercase ${
               item.activity_type === "STAY_IN"
                 ? "text-amber-400"
                 : "text-emerald-400"
@@ -146,88 +147,147 @@ export default function ExploreScreen() {
           </Text>
         </View>
       </View>
-
-      <View className="flex-row justify-between items-center pt-3 border-t border-zinc-800">
-        <View className="flex-row items-center">
-          <Ionicons
-            name="wallet-outline"
-            size={14}
-            color="#71717a"
-            style={{marginRight: 4}}
-          />
-          <Text className="text-xs text-zinc-400">
-            Cost:{" "}
-            <Text className="font-bold text-zinc-200">
-              {formatPrice(item.est_price_per_person)}
-            </Text>
-          </Text>
-        </View>
-
-        <View className="flex-row items-center">
-          <Ionicons
-            name="person-outline"
-            size={14}
-            color="#71717a"
-            style={{marginRight: 4}}
-          />
-          <Text className="text-xs text-zinc-400">
-            By{" "}
-            <Text className="font-semibold text-zinc-300">
-              {item.creator_username || "System"}
-            </Text>
-          </Text>
-        </View>
-      </View>
+      <Text className="text-xs text-zinc-400">
+        Cost:{" "}
+        <Text className="font-bold text-zinc-200">
+          {formatPrice(item.est_price_per_person)}
+        </Text>
+      </Text>
     </Pressable>
   );
 
-  const renderContent = () => {
+  const renderEmptyState = () => {
+    // If we are currently fetching data, show a spinner inside the empty area
+    // instead of the "No Ideas Found" text.
     if (isLoading) {
       return (
-        <View className="flex-1 justify-center items-center p-4">
-          <ActivityIndicator size="large" color="#6366f1" />
-          <Text className="text-zinc-500 mt-4 text-sm tracking-wide uppercase font-bold">
-            Loading ideas...
+        <View className="flex-1 justify-start items-center p-4 mt-10">
+          <ActivityIndicator size="large" color="#71717a" />
+          <Text className="text-zinc-500 text-sm mt-4">
+            Updating results...
           </Text>
         </View>
       );
     }
 
+    return (
+      <View className="flex-1 justify-start items-center p-4 mt-10">
+        <View className="bg-zinc-900 p-6 rounded-full mb-4 border border-zinc-800">
+          <Ionicons name="search-outline" size={32} color="#71717a" />
+        </View>
+        <Text className="text-lg font-bold text-zinc-300 mt-2">
+          No Ideas Found
+        </Text>
+        {/* ... rest of your empty state ... */}
+      </View>
+    );
+  };
+
+  const renderContent = () => {
+    // 1. ERROR STATE (Keep this, usually fine to replace screen on error)
     if (error) {
       return (
-        <View className="flex-1 justify-start items-center p-4 bg-red-500/10 border border-red-500/20 rounded-xl m-4">
-          <Text className="text-lg font-bold text-red-400 mb-2">
-            Connection Error
-          </Text>
-          <Text className="text-sm text-red-300/80 text-center">{error}</Text>
+        <View className="flex-1 justify-center items-center p-4">
+          <Text className="text-red-400 mb-4">{error}</Text>
+          <Pressable
+            onPress={() => {
+              setIsLoading(true);
+              setError(null);
+            }}
+            className="bg-red-500/20 px-6 py-2 rounded-full"
+          >
+            <Text className="text-red-300 font-bold">Retry</Text>
+          </Pressable>
         </View>
       );
     }
 
-    if (ideas.length === 0) {
+    // 2. MAP VIEW HANDLING
+    if (viewMode === "map") {
+      const mapMarkers = ideas
+        .filter(
+          (i) => i.latitude && i.longitude && i.activity_type === "GO_OUT"
+        )
+        .filter(
+          (v, i, a) => a.findIndex((v2) => v2.idea_id === v.idea_id) === i
+        );
+
       return (
-        <View className="flex-1 justify-start items-center p-4">
-          <View className="bg-zinc-900 p-6 rounded-full mb-4 border border-zinc-800">
-            <Ionicons name="file-tray-outline" size={32} color="#71717a" />
-          </View>
-          <Text className="text-lg font-bold text-zinc-300 mt-2">
-            No Ideas Found
-          </Text>
-          <Text className="text-sm text-zinc-500 text-center mt-2 px-6">
-            Try adjusting your filters or be the first to add a new idea!
-          </Text>
-          {/* Helper button to clear filters if result is empty */}
-          {selectedTags.length > 0 && (
-            <Pressable
-              onPress={() => setSelectedTags([])}
-              className="mt-6 bg-zinc-800 px-6 py-3 rounded-full active:bg-zinc-700"
-            >
-              <Text className="text-zinc-300 font-semibold text-sm">
-                Clear Filters
+        <View className="flex-1 rounded-xl overflow-hidden border border-zinc-800 mb-24 relative">
+          <MapView
+            style={{flex: 1}}
+            // Note: Use PROVIDER_GOOGLE if using Google Maps on iOS
+            initialRegion={{
+              latitude: 37.7749,
+              longitude: -122.4194,
+              latitudeDelta: 0.1,
+              longitudeDelta: 0.1,
+            }}
+          >
+            {mapMarkers.map((item, index) => (
+              <Marker
+                key={index}
+                pinColor="#28cfecff"
+                coordinate={{
+                  latitude: parseFloat(item.latitude!),
+                  longitude: parseFloat(item.longitude!),
+                }}
+              >
+                <Callout
+                  onPress={() =>
+                    router.push({
+                      pathname: "/detail/[id]",
+                      params: {
+                        id: item.idea_id.toString(),
+                        idea: JSON.stringify(item),
+                      },
+                    })
+                  }
+                >
+                  <View className="p-2 w-40">
+                    <Text className="font-bold text-sm mb-1">{item.title}</Text>
+                    <Text className="text-xs text-green-600 font-bold">
+                      {Number(item.est_price_per_person) > 0
+                        ? `$${item.est_price_per_person} per person`
+                        : "Free!"}
+                    </Text>
+                    <Text className="text-xs text-indigo-600 font-bold">
+                      Tap for more details
+                    </Text>
+                  </View>
+                </Callout>
+              </Marker>
+            ))}
+          </MapView>
+
+          {/* LOADING OVERLAY - This sits ON TOP of the map without unmounting it */}
+          {isLoading && (
+            <View className="absolute inset-0 bg-black/40 justify-center items-center z-10">
+              <ActivityIndicator size="large" color="#fff" />
+            </View>
+          )}
+
+          {/* NO RESULTS OVERLAY */}
+          {!isLoading && ideas.length === 0 && (
+            <View className="absolute top-5 self-center bg-zinc-900/90 px-6 py-2 rounded-full border border-zinc-700 z-10">
+              <Text className="text-zinc-300 text-xs font-bold">
+                No locations found
               </Text>
-            </Pressable>
+            </View>
           )}
         </View>
+      );
+    }
+
+    // 3. LIST VIEW HANDLING
+    // Here we DO want the skeleton loader when fetching
+    if (isLoading && isInitialLoad) {
+      return (
+        <ScrollView showsVerticalScrollIndicator={false} className="flex-1">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <SkeletonIdea key={i} />
+          ))}
+        </ScrollView>
       );
     }
 
@@ -236,57 +296,70 @@ export default function ExploreScreen() {
         <FlatList
           data={ideas}
           keyExtractor={(item) => `idea-${item.idea_id}`}
-          renderItem={renderIdea}
-          onRefresh={fetchIdeas}
-          refreshing={isLoading}
-          contentContainerStyle={{paddingBottom: 100}}
+          renderItem={renderIdeaItem}
+          ListEmptyComponent={renderEmptyState}
+          contentContainerStyle={{paddingBottom: 100, flexGrow: 1}}
           showsVerticalScrollIndicator={false}
         />
       </View>
     );
   };
 
-  const showTags = isSearchFocused || availableTags.length > 0;
-
   return (
     <View className="flex-1 bg-zinc-950 pt-12 px-5">
       <StatusBar barStyle="light-content" />
 
-      {/* Header */}
+      {/* HEADER WITH LOADING SPINNER */}
       <View className="flex-row justify-between items-end mb-6">
         <View>
-          <Text className="text-zinc-400 text-xs uppercase tracking-widest font-bold mb-1">
+          <Text className="text-zinc-400 text-xs uppercase font-bold mb-1">
             Discover
           </Text>
-          <Text className="text-3xl font-bold text-white">
-            {selectedTags.length > 0 ? "Filtered" : "Explore"}
-          </Text>
+          <View className="flex-row items-center">
+            <Text className="text-3xl font-bold text-white mr-3">
+              {selectedTags.length > 0 ? "Filtered" : "Explore"}
+            </Text>
+            {/* SUBTLE HEADER SPINNER */}
+            {isLoading && <ActivityIndicator size="small" color="#71717a" />}
+          </View>
         </View>
 
-        <Pressable
-          onPress={() => router.push("/create")}
-          className="bg-indigo-600 h-10 w-10 rounded-full flex-row justify-center items-center shadow-lg shadow-indigo-900/30 active:bg-indigo-700"
-        >
-          <Ionicons name="add" size={24} color="white" />
-        </Pressable>
+        <View className="flex-row gap-3">
+          <Pressable
+            onPress={() => setViewMode(viewMode === "list" ? "map" : "list")}
+            className="bg-zinc-800 h-10 px-4 rounded-full flex-row justify-center items-center border border-zinc-700"
+          >
+            <Ionicons
+              name={viewMode === "list" ? "map-outline" : "list-outline"}
+              size={18}
+              color="white"
+              style={{marginRight: 6}}
+            />
+            <Text className="text-white font-bold text-xs">
+              {viewMode === "list" ? "MAP" : "LIST"}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/create")}
+            className="bg-indigo-600 h-10 w-10 rounded-full flex-row justify-center items-center active:bg-indigo-700"
+          >
+            <Ionicons name="add" size={24} color="white" />
+          </Pressable>
+        </View>
       </View>
 
-      {/* Search Bar UI */}
+      {/* SEARCH */}
       <Pressable
         onPress={() => inputRef.current?.focus()}
         className={`mb-4 rounded-xl bg-zinc-900 border ${
           isSearchFocused ? "border-zinc-700" : "border-zinc-800"
         } w-full h-14 px-4`}
       >
-        {/* Parent has 'items-center', which vertically centers the children */}
         <View className="flex flex-row items-center h-full gap-3">
           <Ionicons name="search" size={20} color="#a1a1aa" />
           <TextInput
             ref={inputRef}
-            // 1. REMOVE 'h-full'
-            // 2. REMOVE 'leading-tight' (let iOS calculate natural line height)
-            // 3. KEEP 'py-0' to strip any default browser/webview padding
-            className="flex-1 py-0 text-white text-[16px]"
+            className="flex-1 text-white text-[16px]"
             placeholder="Search tags..."
             placeholderTextColor="#52525b"
             value={query}
@@ -297,8 +370,8 @@ export default function ExploreScreen() {
         </View>
       </Pressable>
 
-      {/* --- TAGS SECTION (Horizontal Scroll) --- */}
-      {showTags && (
+      {/* TAGS */}
+      {(isSearchFocused || availableTags.length > 0) && (
         <View className="w-full mb-6 h-9">
           <ScrollView
             horizontal
@@ -306,35 +379,33 @@ export default function ExploreScreen() {
             keyboardShouldPersistTaps="handled"
           >
             {availableTags
-              // Optional: Filter tags in UI based on search query
               .filter((t) => t.name.toLowerCase().includes(query.toLowerCase()))
-              .map((tag) => {
-                const isSelected = selectedTags.includes(tag.name);
-                return (
-                  <Pressable
-                    key={tag.tag_id}
-                    onPress={() => toggleTag(tag.name)}
-                    className={`mr-2 px-4 py-1.5 justify-center items-center rounded-full border ${
-                      isSelected
-                        ? "bg-indigo-500/20 border-indigo-500"
-                        : "bg-zinc-900 border-zinc-800"
+              .map((tag) => (
+                <Pressable
+                  key={tag.tag_id}
+                  onPress={() => toggleTag(tag.name)}
+                  className={`mr-2 px-4 py-1.5 rounded-full border ${
+                    selectedTags.includes(tag.name)
+                      ? "bg-indigo-500/20 border-indigo-500"
+                      : "bg-zinc-900 border-zinc-800"
+                  }`}
+                >
+                  <Text
+                    className={`text-sm font-bold ${
+                      selectedTags.includes(tag.name)
+                        ? "text-indigo-300"
+                        : "text-zinc-400"
                     }`}
                   >
-                    <Text
-                      className={`text-xs font-bold ${
-                        isSelected ? "text-indigo-300" : "text-zinc-400"
-                      }`}
-                    >
-                      {tag.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                    {tag.name}
+                  </Text>
+                </Pressable>
+              ))}
           </ScrollView>
         </View>
       )}
 
-      {/* List Content */}
+      {/* CONTENT */}
       <View className="flex-1">{renderContent()}</View>
     </View>
   );
