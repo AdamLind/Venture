@@ -67,29 +67,23 @@ The main languages I used are: ReactNative, SQL, and ExpressJS. ReactNative is u
 
 # GIS Mapping Overview
 
-{Provide a description the map software that you wrote. Describe how to use your software.  Describe the source of the data that you used.}
 I added mapping functionality to my existing Venture app. It is available in the explore tab if you tap on "Map" at the top right. This map will visualize all of the activities in the database according to any filters you apply.
 
-{Describe your purpose for writing this software.}
 I know the importance of visualization when you're trying to plan an activity and want to know where everything is and how it fits into your plans. This feature was absolutely necessary for user experience.
 
 
 # Development Environment
 
-{Describe the tools that you used to develop the software}
 My main tool was VS Code. I also used Docker to run my database and seed data that I could pull into my map.
 
-{Describe the programming language that you used and any libraries.}
 My primary language used was React Native. I also used TypeScript where necessary to implement logic and edit the backend. The most important library from this feature was the react-native-maps library. It made implementing a map much easier.
 
 # Useful Websites
 
-{Make a list of websites that you found helpful in this project}
 * [React Native Maps Docs](https://docs.expo.dev/versions/latest/sdk/map-view/)
 
 # Future Work
 
-{Make a list of things that you need to fix, improve, and add in the future.}
 * Change the style of the pins depending on the type of activity.
 * Make activities searchable using the search bar and make the map update accordingly.
 * Rework map style so it fits better in the UI. 
