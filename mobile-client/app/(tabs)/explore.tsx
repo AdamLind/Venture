@@ -178,7 +178,6 @@ export default function ExploreScreen() {
         <Text className="text-lg font-bold text-zinc-300 mt-2">
           No Ideas Found
         </Text>
-        {/* ... rest of your empty state ... */}
       </View>
     );
   };
