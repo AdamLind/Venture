@@ -3,20 +3,29 @@ import BudgetInput from "@/components/home/BudgetInput";
 import InOrOutSelector from "@/components/home/InOrOutSelector";
 import LocationSelector from "@/components/home/LocationSelector";
 import HeadCountInput from "@/components/home/NumberInput";
-import {useRef, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {Pressable, ScrollView, Text, TextInput, View} from "react-native";
 import Greeting from "../../components/home/Greeting";
 import SocialSelector from "../../components/home/SocialSelector";
 import StartEndDateTime from "../../components/home/StartEndDateTime";
+import {ActivityLocation} from "../../types/itinerary";
+import {useRouter} from "expo-router";
+import {SimpleLocation} from "../../types/itinerary";
 
 export default function HomeScreen() {
+  const router = useRouter();
+
+  // --- STATE VARIABLES ---
   const [socialType, setSocialType] = useState("Date");
-  const [locationType, setLocationType] = useState("Stay In");
+  const [locationType, setLocationType] = useState<ActivityLocation>(
+    ActivityLocation.StayIn,
+  );
   const [startDate, setStartDate] = useState(new Date());
   const [endDate, setEndDate] = useState<Date | null>(null);
+  const [location, setLocation] = useState<SimpleLocation | null>(null);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [budget, setBudget] = useState<number | null>(null);
-  const [headCount, setHeadCount] = useState<number | null>(null);
+  const [headCount, setHeadCount] = useState<number>(2);
   const [selectedActivityType, setSelectedActivityType] = useState(1);
   const budgetRef = useRef<TextInput | null>(null);
   const headCountRef = useRef<TextInput | null>(null);
@@ -32,17 +41,18 @@ export default function HomeScreen() {
     {id: 3, name: "Relax", icon: "film-outline", color: "bg-blue-500"},
     lastActivityElement,
   ];
+
   const currentActivityType = activityType.find(
-    (activity) => activity.id == selectedActivityType
+    (activity) => activity.id == selectedActivityType,
   );
 
-  // This is what happens when the generate button is pressed. For now it just sends an alert with all the input info.
+  // This is what happens when the generate button is pressed.
   const handleGenerate = () => {
     if (!endDate || endDate < startDate) {
       setShowEndPicker(true);
       return;
     }
-    if (!budget && budgetRef.current) {
+    if (budget != 0 && !budget && budgetRef.current) {
       budgetRef.current.focus();
       return;
     }
@@ -50,20 +60,26 @@ export default function HomeScreen() {
       headCountRef.current.focus();
       return;
     }
-    alert(
-      `
-This button will do something really awesome soon!
 
-Date Details:
+    console.log(currentActivityType?.name)
+    // 1. Pack the preferences into a single object
+    const userPrefs = {
+      socialType,
+      locationType, // Now using our clean Enum!
+      startDate,
+      endDate,
+      currentLocation: location,
+      travelDistance: 5,
+      budget,
+      vibe: currentActivityType?.name,
+      headCount: socialType === "Date" ? 2 : headCount,
+    };
 
-Relation Type: ${socialType}
-In or Out: ${locationType}
-Start Date: ${startDate.toLocaleString()}
-End Date: ${endDate?.toLocaleString()}
-Budget: ${budget}
-Activity Type: ${currentActivityType?.name}
-      `
-    );
+    // 2. Navigate to the Builder
+    router.push({
+      pathname: "../builder",
+      params: {prefs: JSON.stringify(userPrefs)},
+    });
   };
 
   return (
@@ -89,7 +105,12 @@ Activity Type: ${currentActivityType?.name}
                 start={startDate}
                 end={endDate}
               />
-              {locationType == "Go Out" && <LocationSelector />}
+              {locationType == ActivityLocation.GoOut && (
+                <LocationSelector
+                  location={location}
+                  setLocation={setLocation}
+                />
+              )}
               <View className="flex flex-row gap-5">
                 <BudgetInput
                   budget={budget}

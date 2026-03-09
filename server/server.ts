@@ -8,10 +8,13 @@ const port = 3000;
 interface DateIdea {
   idea_id: number;
   title: string;
+  description: string | null;
   activity_type: "STAY_IN" | "GO_OUT";
   // Price is returned as a string from the PostgreSQL DECIMAL type
   est_price_per_person: string;
   creator_username: string | null;
+  latitude?: number;
+  longitude?: number;
 }
 
 // Interface for the JOIN result
@@ -51,19 +54,19 @@ app.get(
       // NOTE: The previous SQL had a WHERE di.is_public = FALSE which is usually incorrect for a public list.
       // I've removed that WHERE clause to fetch all ideas, as intended for an "Explore" screen.
       const queryText = `
-            SELECT
-                di.idea_id,
-                di.title,
-                di.activity_type,
-                di.est_price_per_person::text as est_price_per_person, 
-                di.latitude,
-                di.longitude,
-                u.username as creator_username
-            FROM Date_Ideas di
-            LEFT JOIN Users u ON di.user_id = u.user_id
-            -- WHERE di.is_public = TRUE -- Use this if you have a public flag
-            ORDER BY di.idea_id DESC
-        `;
+        SELECT
+            di.idea_id,
+            di.title,
+            di.description, -- <--- Add this line
+            di.activity_type,
+            di.est_price_per_person::text as est_price_per_person, 
+            di.latitude,
+            di.longitude,
+            u.username as creator_username
+        FROM Date_Ideas di
+        LEFT JOIN Users u ON di.user_id = u.user_id
+        ORDER BY RANDOM()
+    `;
 
       const result: QueryResult<DateIdea> = await pool.query(queryText);
 
@@ -72,7 +75,7 @@ app.get(
       console.error("Database query error in /api/ideas:", err);
       res.status(500).json({error: "Failed to retrieve ideas."});
     }
-  }
+  },
 );
 
 // --- NEW ENDPOINT 2: Create a new date idea (POST) ---
@@ -82,6 +85,7 @@ app.post(
   async (req: Request, res: Response<DateIdea | {error: string}>) => {
     const {
       title,
+      description,
       activity_type,
       est_price_per_person,
       creator_username,
@@ -102,20 +106,21 @@ app.post(
       if (creator_username) {
         const userQuery = await pool.query(
           "SELECT user_id FROM Users WHERE username = $1",
-          [creator_username]
+          [creator_username],
         );
         userId = userQuery.rows.length > 0 ? userQuery.rows[0].user_id : null;
       }
 
       // 2. Insert the Idea
       const queryText = `
-            INSERT INTO Date_Ideas (title, activity_type, est_price_per_person, user_id, is_public, latitude, longitude)
-            VALUES ($1, $2, $3::DECIMAL, $4, TRUE, $5, $6) 
-            RETURNING idea_id, title, activity_type, est_price_per_person::text
-        `;
+          INSERT INTO Date_Ideas (title, description, activity_type, est_price_per_person, user_id, is_public, latitude, longitude)
+          VALUES ($1, $2, $3, $4::DECIMAL, $5, TRUE, $6, $7) 
+          RETURNING idea_id, title, description, activity_type, est_price_per_person::text
+      `;
 
       const values = [
         title,
+        description || null,
         activity_type,
         est_price_per_person,
         userId,
@@ -134,7 +139,7 @@ app.post(
         for (const tagId of tags) {
           await pool.query(
             "INSERT INTO idea_tags (idea_id, tag_id) VALUES ($1, $2)",
-            [newIdeaId, tagId]
+            [newIdeaId, tagId],
           );
         }
       }
@@ -144,7 +149,7 @@ app.post(
       console.error("Database query error in POST /api/ideas:", err);
       res.status(500).json({error: "Failed to create new idea."});
     }
-  }
+  },
 );
 
 // NEW HELPER: Get tags for a specific idea (for the Edit Screen)
@@ -154,45 +159,50 @@ app.get("/api/ideas/:id/tags", async (req: Request, res: Response) => {
     // Return just the array of tag_ids
     const result = await pool.query(
       "SELECT tag_id FROM idea_tags WHERE idea_id = $1",
-      [ideaId]
+      [ideaId],
     );
     // Transform [{tag_id: 1}, {tag_id: 2}] -> [1, 2]
     const tagIds = result.rows.map((row: any) => row.tag_id);
     res.json(tagIds);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to fetch idea tags" });
+    res.status(500).json({error: "Failed to fetch idea tags"});
   }
 });
 
 // UPDATED PUT: Handle Tags
 app.put(
   "/api/ideas/:id",
-  async (req: Request<{ id: string }>, res: Response<DateIdea | { error: string }>) => {
+  async (
+    req: Request<{id: string}>,
+    res: Response<DateIdea | {error: string}>,
+  ) => {
     const ideaId = parseInt(req.params.id);
-    const { 
-      title, 
-      activity_type, 
-      est_price_per_person, 
-      latitude, 
+    const {
+      title,
+      description,
+      activity_type,
+      est_price_per_person,
+      latitude,
       longitude,
-      tags // <--- NEW: Array of IDs
+      tags, // <--- NEW: Array of IDs
     } = req.body;
 
-    if (isNaN(ideaId)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(ideaId)) return res.status(400).json({error: "Invalid ID"});
 
     try {
-      // 1. Update the Date Idea itself
+      // 1. Update the Date Idea
       const queryText = `
-            UPDATE Date_Ideas
-            SET title = $1, activity_type = $2, est_price_per_person = $3::DECIMAL,
-                latitude = $5, longitude = $6
-            WHERE idea_id = $4
-            RETURNING idea_id, title, activity_type, est_price_per_person::text
-        `;
+          UPDATE Date_Ideas
+          SET title = $1, description = $2, activity_type = $3, est_price_per_person = $4::DECIMAL,
+              latitude = $6, longitude = $7
+          WHERE idea_id = $5
+          RETURNING idea_id, title, description, activity_type, est_price_per_person::text -- <--- Add here
+      `;
 
       const values = [
         title,
+        description,
         activity_type,
         est_price_per_person,
         ideaId,
@@ -201,7 +211,8 @@ app.put(
       ];
       const result = await pool.query(queryText, values);
 
-      if (result.rowCount === 0) return res.status(404).json({ error: "Idea not found." });
+      if (result.rowCount === 0)
+        return res.status(404).json({error: "Idea not found."});
 
       // 2. Update Tags (The "Reset" Strategy)
       if (tags && Array.isArray(tags)) {
@@ -212,7 +223,7 @@ app.put(
         for (const tagId of tags) {
           await pool.query(
             "INSERT INTO idea_tags (idea_id, tag_id) VALUES ($1, $2)",
-            [ideaId, tagId]
+            [ideaId, tagId],
           );
         }
       }
@@ -220,9 +231,9 @@ app.put(
       res.json(result.rows[0]);
     } catch (err) {
       console.error(`Database query error in PUT /api/ideas/${ideaId}:`, err);
-      res.status(500).json({ error: "Failed to update idea." });
+      res.status(500).json({error: "Failed to update idea."});
     }
-  }
+  },
 );
 
 // --- NEW ENDPOINT 4: Delete a date idea (DELETE) ---
@@ -230,7 +241,7 @@ app.delete(
   "/api/ideas/:id",
   async (
     req: Request<{id: string}>,
-    res: Response<{message: string} | {error: string}>
+    res: Response<{message: string} | {error: string}>,
   ) => {
     const ideaId = parseInt(req.params.id);
 
@@ -250,11 +261,11 @@ app.delete(
     } catch (err) {
       console.error(
         `Database query error in DELETE /api/ideas/${ideaId}:`,
-        err
+        err,
       );
       res.status(500).json({error: "Failed to delete idea."});
     }
-  }
+  },
 );
 
 // --- ENDPOINT 5: Get all users (non-sensitive data only) ---
@@ -281,21 +292,24 @@ app.get(
       console.error("Database query error in /api/users:", err);
       res.status(500).json({error: "Failed to retrieve users."});
     }
-  }
+  },
 );
 
 // --- UPDATED ENDPOINT: Safer Grouping Logic ---
 app.get(
   "/api/ideas/filter",
-  async (req: Request, res: Response<any[] | { error: string }>) => {
+  async (req: Request, res: Response<any[] | {error: string}>) => {
     try {
-      const { tags } = req.query;
+      const {tags} = req.query;
 
-      if (!tags || typeof tags !== 'string') {
-        return res.status(400).json({ error: "Invalid tags parameter." });
+      if (!tags || typeof tags !== "string") {
+        return res.status(400).json({error: "Invalid tags parameter."});
       }
 
-      const tagList = tags.split(',').map(t => t.trim()).filter(t => t !== '');
+      const tagList = tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t !== "");
       const tagCount = tagList.length;
 
       // Log the attempt to your terminal so you can see it happening
@@ -330,16 +344,15 @@ app.get(
         `;
 
       const result = await pool.query(queryText, [tagList, tagCount]);
-      
+
       console.log(`Found ${result.rows.length} matches.`); // Debug log
       res.json(result.rows);
-
     } catch (err: any) {
       // Log the ACTUAL SQL error to your terminal
-      console.error("SQL Error in /filter:", err.message); 
-      res.status(500).json({ error: "Database error during filter." });
+      console.error("SQL Error in /filter:", err.message);
+      res.status(500).json({error: "Database error during filter."});
     }
-  }
+  },
 );
 
 // --- NEW ENDPOINT: Get List of All Tags ---
@@ -350,6 +363,96 @@ app.get("/api/tags", async (req: Request, res: Response) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({error: "Failed to load tags"});
+  }
+});
+
+app.post("/api/ideas/anchors", async (req, res) => {
+  const {vibe, budget, locationType, currentLocation, travelDistance} =
+    req.body;
+
+  // 1. Calculate bounds ONLY if location exists
+  let bounds = null;
+  if (currentLocation) {
+    const {latitude, longitude} = currentLocation;
+    const MILES_PER_LAT = 69;
+    const latDelta = travelDistance / MILES_PER_LAT;
+    const latInRadians = (latitude * Math.PI) / 180;
+    const lonDelta = travelDistance / (MILES_PER_LAT * Math.cos(latInRadians));
+
+    bounds = {
+      minLat: latitude - latDelta,
+      maxLat: latitude + latDelta,
+      minLon: longitude - lonDelta,
+      maxLon: longitude + lonDelta,
+    };
+  }
+
+  try {
+    const queryText = `
+      SELECT DISTINCT di.* FROM Date_Ideas di
+      LEFT JOIN idea_tags it ON di.idea_id = it.idea_id
+      LEFT JOIN tags t ON it.tag_id = t.tag_id
+      WHERE di.activity_type = $1 
+        AND di.est_price_per_person <= $2
+        AND (t.name ILIKE $3 OR $3 IS NULL)
+        -- CONDITIONAL LOCATION FILTER --
+        AND (
+          $4::boolean IS FALSE OR 
+          (di.latitude >= $5 AND di.latitude <= $6 AND di.longitude >= $7 AND di.longitude <= $8)
+        )
+      LIMIT 20;
+    `;
+
+    // $4 is a boolean: "Should we filter by location?"
+    const hasLocation = bounds !== null;
+
+    const result = await pool.query(queryText, [
+      locationType,
+      budget,
+      vibe ? `%${vibe}%` : null,
+      hasLocation, // $4
+      bounds?.minLat || 0, // $5
+      bounds?.maxLat || 0, // $6
+      bounds?.minLon || 0, // $7
+      bounds?.maxLon || 0, // $8
+    ]);
+
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({error: "Internal server error"});
+  }
+});
+
+// --- NEW ENDPOINT: GET FILLERS BASED ON USER PREFS ---
+app.get("/api/ideas/fill-schedule", async (req, res) => {
+  const {vibe, budget, type, minutes} = req.query;
+
+  try {
+    const queryText = `
+      SELECT * FROM (
+        SELECT DISTINCT di.* FROM Date_Ideas di
+        LEFT JOIN idea_tags it ON di.idea_id = it.idea_id
+        LEFT JOIN tags t ON it.tag_id = t.tag_id
+        WHERE di.activity_type = $1 
+          AND COALESCE(di.est_price_per_person, 0) <= $2
+          -- We'll assume a 'Filler' is anything under 60 mins if minutes isn't provided
+          AND (t.name ILIKE $3 OR $3 IS NULL OR t.name IS NULL)
+          AND (di.est_duration_minutes <= $4)
+      ) as unique_ideas
+      ORDER BY RANDOM()
+      LIMIT 4;
+    `;
+
+    const result = await pool.query(queryText, [
+      type,
+      budget,
+      `%${vibe}%`,
+      minutes,
+    ]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("SQL Error in Fill-Schedule:", err);
+    res.status(500).json({error: "Failed to fetch fillers"});
   }
 });
 

@@ -15,7 +15,8 @@ export default function BudgetCountInput({
 
   // --- Utility Function for Formatting ---
   const formatCurrency = (number: number | null): string => {
-    if (number === null || number === 0 || isNaN(number)) {
+    // Only return empty if it's truly null or not a number
+    if (number === null || isNaN(number)) {
       return "";
     }
     return new Intl.NumberFormat("en-US", {

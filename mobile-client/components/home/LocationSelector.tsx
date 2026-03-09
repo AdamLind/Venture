@@ -1,10 +1,15 @@
+import {SimpleLocation} from "@/types/itinerary";
 import * as Location from "expo-location";
 import React, {useState} from "react";
 import {ActivityIndicator, Pressable, Text, View} from "react-native";
 
-export default function LocationSelector() {
-  const [location, setLocation] =
-    useState<Location.LocationObjectCoords | null>(null);
+export default function LocationSelector({
+  location,
+  setLocation,
+}: {
+  location: SimpleLocation | null;
+  setLocation: React.Dispatch<React.SetStateAction<SimpleLocation | null>>;
+}) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -26,7 +31,13 @@ export default function LocationSelector() {
         accuracy: Location.Accuracy.High,
       });
 
-      setLocation(loc.coords);
+      const simpleLoc = {
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      };
+
+      setLocation(simpleLoc);
+      console.log(simpleLoc);
     } catch (error) {
       setErrorMsg("Error fetching location");
       console.error(error);
@@ -42,16 +53,16 @@ export default function LocationSelector() {
         className="bg-gray-800 w-full h-[50px] rounded-lg border border-gray-500 text-white text-[20px] font-semibold justify-center"
       >
         {!loading && !errorMsg && (
-          <Text className="w-full text-center text-[20px] text-gray-500 font-semibold">
-            {!location ? "Leaving From..." : location.latitude + " " + location.longitude}
+          <Text
+            className={`w-full text-center text-[20px] font-semibold ${location ? "text-green-500" : "text-gray-500"}`}
+          >
+            {location ? "Location Acquired" : "Get Current Location"}
           </Text>
         )}
 
         {loading && <ActivityIndicator />}
 
-        {errorMsg && (
-          <Text className="text-red">{errorMsg}</Text>
-        )}
+        {errorMsg && <Text className="text-red">{errorMsg}</Text>}
       </Pressable>
     </View>
   );

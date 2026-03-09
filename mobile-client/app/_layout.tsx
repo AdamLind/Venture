@@ -45,6 +45,16 @@ export default function RootLayout() {
           }} 
         />
 
+        {/* 4. BUILDER SCREEN: Also independent of the tabs. */}
+        <Stack.Screen 
+          name="builder/index" 
+          options={{ 
+            title: 'Build Your Date',
+            headerShown: true,
+            presentation: 'modal',
+          }} 
+        />
+
         {/* 4. Not Found Screen */}
         <Stack.Screen name="+not-found" />
       </Stack>

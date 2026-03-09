@@ -217,8 +217,8 @@ export default function ExploreScreen() {
             style={{flex: 1}}
             // Note: Use PROVIDER_GOOGLE if using Google Maps on iOS
             initialRegion={{
-              latitude: 37.7749,
-              longitude: -122.4194,
+              latitude: 40.2312,
+              longitude: -111.6614,
               latitudeDelta: 0.1,
               longitudeDelta: 0.1,
             }}
