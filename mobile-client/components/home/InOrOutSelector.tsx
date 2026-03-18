@@ -1,15 +1,18 @@
 import * as Haptics from "expo-haptics";
 import {Dispatch, SetStateAction} from "react";
 import {Pressable, Text, View} from "react-native";
-import {ActivityLocation} from "../../types/itinerary";
+import {ActivityLocation, SimpleLocation} from "../../types/itinerary";
 
 export default function InOrOutSelector({
   inOrOut,
   setInOrOut,
+  setLocation,
 }: {
   inOrOut: ActivityLocation;
   // This is the official type for a React State Setter
   setInOrOut: Dispatch<SetStateAction<ActivityLocation>>;
+
+  setLocation: Dispatch<React.SetStateAction<SimpleLocation | null>>;
 }) {
   // Map the DB value to a display label
   const locations: {label: string; value: ActivityLocation}[] = [
@@ -22,6 +25,7 @@ export default function InOrOutSelector({
       if (process.env.EXPO_OS === "ios") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
+      value == "STAY_IN" ? setLocation(null) : null;
       setInOrOut(value);
     }
   };

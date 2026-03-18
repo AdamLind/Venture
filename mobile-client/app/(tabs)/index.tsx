@@ -15,12 +15,19 @@ import {SimpleLocation} from "../../types/itinerary";
 export default function HomeScreen() {
   const router = useRouter();
 
+  const getRoundedDate = (date = new Date()) => {
+    const minutes = 15;
+    const ms = 1000 * 60 * minutes; // 15 minutes in milliseconds
+    // Math.ceil rounds UP to the next 15-minute block
+    return new Date(Math.ceil(date.getTime() / ms) * ms);
+  };
+
   // --- STATE VARIABLES ---
   const [socialType, setSocialType] = useState("Date");
   const [locationType, setLocationType] = useState<ActivityLocation>(
     ActivityLocation.StayIn,
   );
-  const [startDate, setStartDate] = useState(new Date());
+  const [startDate, setStartDate] = useState(getRoundedDate());
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [location, setLocation] = useState<SimpleLocation | null>(null);
   const [showEndPicker, setShowEndPicker] = useState(false);
@@ -61,7 +68,6 @@ export default function HomeScreen() {
       return;
     }
 
-    console.log(currentActivityType?.name)
     // 1. Pack the preferences into a single object
     const userPrefs = {
       socialType,
@@ -96,6 +102,7 @@ export default function HomeScreen() {
               <InOrOutSelector
                 inOrOut={locationType}
                 setInOrOut={setLocationType}
+                setLocation={setLocation}
               />
               <StartEndDateTime
                 showEndPicker={showEndPicker}

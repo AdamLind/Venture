@@ -86,6 +86,7 @@ export default function StartEndDateTime({
                 display="spinner"
                 minimumDate={currentTime}
                 onChange={onStartChange}
+                minuteInterval={15}
               />
             </TouchableWithoutFeedback>
           </View>
@@ -128,6 +129,7 @@ export default function StartEndDateTime({
                 value={end || start}
                 mode="datetime"
                 display="spinner"
+                minuteInterval={15}
                 minimumDate={minEndDate}
                 onChange={onEndDateChange}
               />

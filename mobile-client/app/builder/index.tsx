@@ -1,4 +1,11 @@
-import {queryAnchors, scheduleFillers} from "@/utils/itineraryBuilder";
+import {TimeSlot, PlanningStep} from "@/types/itinerary";
+import {
+  createInitialTimeline,
+  queryAnchors,
+  scheduleFillers,
+  getGapAnalysis,
+  updateTimeline,
+} from "@/utils/itineraryEngine";
 import {useLocalSearchParams} from "expo-router";
 import {useState, useEffect} from "react";
 import {
@@ -12,21 +19,38 @@ import {
 export default function BuilderScreen() {
   const {prefs} = useLocalSearchParams();
   const userPrefs = JSON.parse(prefs as string);
+
   const dateStart = new Date(userPrefs.startDate);
   const dateEnd = new Date(userPrefs.endDate);
+  dateStart.setSeconds(0, 0);
+  dateEnd.setSeconds(0, 0);
+
   const availableTime = (dateEnd.getTime() - dateStart.getTime()) / 60000;
   const availableBudget = userPrefs.budget;
   const headCount = userPrefs.headCount;
 
+  const [timeline, setTimeline] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [step, setStep] = useState<PlanningStep>("ANCHOR");
   const [retry, setRetry] = useState(false);
   const [activities, setActivities] = useState<any[]>([]);
-  const [selectedActivities, setSelectedActivities] = useState<any[]>([]);
   const [remainingTime, setRemainingTime] = useState<number>(availableTime);
   const [remainingBudget, setRemainingBudget] =
     useState<number>(availableBudget);
 
+  const availableActivities = activities.filter((activity) => {
+    return !timeline.some(
+      (slot) => slot.activity?.idea_id === activity.idea_id,
+    );
+  });
+
+  const initialTimeline = createInitialTimeline(
+    userPrefs.startDate,
+    userPrefs.endDate,
+  );
+
   useEffect(() => {
+    setTimeline(initialTimeline);
     loadAnchors();
   }, []);
 
@@ -50,27 +74,43 @@ export default function BuilderScreen() {
     }
   };
 
-  const handleSelectActivity = (activity: any) => {
-    const activityDuration = activity.est_duration_minutes;
-    const updatedRemainingTime = Math.round(remainingTime - activityDuration);
-    setRemainingTime(updatedRemainingTime);
+  const handleSelectActivity = async (activity: any) => {
+    // 1. Find the first available gap that fits this activity
+    const gapAnalysis = getGapAnalysis(timeline);
+    const bestGap = gapAnalysis.find(
+      (g) => g.duration >= activity.est_duration_minutes,
+    );
 
-    const activityBudget = activity.est_price_per_person * headCount;
-    const updatedRemainingBudget = remainingBudget - activityBudget;
-    setRemainingBudget(updatedRemainingBudget);
+    if (!bestGap) {
+      alert("This doesn't fit in your schedule!");
+      return;
+    }
 
-    const newItinerary = [...selectedActivities, activity];
-    setSelectedActivities(newItinerary);
+    // 2. Use your Dispatch Engine to "fragment" the timeline
+    const newTimeline = updateTimeline(timeline, {
+      type: "ADD",
+      payload: {
+        targetId: bestGap.slotId,
+        activity: activity,
+        startTime: bestGap.startTime, // Auto-slots to the start of the gap
+        prefs: userPrefs
+      },
+    });
 
-    if (updatedRemainingTime >= 30) {
-      console.log(newItinerary);
-      console.log(
-        `We have ${updatedRemainingTime} minutes for another activity.`,
-      );
-      console.log(`We have $${updatedRemainingBudget} for another activity.`);
+    setTimeline(newTimeline);
 
-      // Now fetch fillers that fit that specific gap
-      scheduleFillers(userPrefs, updatedRemainingTime, updatedRemainingBudget);
+    // 3. Update the UI state
+    setRemainingTime((prev) => prev - activity.est_duration_minutes);
+    setRemainingBudget(
+      (prev) => prev - activity.est_price_per_person * headCount,
+    );
+
+    // 4. Determine the next step
+    if (step === "ANCHOR") {
+      setStep("SUB_ANCHOR");
+      // Fetch new options based on the NEW gaps
+      const analysis = getGapAnalysis(newTimeline);
+      // Trigger your loadFillers logic here...
     }
   };
 
@@ -92,7 +132,7 @@ export default function BuilderScreen() {
       {Math.round(remainingTime) >= 30 ? (
         <View className="flex-1 p-6">
           {/* 1. PROGRESS TRACKER */}
-          {selectedActivities.length > 0 && (
+          {timeline.length > 0 && (
             <View className="mb-8 p-5 bg-zinc-900/50 border border-zinc-800 rounded-[24px]">
               <View className="flex-row justify-between items-center mb-6">
                 <Text className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest">
@@ -103,27 +143,30 @@ export default function BuilderScreen() {
                     ${remainingBudget} left
                   </Text>
                   <Text className="text-zinc-400 font-mono text-xs">
-                    {remainingTime}m left
+                    {Math.round(remainingTime)} min left
                   </Text>
                 </View>
               </View>
 
-              {selectedActivities.map((act, idx) => (
+              {timeline.map((slot, idx) => (
                 <View key={idx} className="flex-row">
                   <View className="items-center w-4 mr-4">
-                    <View className="w-2 h-2 rounded-full bg-blue-500 z-10 top-2" />
-                    {idx < selectedActivities.length && (
+                    <View
+                      className={`w-2 h-2 rounded-full z-10 top-2 ${slot.type == "AVAILABLE" ? "bg-zinc-700" : "bg-blue-500"}`}
+                    />
+                    {idx < timeline.length && (
                       <View
-                        className={`w-0 flex-1 border-l-[2px] border-zinc-800 -my-1 top-2 ${idx == selectedActivities.length - 1 ? "border-dotted" : ""} will-change-variable`}
+                        className={`w-0 flex-1 border-l-[2px] border-zinc-800 -my-1 top-2 ${idx == timeline.length - 1 ? "border-dotted" : ""} will-change-variable`}
                       />
                     )}
                   </View>
                   <View className="flex-1 pb-4">
                     <Text className="text-white font-semibold">
-                      {act.title}
+                      {slot.title}
                     </Text>
                     <Text className="text-zinc-500 text-xs">
-                      {act.est_duration_minutes} mins
+                      {Math.round((slot.endTime - slot.startTime) / 1000 / 60)}{" "}
+                      min
                     </Text>
                   </View>
                 </View>
@@ -145,21 +188,22 @@ export default function BuilderScreen() {
 
           {/* 2. HEADER */}
           <Text className="text-white text-4xl font-bold mb-2">
-            {selectedActivities.length === 0 ? "The Anchor" : "The Filler"}
+            {step == "ANCHOR" ? "The Anchor" : "The Filler"}
           </Text>
           <Text className="text-zinc-500 text-lg mb-8">
-            {selectedActivities.length === 0
+            {step == "ANCHOR"
               ? "Every great date needs a main event."
               : "Something to round out the night."}
           </Text>
           {retry ? (
             <Text className="text-purple-500 text-lg mb-8">
-              Unfortunately nothing matched your search. Here are some ideas from different categories.
+              Unfortunately nothing matched your search. Here are some ideas
+              from different categories.
             </Text>
           ) : null}
 
-          {activities && Array.isArray(activities) ? (
-            activities.map((item: any) => (
+          {availableActivities && Array.isArray(availableActivities) ? (
+            availableActivities.map((item: any) => (
               <Pressable
                 key={item.idea_id}
                 className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl mb-4 active:border-white"
@@ -170,7 +214,9 @@ export default function BuilderScreen() {
                     {item.title}
                   </Text>
                   <Text className="text-zinc-500">
-                    (Distance)
+                    {userPrefs.locationType == "GO_OUT"
+                      ? item.distance.toFixed(1) + " mi"
+                      : "Anywhere!"}
                   </Text>
                 </View>
                 <Text className="text-zinc-400 mt-2" numberOfLines={2}>
@@ -216,7 +262,7 @@ export default function BuilderScreen() {
             </View>
 
             <View className="gap-y-4 mb-8">
-              {selectedActivities.map((act, idx) => (
+              {timeline.map((slot, idx) => (
                 <View
                   key={idx}
                   className="flex-row items-center bg-zinc-800/30 p-4 rounded-2xl"
@@ -225,9 +271,10 @@ export default function BuilderScreen() {
                     <Text className="text-zinc-400 font-bold">{idx + 1}</Text>
                   </View>
                   <View className="flex-1">
-                    <Text className="text-white font-bold">{act.title}</Text>
+                    <Text className="text-white font-bold">{slot.title}</Text>
                     <Text className="text-zinc-500 text-xs">
-                      {act.est_duration_minutes} mins
+                      {Math.round((slot.endTime - slot.startTime) / 1000 / 60)}{" "}
+                      mins
                     </Text>
                   </View>
                 </View>
@@ -265,7 +312,7 @@ export default function BuilderScreen() {
             <Pressable
               className="py-4 rounded-2xl items-center"
               onPress={() => {
-                setSelectedActivities([]);
+                setTimeline(initialTimeline);
                 setRemainingTime(availableTime);
                 setRemainingBudget(availableBudget);
                 queryAnchors(userPrefs);
