@@ -4,8 +4,6 @@ This app, Venture, is an app that is designed to pull in numerous date/activtiy 
 
 I started developing this app because my wife would ask me each week what we should do for date night and I was stressed out trying to juggle plans and present new ideas all the time. I created this app in order to solve my problem. My vision is: She asks what date we should go on and within a minute I'll have a fully scheduled date that meets all of our criteria. (budget, timeframe, stay in/go out, etc..)
 
-[Software Demo Video](https://youtu.be/vXwXmTI3lis)
-
 # Development Environment
 
 I used VS Code and Expo Go.
