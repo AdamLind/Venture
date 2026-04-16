@@ -312,6 +312,7 @@ export default function BuilderScreen() {
             <Pressable
               className="py-4 rounded-2xl items-center"
               onPress={() => {
+                setStep("ANCHOR")
                 setTimeline(initialTimeline);
                 setRemainingTime(availableTime);
                 setRemainingBudget(availableBudget);

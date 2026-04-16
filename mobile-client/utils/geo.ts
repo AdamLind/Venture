@@ -46,6 +46,7 @@ export const getDistance = (
 
   // 2. The "NaN" Prevention Check
   if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) {
+    console.warn("One or more latitudes/longitudes are NaN. Check to see if user location is missing.")
     return 999;
   }
 

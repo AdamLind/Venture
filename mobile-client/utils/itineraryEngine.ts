@@ -14,8 +14,8 @@ export const createInitialTimeline = (
   startDate.setSeconds(0, 0);
   endDate.setSeconds(0, 0);
 
-  const start = new Date(startDateIso).getTime();
-  const end = new Date(endDateIso).getTime();
+  const start = startDate.getTime();
+  const end = endDate.getTime();
 
   if (isNaN(start) || isNaN(end)) {
     console.error("Invalid dates provided to initializeTimeline");
@@ -47,7 +47,7 @@ export const fragmentSlot = (
     // --- 1. LOOK BACK (Inbound Travel) ---
     const previousSlot = timeline[index - 1];
     const inboundOrigin = previousSlot?.activity || prefs;
-    const inboundDistance = getDistance(inboundOrigin, activity);
+    const inboundDistance = prefs.locationType == "Go Out" ? getDistance(inboundOrigin, activity) : 0;
 
     const inboundTravelMins =
       inboundDistance > 0 ? Math.round(inboundDistance * 3 + 5) : 0;
@@ -135,7 +135,6 @@ export const fragmentSlot = (
         type: "AVAILABLE",
       });
     }
-
     return newSlots;
   });
 };
