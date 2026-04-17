@@ -24,7 +24,7 @@ export default function HomeScreen() {
 
   // --- STATE VARIABLES ---
   const [socialType, setSocialType] = useState("Date");
-  const [locationType, setLocationType] = useState<ActivityLocation>(
+  const [modality, setModality] = useState<ActivityLocation>(
     ActivityLocation.StayIn,
   );
   const [startDate, setStartDate] = useState(getRoundedDate());
@@ -71,7 +71,7 @@ export default function HomeScreen() {
     // 1. Pack the preferences into a single object
     const userPrefs = {
       socialType,
-      locationType, // Now using our clean Enum!
+      modality, // Now using our clean Enum!
       startDate,
       endDate,
       currentLocation: location,
@@ -100,8 +100,8 @@ export default function HomeScreen() {
             <SocialSelector type={socialType} setType={setSocialType} />
             <View className="w-full flex flex-col gap-[15px]">
               <InOrOutSelector
-                inOrOut={locationType}
-                setInOrOut={setLocationType}
+                inOrOut={modality}
+                setInOrOut={setModality}
                 setLocation={setLocation}
               />
               <StartEndDateTime
@@ -112,7 +112,7 @@ export default function HomeScreen() {
                 start={startDate}
                 end={endDate}
               />
-              {locationType == ActivityLocation.GoOut && (
+              {modality == ActivityLocation.GoOut && (
                 <LocationSelector
                   location={location}
                   setLocation={setLocation}

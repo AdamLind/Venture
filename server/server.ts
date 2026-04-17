@@ -9,7 +9,7 @@ interface DateIdea {
   idea_id: number;
   title: string;
   description: string | null;
-  activity_type: "STAY_IN" | "GO_OUT";
+  modality: "STAY_IN" | "GO_OUT";
   // Price is returned as a string from the PostgreSQL DECIMAL type
   est_price_per_person: string;
   creator_username: string | null;
@@ -58,7 +58,7 @@ app.get(
             di.idea_id,
             di.title,
             di.description, -- <--- Add this line
-            di.activity_type,
+            di.activity_type, -- TODO: Need to rename "activity_type" to "modality" when rebuilding db
             di.est_price_per_person::text as est_price_per_person, 
             di.latitude,
             di.longitude,
@@ -86,7 +86,7 @@ app.post(
     const {
       title,
       description,
-      activity_type,
+      modality,
       est_price_per_person,
       creator_username,
       latitude,
@@ -94,7 +94,7 @@ app.post(
       tags, // Array of tag IDs (e.g., [1, 3])
     } = req.body;
 
-    if (!title || !activity_type || est_price_per_person === undefined) {
+    if (!title || !modality || est_price_per_person === undefined) {
       return res.status(400).json({
         error: "Missing required fields.",
       });
@@ -121,7 +121,7 @@ app.post(
       const values = [
         title,
         description || null,
-        activity_type,
+        modality,
         est_price_per_person,
         userId,
         latitude || null,
@@ -181,7 +181,7 @@ app.put(
     const {
       title,
       description,
-      activity_type,
+      modality,
       est_price_per_person,
       latitude,
       longitude,
@@ -203,7 +203,7 @@ app.put(
       const values = [
         title,
         description,
-        activity_type,
+        modality,
         est_price_per_person,
         ideaId,
         latitude || null,
@@ -367,7 +367,7 @@ app.get("/api/tags", async (req: Request, res: Response) => {
 });
 
 app.post("/api/ideas/anchors", async (req, res) => {
-  const {vibe, budget, locationType, currentLocation, travelDistance} =
+  const {vibe, budget, modality, currentLocation, travelDistance} =
     req.body;
 
   // 1. Calculate bounds ONLY if location exists
@@ -392,7 +392,7 @@ app.post("/api/ideas/anchors", async (req, res) => {
       SELECT DISTINCT di.* FROM Date_Ideas di
       LEFT JOIN idea_tags it ON di.idea_id = it.idea_id
       LEFT JOIN tags t ON it.tag_id = t.tag_id
-      WHERE di.activity_type = $1 
+      WHERE di.activity_type = $1 -- TODO: replace with "modality
         AND di.est_price_per_person <= $2
         AND (t.name ILIKE $3 OR $3 IS NULL)
         -- CONDITIONAL LOCATION FILTER --
@@ -407,7 +407,7 @@ app.post("/api/ideas/anchors", async (req, res) => {
     const hasLocation = bounds !== null;
 
     const result = await pool.query(queryText, [
-      locationType,
+      modality,
       budget,
       vibe ? `%${vibe}%` : null,
       hasLocation, // $4

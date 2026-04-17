@@ -1,6 +1,6 @@
 -- 1. Insert 20 Date Ideas with Lat/Longs (San Francisco Area)
 -- We use San Francisco coordinates so they appear close together on the map
-INSERT INTO date_ideas (title, activity_type, est_price_per_person, latitude, longitude, is_public) VALUES
+INSERT INTO date_ideas (title, modality, est_price_per_person, latitude, longitude, is_public) VALUES
 ('Golden Gate Park Picnic', 'GO_OUT', 15.00, 37.7694, -122.4862, true),
 ('Pier 39 Sea Lions', 'GO_OUT', 0.00, 37.8087, -122.4098, true),
 ('Palace of Fine Arts Stroll', 'GO_OUT', 0.00, 37.8029, -122.4484, true),

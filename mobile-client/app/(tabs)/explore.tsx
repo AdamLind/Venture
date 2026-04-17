@@ -17,7 +17,7 @@ import MapView, {Marker, Callout} from "react-native-maps";
 interface DateIdea {
   idea_id: number;
   title: string;
-  activity_type: "STAY_IN" | "GO_OUT";
+  modality: "STAY_IN" | "GO_OUT";
   est_price_per_person: string;
   creator_username: string | null;
   latitude?: string | null;
@@ -103,14 +103,14 @@ export default function ExploreScreen() {
       };
       fetchIdeas();
       return () => controller.abort();
-    }, [selectedTags])
+    }, [selectedTags]),
   );
 
   const toggleTag = (tagName: string) => {
     setSelectedTags((prev) =>
       prev.includes(tagName)
         ? prev.filter((t) => t !== tagName)
-        : [...prev, tagName]
+        : [...prev, tagName],
     );
   };
 
@@ -131,19 +131,19 @@ export default function ExploreScreen() {
         </Text>
         <View
           className={`px-3 py-1 rounded-full border ${
-            item.activity_type === "STAY_IN"
+            item.modality === "STAY_IN"
               ? "bg-amber-500/10 border-amber-500/30"
               : "bg-emerald-500/10 border-emerald-500/30"
           }`}
         >
           <Text
             className={`text-[10px] font-bold uppercase ${
-              item.activity_type === "STAY_IN"
+              item.modality === "STAY_IN"
                 ? "text-amber-400"
                 : "text-emerald-400"
             }`}
           >
-            {item.activity_type.replace("_", " ")}
+            { (item.modality ?? "UNKNOWN").replace("_", " ") }
           </Text>
         </View>
       </View>
@@ -204,11 +204,9 @@ export default function ExploreScreen() {
     // 2. MAP VIEW HANDLING
     if (viewMode === "map") {
       const mapMarkers = ideas
+        .filter((i) => i.latitude && i.longitude && i.modality === "GO_OUT")
         .filter(
-          (i) => i.latitude && i.longitude && i.activity_type === "GO_OUT"
-        )
-        .filter(
-          (v, i, a) => a.findIndex((v2) => v2.idea_id === v.idea_id) === i
+          (v, i, a) => a.findIndex((v2) => v2.idea_id === v.idea_id) === i,
         );
 
       return (

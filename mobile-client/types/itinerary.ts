@@ -7,8 +7,11 @@ export interface Activity {
   idea_id: number;
   title: string;
   description: string;
-  activity_type: "STAY_IN" | "GO_OUT"; // Match DB Enums
-  est_price_per_person: string | number; // DB returns string, logic needs number
+  modality: "STAY_IN" | "GO_OUT";
+  activity_type: "MEAL" | "ACTIVE" | "RELAX"; // Crucial for "Social Gravity"
+  tags: string[]; // For vibe matching (e.g., ["romantic", "cozy", "loud"])
+
+  est_price_per_person: string | number;
   est_duration_minutes: number;
 
   // Location info (Optional for Stay In)
@@ -21,8 +24,8 @@ export interface Activity {
   max_people: number;
 
   // Scoring & Metadata
-  score?: number; // Added by selectBestAnchor
-  distance?: number; // Added by Haversine logic
+  score?: number;
+  distance?: number;
   created_at: string;
   user_id: number | null;
 }
@@ -32,7 +35,7 @@ export interface UserPrefs {
   socialType: string;
 
   /** The enum value for the location (e.g., "Indoors", "Outdoors") */
-  locationType: string;
+  modality: string;
 
   /** ISO String or Date object for the start of the night */
   startDate: string | Date;

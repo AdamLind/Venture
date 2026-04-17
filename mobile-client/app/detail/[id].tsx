@@ -17,7 +17,7 @@ interface DateIdea {
   idea_id: number;
   title: string;
   description: string | null;
-  activity_type: "STAY_IN" | "GO_OUT";
+  modality: "STAY_IN" | "GO_OUT";
   est_price_per_person: string;
   creator_username: string | null;
   latitude?: string | null;
@@ -47,7 +47,7 @@ export default function IdeaDetailScreen() {
         idea_id: -1,
         title: "",
         description: "",
-        activity_type: "GO_OUT",
+        modality: "GO_OUT",
         est_price_per_person: "0",
         creator_username: null,
       };
@@ -58,7 +58,7 @@ export default function IdeaDetailScreen() {
         idea_id: -1,
         title: "",
         description: "",
-        activity_type: "GO_OUT",
+        modality: "GO_OUT",
         est_price_per_person: "0",
         creator_username: null,
       };
@@ -68,9 +68,7 @@ export default function IdeaDetailScreen() {
   const [title, setTitle] = useState(initialIdea.title);
   const [price, setPrice] = useState(initialIdea.est_price_per_person);
   const [description, setDescription] = useState(initialIdea.description || "");
-  const [type, setType] = useState<"STAY_IN" | "GO_OUT">(
-    initialIdea.activity_type,
-  );
+  const [type, setType] = useState<"STAY_IN" | "GO_OUT">(initialIdea.modality);
 
   const [latitude, setLatitude] = useState(initialIdea.latitude || "");
   const [longitude, setLongitude] = useState(initialIdea.longitude || "");
@@ -150,7 +148,7 @@ export default function IdeaDetailScreen() {
           title,
           description,
           est_price_per_person: price,
-          activity_type: type,
+          modality: type,
           latitude: finalLatitude,
           longitude: finalLongitude,
           tags: selectedTagIds,
