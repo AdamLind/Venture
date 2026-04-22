@@ -20,25 +20,20 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <Stack>
-        {/* 1. Tabs Group: This is your tab-based navigation. 
-             It will show the tab bar at the bottom. */}
-        <Stack.Screen
-          name="(tabs)"
-          options={{headerShown: false, title: ''}}
-        />
+        {/* 1. Tabs Group */}
+        <Stack.Screen name="(tabs)" options={{headerShown: false, title: ""}} />
 
-        {/* 2. DETAIL SCREEN: This screen is INDEPENDENT of the tabs. 
-             It will slide in and cover the entire screen, including the tab bar. */}
+        {/* 2. DETAIL SCREEN */}
         <Stack.Screen
           name="detail/[id]"
           options={{
             title: "Edit Date Idea",
             headerShown: true,
-            presentation: "modal", // Recommended presentation style
+            presentation: "modal",
           }}
         />
 
-        {/* 3. CREATE SCREEN: Also independent of the tabs. */}
+        {/* 3. CREATE SCREEN */}
         <Stack.Screen
           name="create/index"
           options={{
@@ -48,16 +43,25 @@ export default function RootLayout() {
           }}
         />
 
-        {/* 4. BUILDER SCREEN: Also independent of the tabs. */}
+        {/* 4. BUILDER SCREEN */}
         <Stack.Screen
           name="builder/index"
           options={{
             animation: "fade",
-            title: "Build Your Activity"
+            title: "Build Your Activity",
           }}
         />
 
-        {/* 4. Not Found Screen */}
+        {/* 5. ACTIVE DATE SCREEN */}
+        <Stack.Screen
+          name="active-date/index"
+          options={{
+            headerShown: false, // Let the map take over the screen
+            animation: "slide_from_bottom",
+          }}
+        />
+
+        {/* 6. Not Found Screen */}
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />

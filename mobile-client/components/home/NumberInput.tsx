@@ -29,7 +29,7 @@ export default function NumberInput({
           setHeadCount(parseInt(displayValue));
         }
       }}
-      className="bg-gray-800 flex-1 h-[50px] rounded-lg border border-gray-500 text-white text-[20px] font-semibold"
+      className="bg-zinc-900 flex-1 h-[50px] rounded-lg border border-zinc-500 text-white text-[20px] font-semibold"
       style={{textAlign: "center"}}
     />
   );

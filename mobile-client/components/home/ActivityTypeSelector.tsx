@@ -30,7 +30,7 @@ export default function ActivityTypeSelector({
             className={`h-[55px] w-[55px] rounded-[10px] flex justify-center items-center ${
               selectedType == activity.id
                 ? `${activity.color}`
-                : "bg-gray-800"
+                : "bg-zinc-900"
             }`}
           >
             <Ionicons name={activity.icon as any} color="white" size={35} />

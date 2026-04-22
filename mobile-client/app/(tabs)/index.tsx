@@ -93,7 +93,7 @@ export default function HomeScreen() {
       className="flex-1"
       contentContainerClassName="justify-start items-center h-full"
     >
-      <View className="w-full bg-gray-700 rounded-b-4xl p-[25px] pt-15">
+      <View className="w-full bg-zinc-800 rounded-b-4xl p-[25px] pt-15">
         <Greeting />
         <View className="mt-[30px]">
           <View className="flex-col gap-[25px]">
@@ -145,7 +145,7 @@ export default function HomeScreen() {
               className={`w-full h-[50px] justify-center rounded-[10px] ${currentActivityType?.color}`}
             >
               <Text className="text-center text-white font-semibold text-[18px]">
-                Generate
+                Schedule
               </Text>
             </Pressable>
           </View>

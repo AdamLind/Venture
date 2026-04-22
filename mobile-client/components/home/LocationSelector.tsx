@@ -50,11 +50,11 @@ export default function LocationSelector({
     <View>
       <Pressable
         onPress={fetchLocation}
-        className="bg-gray-800 w-full h-[50px] rounded-lg border border-gray-500 text-white text-[20px] font-semibold justify-center"
+        className="bg-zinc-900 w-full h-[50px] rounded-lg border border-gray-500 text-white text-[20px] font-semibold justify-center"
       >
         {!loading && !errorMsg && (
           <Text
-            className={`w-full text-center text-[20px] font-semibold ${location ? "text-green-500" : "text-gray-500"}`}
+            className={`w-full text-center text-[20px] font-semibold ${location ? "text-green-500" : "text-zinc-500"}`}
           >
             {location ? "Location Acquired" : "Get Current Location"}
           </Text>

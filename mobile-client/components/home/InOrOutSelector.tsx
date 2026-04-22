@@ -39,13 +39,13 @@ export default function InOrOutSelector({
           <Pressable
             key={loc.value}
             onPress={() => handlePress(loc.value)}
-            className={`flex-grow p-[13px] m-auto border rounded-[10px] bg-gray-800 ${
-              isActive ? "border-white" : "border-gray-500"
+            className={`flex-grow p-[13px] m-auto border rounded-[10px] bg-zinc-900 ${
+              isActive ? "border-white" : "border-zinc-500"
             }`}
           >
             <Text
               className={`h-6 text-[18px] text-center ${
-                isActive ? "text-white font-semibold" : "text-gray-400"
+                isActive ? "text-white font-semibold" : "text-zinc-200"
               }`}
             >
               {loc.label}

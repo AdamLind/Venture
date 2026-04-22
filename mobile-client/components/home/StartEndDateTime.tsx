@@ -93,14 +93,14 @@ export default function StartEndDateTime({
         </TouchableWithoutFeedback>
       </Modal>
       <Pressable
-        className="bg-gray-800 w-full h-[50px] rounded-t-lg border border-gray-500 border-b-0 items-center justify-center"
+        className="bg-zinc-900 w-full h-[50px] rounded-t-lg border border-zinc-500 border-b-0 items-center justify-center"
         onPress={() => setShowStartPicker(true)}
       >
         <Text className="text-center align-center text-white font-semibold text-[20px]">
           {formatDate(start)}
         </Text>
       </Pressable>
-      <View className="w-full border-t border-gray-500"></View>
+      <View className="w-full border-t border-zinc-500"></View>
       <Modal
         animationType="fade" // Or "slide"
         transparent={true}
@@ -138,12 +138,12 @@ export default function StartEndDateTime({
         </TouchableWithoutFeedback>
       </Modal>
       <Pressable
-        className="bg-gray-800 w-full h-[50px] rounded-b-lg border border-gray-500 border-t-0 justify-center items-center"
+        className="bg-zinc-900 w-full h-[50px] rounded-b-lg border border-zinc-500 border-t-0 justify-center items-center"
         onPress={() => setShowEndPicker(true)}
       >
         <Text
           className={`text-center align-center font-semibold text-[20px] ${
-            end ? "text-white" : "text-gray-500"
+            end ? "text-white" : "text-zinc-500"
           }`}
         >
           {end ? formatDate(end) : "Until"}

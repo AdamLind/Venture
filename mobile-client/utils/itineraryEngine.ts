@@ -1,397 +1,463 @@
-import {Activity, SlotType, TimeSlot, UserPrefs} from "@/types/itinerary";
+import {Activity, TimeSlot, UserPrefs} from "@/types/itinerary";
 import {getDistance} from "./geo";
 
-const API_HOST = process.env.EXPO_PUBLIC_API_HOST;
+// ─── Types ─────────────────────────────────────────────────────────────────────
 
-export const formatTime = (timestamp: number): string => {
-  return new Date(timestamp).toLocaleTimeString("en-US", {
+export type PlacedActivity = {
+  activity: Activity;
+  anchoredAt?: number; // Unix ms — set only on the anchor; undefined for fillers
+};
+
+export type UI_Trigger = "PROMPT_DINNER" | "PROMPT_LUNCH" | null;
+
+// ─── Pure Helpers ──────────────────────────────────────────────────────────────
+
+export const formatTime = (timestamp: number): string =>
+  new Date(timestamp).toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
-    hour12: true, // Forces AM/PM
+    hour12: true,
   });
+
+export const snapTo15 = (minutes: number): number => {
+  if (minutes <= 0) return 0;
+  const remainder = minutes % 15;
+  return remainder <= 3 ? minutes - remainder : minutes + (15 - remainder);
 };
 
-export const createInitialTimeline = (
-  startDateInput: string | Date | number,
-  endDateInput: string | Date | number,
-): TimeSlot[] => {
-  // JavaScript's new Date() handles strings, Dates, and Unix timestamps automatically
-  const startDate = new Date(startDateInput);
-  const endDate = new Date(endDateInput);
-
-  // CRITICAL FIX: Strip seconds and milliseconds
-  startDate.setSeconds(0, 0);
-  endDate.setSeconds(0, 0);
-
-  const start = startDate.getTime();
-  const end = endDate.getTime();
-
-  if (isNaN(start) || isNaN(end)) {
-    console.error("Invalid dates provided to initializeTimeline");
-    return [];
-  }
-
-  return [
-    {
-      id: "initial-gap",
-      title: "Initial Gap",
-      startTime: start,
-      endTime: end,
-      type: "AVAILABLE",
-      activity: null,
-    },
-  ];
-};
-
-export const fragmentSlot = (
-  timeline: TimeSlot[],
-  targetSlotId: string,
-  activity: Activity,
-  startTime: number,
-  prefs: UserPrefs,
-): TimeSlot[] => {
-  return timeline.flatMap((slot, index) => {
-    if (slot.id !== targetSlotId) return slot;
-
-    // --- NEW: INTELLIGENT LOCATION FINDERS ---
-    // Look backwards to find the actual last physical location
-    let previousActivity = null;
-    for (let i = index - 1; i >= 0; i--) {
-      if (timeline[i].activity) {
-        previousActivity = timeline[i].activity;
-        break;
-      }
-    }
-
-    // Look forwards to find the next actual physical location
-    let nextActivity = null;
-    for (let i = index + 1; i < timeline.length; i++) {
-      if (timeline[i].activity) {
-        nextActivity = timeline[i].activity;
-        break;
-      }
-    }
-
-    // --- 1. LOOK BACK (Inbound Travel) ---
-    // Use the previous activity, or fallback to Home (prefs) if it's the first activity of the day
-    const inboundOrigin = previousActivity || prefs;
-
-    // (Also updated locationType to modality here since you changed your frontend terminology!)
-    const inboundDistance =
-      prefs.modality === "GO_OUT" ? getDistance(inboundOrigin, activity) : 0;
-
-    const inboundTravelMins =
-      inboundDistance > 0 ? Math.round(inboundDistance * 3 + 5) : 0;
-    const inboundTravelMs = inboundTravelMins * 60 * 1000;
-
-    // --- 2. LOOK FORWARD (Outbound Travel) ---
-    let outboundTravelMs = 0;
-    let outboundDistance = 0;
-
-    if (nextActivity) {
-      outboundDistance = getDistance(activity, nextActivity);
-      const outboundMins =
-        outboundDistance > 0 ? Math.round(outboundDistance * 3 + 5) : 0;
-      outboundTravelMs = outboundMins * 60 * 1000;
-    }
-
-    // --- 3. VALIDATION ---
-    const activityDurationMs =
-      (Number(activity.est_duration_minutes) || 60) * 60 * 1000;
-
-    const totalBlockEnd =
-      startTime + inboundTravelMs + activityDurationMs + outboundTravelMs;
-
-    if (startTime < slot.startTime || totalBlockEnd > slot.endTime + 1000) {
-      console.warn("Activity + All Travel doesn't fit the gap!");
-      return slot;
-    }
-
-    const newSlots: TimeSlot[] = [];
-
-    // --- 4. CONSTRUCT THE FRAGMENTS ---
-    // Create ONE unique ID for this block to link travel slots to the activity
-    const blockId = `act-${activity.idea_id}-${Math.random().toString(36).slice(2, 7)}`;
-
-    // A. Pre-gap
-    if (startTime > slot.startTime) {
-      newSlots.push({
-        id: `gap-${Math.random().toString(36).slice(2, 7)}`,
-        title: "Empty",
-        startTime: slot.startTime,
-        endTime: startTime,
-        type: "AVAILABLE",
-      });
-    }
-
-    // B. Inbound Travel (Linked via blockId)
-    if (inboundTravelMs > 0) {
-      newSlots.push({
-        id: `travel-in-${blockId}`,
-        title: `🚗 Travel (${inboundDistance.toFixed(1)} mi)`,
-        startTime: startTime,
-        endTime: startTime + inboundTravelMs,
-        type: "OCCUPIED",
-      });
-    }
-
-    // C. The Activity (Linked via blockId)
-    newSlots.push({
-      id: blockId,
-      title: activity.title,
-      startTime: startTime + inboundTravelMs,
-      endTime: startTime + inboundTravelMs + activityDurationMs,
-      type: "OCCUPIED",
-      activity: activity,
-    });
-
-    // D. Post-gap
-    if (totalBlockEnd < slot.endTime) {
-      newSlots.push({
-        id: `gap-${Math.random().toString(36).slice(2, 7)}`,
-        title: "Empty",
-        startTime: totalBlockEnd,
-        endTime: slot.endTime,
-        type: "AVAILABLE",
-      });
-    }
-
-    return newSlots;
-  });
-};
-
-export const consolidateGaps = (timeline: TimeSlot[]): TimeSlot[] => {
-  if (timeline.length <= 1) return timeline;
-
-  const result: TimeSlot[] = [];
-
-  for (const current of timeline) {
-    const last = result[result.length - 1];
-
-    // If the last slot in our result is AVAILABLE and the current one is also AVAILABLE...
-    if (last && last.type === "AVAILABLE" && current.type === "AVAILABLE") {
-      // "Melt" them together by extending the last one's end time
-      result[result.length - 1] = {
-        ...last,
-        endTime: current.endTime,
-      };
-      // We don't push 'current' because it's now part of 'last'
-    } else {
-      result.push({...current}); // Otherwise, just add the slot as is
-    }
-  }
-
-  return result;
-};
-
-export const absorbSmallGaps = (timeline: TimeSlot[]): TimeSlot[] => {
-  let updated = [...timeline];
-  let didChange = true;
-
-  // We use a while loop because array indexes shift when we delete things
-  while (didChange) {
-    didChange = false;
-
-    for (let i = 0; i < updated.length; i++) {
-      const slot = updated[i];
-      const durationMins = Math.round((slot.endTime - slot.startTime) / 60000);
-
-      // If we find an annoying micro-gap (30 mins or less)
-      if (slot.type === "AVAILABLE" && durationMins <= 30 && durationMins > 0) {
-        // Find the closest actual activity BEFORE this gap
-        const prevActivityIdx = updated
-          .slice(0, i)
-          .findLastIndex((s) => s.type === "OCCUPIED" && s.activity !== null);
-
-        if (prevActivityIdx !== -1) {
-          const timeToAdd = slot.endTime - slot.startTime;
-
-          // 1. Extend that previous activity to consume the gap
-          updated[prevActivityIdx].endTime += timeToAdd;
-
-          // 2. Shift any intermediate slots (like the drive to the next place) forward
-          for (let j = prevActivityIdx + 1; j < i; j++) {
-            updated[j].startTime += timeToAdd;
-            updated[j].endTime += timeToAdd;
-          }
-
-          // 3. Vaporize the gap
-          updated.splice(i, 1);
-          didChange = true;
-          break; // Break the 'for' loop and restart the 'while' loop cleanly
-        }
-      }
-    }
-  }
-
-  // Final safety sweep to merge any remaining large gaps
-  return consolidateGaps(updated);
-};
-
-export const packTimeline = (
-  timeline: TimeSlot[],
-  prefs: UserPrefs,
-): TimeSlot[] => {
-  // 1. Extract only the actual physical activities in their current chronological order
-  const plannedActivities = timeline
-    // THE FIX: Using !!slot.activity ensures it rejects both null AND undefined
-    .filter((slot) => slot.type === "OCCUPIED" && !!slot.activity)
-    .map((slot) => slot.activity!);
-
-  // If the timeline is empty, just return a fresh initial gap
-  if (plannedActivities.length === 0) {
-    return createInitialTimeline(prefs.startDate, prefs.endDate);
-  }
-
-  // ... (The rest of the function stays exactly the same)
-
-  // 2. Start with a completely blank canvas
-  let packedTimeline = createInitialTimeline(prefs.startDate, prefs.endDate);
-
-  // 3. Re-insert the activities one by one
-  // Because we always target the first gap, they will perfectly snap back-to-back!
-  for (const activity of plannedActivities) {
-    const gaps = getAvailableGaps(packedTimeline);
-
-    // Grab the very first available gap at the front of the timeline
-    const firstGap = gaps[0];
-
-    packedTimeline = updateTimeline(
-      packedTimeline,
-      {
-        type: "ADD",
-        payload: {
-          targetId: firstGap.slotId,
-          activity: activity,
-          startTime: firstGap.startTime,
-          prefs: prefs,
-        },
-      },
-      prefs,
-    );
-  }
-
-  return packedTimeline;
-};
+const makeGap = (start: number, end: number): TimeSlot => ({
+  id: `gap-${Math.random().toString(36).slice(2, 7)}`,
+  title: "Empty",
+  startTime: start,
+  endTime: end,
+  type: "AVAILABLE",
+  activity: null,
+});
 
 /**
- * Removes an activity from the timeline and resets the slot to AVAILABLE.
- * Then, it automatically merges the newly created gap with any touching gaps.
+ * Returns travel duration in ms between two locations.
+ * Returns 0 if the user is staying in, or if the distance is zero.
  */
-export const removeActivity = (
-  timeline: TimeSlot[],
-  slotId: string, // e.g., 'act-123-abcde'
-): TimeSlot[] => {
-  // 1. Find the activity AND its connected travel slots
-  const updated = timeline.map((slot): TimeSlot => {
-    // Check if the slot IS the activity, or if it is a travel slot FOR the activity
-    if (
-      slot.id === slotId ||
-      slot.id === `travel-in-${slotId}` ||
-      slot.id === `travel-out-${slotId}`
-    ) {
-      return {
-        ...slot,
-        type: "AVAILABLE",
-        activity: null, // Clear the data
-        title: "Empty", // Clear the "🚗 Travel" text so the UI looks clean
-      };
-    }
-    return slot;
-  });
-
-  // 2. Run the Cleanup Crew to melt the newly freed gaps together
-  return consolidateGaps(updated);
+const getTravelMs = (
+  from: Activity | UserPrefs,
+  to: Activity,
+  prefs: UserPrefs,
+): number => {
+  if (prefs.modality === "STAY_IN") return 0;
+  const dist = getDistance(from, to);
+  return snapTo15(dist > 0 ? dist * 3 + 5 : 0) * 60_000;
 };
 
-export const updateTimeline = (
-  currentTimeline: TimeSlot[],
-  action: {type: "ADD" | "REMOVE"; payload: any},
-  prefs: UserPrefs, // <--- NEW: Require prefs for every update
-): TimeSlot[] => {
-  let nextTimeline: TimeSlot[] = [];
+const getTravelLabel = (
+  from: Activity | UserPrefs,
+  to: Activity,
+  prefs: UserPrefs,
+): string => {
+  const dist = getDistance(from, to);
+  return `Travel & Parking (${dist.toFixed(1)} mi)`;
+};
 
-  switch (action.type) {
-    case "ADD":
-      nextTimeline = fragmentSlot(
-        currentTimeline,
-        action.payload.targetId,
-        action.payload.activity,
-        action.payload.startTime,
-        prefs, // Use the top-level prefs
-      );
-      break;
+// ─── Optimal Anchor Placement ──────────────────────────────────────────────────
 
-    case "REMOVE":
-      nextTimeline = removeActivity(currentTimeline, action.payload.slotId);
-      break;
+/**
+ * Calculates the best start time for an anchor activity within the user's day.
+ *
+ * Rules:
+ *  - MEAL at dinner hours → 6:30 PM
+ *  - MEAL at any other time → 12:30 PM
+ *  - Everything else → 1/3 of the way through the day.
+ *    (This guarantees a meaningful pre-gap for fillers, while leaving 2/3 of
+ *    the day for post-fillers and flex time.)
+ *
+ * In all cases the result is clamped so the activity fits before dayEnd.
+ */
+export const getOptimalAnchorTime = (
+  activity: Activity,
+  prefs: UserPrefs,
+): number => {
+  const dayStart = new Date(prefs.startDate).getTime();
+  const dayEnd = new Date(prefs.endDate).getTime();
 
-    default:
-      return currentTimeline;
+  const durationMs =
+    snapTo15(Number(activity.est_duration_minutes) || 60) * 60_000;
+
+  // Estimate the travel tax (drive there + drive back)
+  const travelMs = getTravelMs(prefs, activity, prefs);
+
+  // The absolute boundaries: we must leave room for travel TO and FROM the anchor
+  const earliestStart = dayStart + travelMs;
+  const latestStart = dayEnd - durationMs - travelMs;
+
+  const setHour = (hour: number, minute = 0): number => {
+    const d = new Date(dayStart);
+    d.setHours(hour, minute, 0, 0);
+    return d.getTime();
+  };
+
+  let candidateTime: number;
+
+  if (activity.activity_type === "MEAL") {
+    const dinner = setHour(18, 30);
+    const lunch = setHour(12, 30);
+
+    // Check if preferred meal times fit inside the safe zone
+    if (dinner >= earliestStart && dinner <= latestStart) {
+      candidateTime = dinner;
+    } else if (lunch >= earliestStart && lunch <= latestStart) {
+      candidateTime = lunch;
+    } else {
+      // Fallback: put it perfectly in the middle of the safe window
+      const window = Math.max(0, latestStart - earliestStart);
+      candidateTime = earliestStart + Math.floor(window / 2);
+    }
+  } else {
+    // Place 1/3 into the SAFE window, snapped to 15 mins
+    const window = Math.max(0, latestStart - earliestStart);
+    const raw = earliestStart + Math.floor(window / 3);
+    const ms15 = 15 * 60_000;
+    candidateTime = Math.round(raw / ms15) * ms15;
   }
 
-  // Step 1: Melt touching gaps together
-  let polishedTimeline = consolidateGaps(nextTimeline);
-
-  // Step 2: Expand activities to eat up the awkward micro-gaps
-  polishedTimeline = absorbSmallGaps(polishedTimeline);
-
-  // Step 3: Append the drive home
-  return appendReturnJourney(polishedTimeline, prefs);
+  // Final strict clamp: The anchor CANNOT start earlier or later than the safe zone
+  return Math.max(earliestStart, Math.min(candidateTime, latestStart));
 };
 
-const scoreAnchors = ({
-  allAnchors,
+// ─── Core Timeline Deriver ─────────────────────────────────────────────────────
+
+/**
+ * Derives the full display timeline from the canonical placed-activity list.
+ *
+ * Layout contract:
+ *  1. Anchor sits at its pinned `anchoredAt` time.
+ *  2. Pre-fillers pack RIGHT-TO-LEFT, ending just before the anchor's inbound
+ *     travel — so the only free gap is at the BEGINNING of the day.
+ *  3. Post-fillers pack LEFT-TO-RIGHT from the anchor's end — so the only free
+ *     gap is at the END of the day.
+ *  4. Gaps ≤ 30 min are silently absorbed into the adjacent activity.
+ *  5. Return journey is appended for GO_OUT modality.
+ *
+ * Result: at most TWO "Add Activity" buttons are ever visible simultaneously.
+ */
+export const deriveTimeline = (
+  placed: PlacedActivity[],
+  prefs: UserPrefs,
+): TimeSlot[] => {
+  const dayStartRaw = new Date(prefs.startDate);
+  const dayStartHour = dayStartRaw.getHours();
+  const dayStartMin = dayStartRaw.getMinutes();
+  dayStartRaw.setHours(dayStartHour, dayStartMin, 0, 0);
+  const dayStart = dayStartRaw.getTime();
+
+  const dayEndRaw = new Date(prefs.endDate);
+  const dayEndHour = dayEndRaw.getHours();
+  const dayEndMin = dayStartRaw.getMinutes();
+  dayEndRaw.setHours(dayEndHour, dayEndMin, 0, 0);
+  const dayEnd = dayEndRaw.getTime();
+
+  const GAP_ABSORB_MS = 30 * 60_000;
+
+  // Empty state — one big available gap
+  if (placed.length === 0) {
+    return [makeGap(dayStart, dayEnd)];
+  }
+
+  const anchorIndex = placed.findIndex((p) => p.anchoredAt != null);
+  if (anchorIndex === -1) {
+    // No anchor yet; shouldn't occur in normal flow
+    return [makeGap(dayStart, dayEnd)];
+  }
+
+  const anchor = placed[anchorIndex];
+  const anchorStart = anchor.anchoredAt!;
+  const anchorDurationMs =
+    snapTo15(Number(anchor.activity.est_duration_minutes) || 60) * 60_000;
+  const anchorEnd = anchorStart + anchorDurationMs;
+
+  const preActivities = placed.slice(0, anchorIndex);
+  const postActivities = placed.slice(anchorIndex + 1);
+
+  const slots: TimeSlot[] = [];
+
+  // ── PRE-ANCHOR: build right-to-left ─────────────────────────────────────────
+  // The anchor's inbound origin is the last pre-filler (or the user's home).
+  const anchorOrigin: Activity | UserPrefs =
+    preActivities.length > 0
+      ? preActivities[preActivities.length - 1].activity
+      : prefs;
+  const anchorInboundMs = getTravelMs(anchorOrigin, anchor.activity, prefs);
+
+  // preRight is the right edge of the slot available for pre-fillers
+  let preRight = anchorStart - anchorInboundMs;
+
+  // Collect pre-slots in reverse, then unshift into the main array
+  const preSlots: TimeSlot[] = [];
+
+  for (let i = preActivities.length - 1; i >= 0; i--) {
+    const curr = preActivities[i].activity;
+    const prev: Activity | UserPrefs =
+      i > 0 ? preActivities[i - 1].activity : prefs;
+
+    const durationMs =
+      snapTo15(Number(curr.est_duration_minutes) || 60) * 60_000;
+    const travelMs = getTravelMs(prev, curr, prefs);
+
+    const actEnd = preRight;
+    const actStart = actEnd - durationMs;
+    const travelEnd = actStart;
+    const travelStart = travelEnd - travelMs;
+
+    // Activity
+    preSlots.unshift({
+      id: `act-${curr.idea_id}`,
+      title: curr.title,
+      startTime: actStart,
+      endTime: actEnd,
+      type: "OCCUPIED",
+      activity: curr,
+    });
+
+    // Inbound travel for this pre-filler
+    if (travelMs > 0) {
+      preSlots.unshift({
+        id: `travel-${curr.idea_id}`,
+        title: getTravelLabel(prev, curr, prefs),
+        startTime: travelStart,
+        endTime: travelEnd,
+        type: "OCCUPIED",
+        activity: null,
+      });
+    }
+
+    preRight = travelStart;
+  }
+
+  // Pre-gap (from dayStart to wherever pre-fillers begin)
+  const preBlockStart =
+    preSlots.length > 0 ? preSlots[0].startTime : anchorStart - anchorInboundMs;
+
+  if (preBlockStart > dayStart) {
+    const gapMs = preBlockStart - dayStart;
+    if (gapMs > GAP_ABSORB_MS) {
+      slots.push(makeGap(dayStart, preBlockStart));
+    }
+    // Gaps ≤ 30 min before the first pre-filler are silently discarded;
+    // the first pre-filler simply starts a bit later in the day.
+  }
+
+  slots.push(...preSlots);
+
+  // Anchor inbound travel
+  if (anchorInboundMs > 0) {
+    slots.push({
+      id: `travel-${anchor.activity.idea_id}`,
+      title: getTravelLabel(anchorOrigin, anchor.activity, prefs),
+      startTime: anchorStart - anchorInboundMs,
+      endTime: anchorStart,
+      type: "OCCUPIED",
+      activity: null,
+    });
+  }
+
+  // Anchor
+  slots.push({
+    id: `act-${anchor.activity.idea_id}`,
+    title: anchor.activity.title,
+    startTime: anchorStart,
+    endTime: anchorEnd,
+    type: "OCCUPIED",
+    activity: anchor.activity,
+  });
+
+  // ── POST-ANCHOR: build left-to-right ─────────────────────────────────────────
+  let postCursor = anchorEnd;
+  let prevLocation: Activity | UserPrefs = anchor.activity;
+
+  for (const {activity} of postActivities) {
+    const travelMs = getTravelMs(prevLocation, activity, prefs);
+    const durationMs =
+      snapTo15(Number(activity.est_duration_minutes) || 60) * 60_000;
+
+    if (travelMs > 0) {
+      slots.push({
+        id: `travel-${activity.idea_id}`,
+        title: getTravelLabel(prevLocation, activity, prefs),
+        startTime: postCursor,
+        endTime: postCursor + travelMs,
+        type: "OCCUPIED",
+        activity: null,
+      });
+    }
+
+    slots.push({
+      id: `act-${activity.idea_id}`,
+      title: activity.title,
+      startTime: postCursor + travelMs,
+      endTime: postCursor + travelMs + durationMs,
+      type: "OCCUPIED",
+      activity,
+    });
+
+    postCursor += travelMs + durationMs;
+    prevLocation = activity;
+  }
+
+  // ── RETURN JOURNEY ────────────────────────────────────────────────────────────
+  if (prefs.modality === "GO_OUT") {
+    const dist = getDistance(prefs, prevLocation as Activity);
+    if (dist > 0) {
+      const travelMs = snapTo15(Math.round(dist * 3 + 5)) * 60_000;
+      slots.push({
+        id: "return-journey",
+        title: `Head Home (${dist.toFixed(1)} mi)`,
+        startTime: postCursor,
+        endTime: postCursor + travelMs,
+        type: "OCCUPIED",
+        activity: null,
+      });
+      postCursor += travelMs;
+    }
+  }
+
+  // ── TRAILING GAP ──────────────────────────────────────────────────────────────
+  if (postCursor < dayEnd) {
+    const gapMs = dayEnd - postCursor;
+    if (gapMs > GAP_ABSORB_MS) {
+      slots.push(makeGap(postCursor, dayEnd));
+    }
+  }
+  return slots;
+};
+
+// ─── Gap Analysis ──────────────────────────────────────────────────────────────
+
+export const hasMeaningfulOverlap = (
+  slot: TimeSlot,
+  targetStartHour: number,
+  targetEndHour: number,
+  minOverlapMinutes = 45,
+): boolean => {
+  const base = new Date(slot.startTime);
+  const targetStart = new Date(base).setHours(targetStartHour, 0, 0, 0);
+  const targetEnd = new Date(base).setHours(targetEndHour, 0, 0, 0);
+  const latestStart = Math.max(slot.startTime, targetStart);
+  const earliestEnd = Math.min(slot.endTime, targetEnd);
+  return Math.round((earliestEnd - latestStart) / 60_000) >= minOverlapMinutes;
+};
+
+export const getAvailableGaps = (timeline: TimeSlot[]) =>
+  timeline
+    .filter((slot) => slot.type === "AVAILABLE")
+    .map((slot) => {
+      const durationMins = Math.round((slot.endTime - slot.startTime) / 60_000);
+      return {
+        slotId: slot.id,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        duration: durationMins,
+        hasLunchPotential: hasMeaningfulOverlap(slot, 11, 14, 45),
+        hasDinnerPotential: hasMeaningfulOverlap(slot, 17, 21, 45),
+      };
+    })
+    .filter((gap) => gap.duration >= 15);
+
+export const canActivityFit = (
+  timeline: TimeSlot[],
+  activity: Activity,
+): boolean => {
+  const duration = Number(activity.est_duration_minutes) || 0;
+  return getAvailableGaps(timeline).some((gap) => gap.duration >= duration);
+};
+
+// ─── Trigger Analysis ──────────────────────────────────────────────────────────
+
+/**
+ * After placing an activity, checks whether the user should be prompted to
+ * add a meal. Pass the `idea_id` of the activity that was just placed.
+ */
+export const analyzeTriggers = (
+  timeline: TimeSlot[],
+  placedIdeaId: string,
+): UI_Trigger => {
+  const slot = timeline.find(
+    (s) => s.id === `act-${placedIdeaId}` && s.type === "OCCUPIED",
+  );
+  if (!slot) return null;
+
+  const endHour =
+    new Date(slot.endTime).getHours() +
+    new Date(slot.endTime).getMinutes() / 60;
+
+  if (endHour >= 17.0 && endHour <= 20.0) {
+    const hasDinner = timeline.some(
+      (s) =>
+        s.activity?.activity_type === "MEAL" &&
+        new Date(s.startTime).getHours() >= 16,
+    );
+    if (!hasDinner) return "PROMPT_DINNER";
+  }
+
+  if (endHour >= 11.5 && endHour <= 13.5) {
+    const hasLunch = timeline.some(
+      (s) =>
+        s.activity?.activity_type === "MEAL" &&
+        new Date(s.startTime).getHours() < 16,
+    );
+    if (!hasLunch) return "PROMPT_LUNCH";
+  }
+
+  return null;
+};
+
+// ─── Scoring ───────────────────────────────────────────────────────────────────
+
+const scoreActivities = ({
+  activities,
   prefs,
+  origin,
 }: {
-  allAnchors: any[];
+  activities: any[];
   prefs: UserPrefs;
+  origin: Activity | UserPrefs | null;
 }) => {
-  // FIX: Return an empty array instead of null
-  if (!allAnchors || allAnchors.length === 0) return [];
+  if (!activities?.length) return [];
 
-  const userBudget = Number(prefs.budget) || 0;
-  const heads = Number(prefs.headCount) || 1;
-  const budgetPerPerson = userBudget / heads;
+  const budgetPerPerson =
+    (Number(prefs.budget) || 0) / (Number(prefs.headCount) || 1);
 
-  return allAnchors
-    .map((anchor) => {
-      // Calculate distance once here
+  return activities
+    .map((item) => {
       const distance =
-        anchor.modality === "STAY_IN" || !prefs.currentLocation
+        item.modality === "STAY_IN" || prefs.modality === "STAY_IN" || !origin
           ? 0
-          : getDistance(prefs, anchor);
+          : getDistance(origin, item);
 
       let score = 50;
-
-      // Vibe Match
-      if (anchor.tags?.includes(prefs.vibe)) score += 40;
-
-      // Budget Match
-      const anchorPrice = Number(anchor.est_price_per_person) || 0;
-      const priceDiff = Math.abs(anchorPrice - budgetPerPerson);
-      score -= priceDiff * 2;
-
-      // Distance "Freshness"
-      if (anchor.modality !== "STAY_IN") {
+      if (item.tags?.includes(prefs.vibe)) score += 40;
+      score -=
+        Math.abs((Number(item.est_price_per_person) || 0) - budgetPerPerson) *
+        2;
+      if (item.modality !== "STAY_IN" && prefs.modality !== "STAY_IN") {
         score += 5 - distance;
       }
 
-      // ATTACH DISTANCE HERE
       return {
-        ...anchor,
-        est_price_per_person: anchorPrice,
+        ...item,
+        est_price_per_person: Number(item.est_price_per_person) || 0,
         score,
-        distance: parseFloat(distance.toFixed(2)),
+        distance: parseFloat((distance || 0).toFixed(2)),
       };
     })
-    .filter((anchor) => {
-      // Filter based on the distance we just attached
-      if (anchor.modality === "STAY_IN") return true;
-      return anchor.distance <= prefs.travelDistance;
+    .filter((item) => {
+      if (item.modality === "STAY_IN" || prefs.modality === "STAY_IN")
+        return true;
+      return item.distance <= prefs.travelDistance;
     })
     .sort((a, b) => (b.score || 0) - (a.score || 0));
 };
+
+// ─── API Queries ───────────────────────────────────────────────────────────────
+
+const API_HOST = process.env.EXPO_PUBLIC_API_HOST;
 
 export const queryAnchors = async (
   prefs: UserPrefs,
@@ -403,210 +469,46 @@ export const queryAnchors = async (
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(prefs),
     });
+    const data = await response.json();
 
-    const data = await response.json(); // This is the raw array from the server
-    // 1. IF NO RESULTS FOUND
     if ((!data || data.length === 0) && !isRetry) {
-      const broaderPrefs = {
-        ...prefs,
-        vibe: null,
-        travelDistance: prefs.travelDistance * 2,
-      };
-
-      // STOP HERE: Return the result of the second call directly
-      return await queryAnchors(broaderPrefs, true);
+      return queryAnchors(
+        {...prefs, vibe: null, travelDistance: prefs.travelDistance * 2},
+        true,
+      );
     }
 
-    // 2. DATA PROCESSING
-    // Ensure we have an array. If the server returned an error object, fallback to []
     const rawArray = Array.isArray(data) ? data : [];
-
-    const scored = scoreAnchors({allAnchors: rawArray, prefs});
-
-    // 3. FINAL RETURN
     return {
       success: true,
-      data: scored, // This is your scored and sorted array
+      data: scoreActivities({activities: rawArray, prefs, origin: prefs}),
       retried: isRetry,
     };
   } catch (error) {
-    console.error("Fetch Error:", error);
+    console.error("queryAnchors error:", error);
     return {success: false, error};
   }
 };
 
-export const scheduleFillers = async (
+export const queryFillers = async (
   prefs: UserPrefs,
   minutes: number,
   budget: number,
-) => {
+  origin: Activity | UserPrefs,
+): Promise<any> => {
   const budgetPerPerson = budget / prefs.headCount;
-
   try {
     const response = await fetch(
-      `${API_HOST}/api/ideas/fill-schedule?vibe=cozy&budget=${budgetPerPerson}&type=${prefs.modality}&minutes=${minutes}`,
+      `${API_HOST}/api/ideas/fill-schedule?vibe=${prefs.vibe || "cozy"}&budget=${budgetPerPerson}&type=${prefs.modality}&minutes=${minutes}`,
     );
     const data = await response.json();
-    return data;
+    const rawArray = Array.isArray(data) ? data : data?.data || [];
+    return {
+      success: true,
+      data: scoreActivities({activities: rawArray, prefs, origin}),
+    };
   } catch (error) {
-    return {success: false, error};
+    console.error("queryFillers error:", error);
+    return {success: false, error, data: []};
   }
-};
-
-export const appendReturnJourney = (
-  timeline: TimeSlot[],
-  prefs: UserPrefs,
-): TimeSlot[] => {
-  // 1. If staying in, strip any existing return journeys and exit early
-  if (prefs.modality === "STAY_IN") {
-    return consolidateGaps(
-      timeline.filter((slot) => slot.id !== "return-journey"),
-    );
-  }
-
-  // 2. Strip the old return journey so we can calculate a fresh one
-  const baseTimeline = timeline.filter((slot) => slot.id !== "return-journey");
-
-  // 3. Find the last actual activity in the timeline
-  const lastActivityIndex = baseTimeline.findLastIndex(
-    (slot) => slot.type === "OCCUPIED" && slot.activity !== null,
-  );
-
-  // If there are no activities yet, just return the empty timeline
-  if (lastActivityIndex === -1) return consolidateGaps(baseTimeline);
-
-  const lastSlot = baseTimeline[lastActivityIndex];
-
-  if (!lastSlot.activity) return consolidateGaps(baseTimeline);
-
-  // 4. Calculate the distance and time home
-  const distanceHome = getDistance(prefs, lastSlot.activity);
-  if (distanceHome <= 0) return consolidateGaps(baseTimeline);
-
-  const travelMins = Math.round(distanceHome * 3 + 5);
-  const travelMs = travelMins * 60 * 1000;
-
-  // 5. Create the Return Slot
-  const returnSlot: TimeSlot = {
-    id: "return-journey",
-    title: `🚗 Head Home (${distanceHome.toFixed(1)} mi)`,
-    startTime: lastSlot.endTime,
-    endTime: lastSlot.endTime + travelMs,
-    type: "OCCUPIED",
-    activity: null,
-  };
-
-  // 6. Re-stitch the timeline
-  // Take everything up to and including the last activity
-  const newTimeline = baseTimeline.slice(0, lastActivityIndex + 1);
-
-  // Append the drive home
-  newTimeline.push(returnSlot);
-
-  // 7. Calculate the final remaining gap (if any)
-  // We need to preserve the absolute end limit of the user's 10-hour tape
-  const absoluteEndLimit = baseTimeline[baseTimeline.length - 1].endTime;
-
-  if (returnSlot.endTime < absoluteEndLimit) {
-    newTimeline.push({
-      id: `gap-${Math.random().toString(36).slice(2, 7)}`,
-      title: "Empty",
-      startTime: returnSlot.endTime,
-      endTime: absoluteEndLimit,
-      type: "AVAILABLE",
-    });
-  }
-
-  return consolidateGaps(newTimeline);
-};
-
-// --- 1. THE MATH HELPER ---
-export const hasMeaningfulOverlap = (
-  slot: TimeSlot,
-  targetStartHour: number,
-  targetEndHour: number,
-  minOverlapMinutes: number = 45,
-): boolean => {
-  const targetStart = new Date(slot.startTime).setHours(
-    targetStartHour,
-    0,
-    0,
-    0,
-  );
-  const targetEnd = new Date(slot.startTime).setHours(targetEndHour, 0, 0, 0);
-
-  const latestStart = Math.max(slot.startTime, targetStart);
-  const earliestEnd = Math.min(slot.endTime, targetEnd);
-
-  const overlapDurationMins = Math.round((earliestEnd - latestStart) / 60000);
-  return overlapDurationMins >= minOverlapMinutes;
-};
-
-// --- 2. THE CORE ANALYZER ---
-export const getAvailableGaps = (timeline: TimeSlot[]) => {
-  return timeline
-    .filter((slot) => slot.type === "AVAILABLE")
-    .map((slot) => {
-      const durationMins = Math.round((slot.endTime - slot.startTime) / 60000);
-
-      return {
-        slotId: slot.id,
-        startTime: slot.startTime,
-        duration: durationMins,
-        // Tag it if it has at least 45 mins of prime meal time
-        hasLunchPotential: hasMeaningfulOverlap(slot, 11, 14, 45),
-        hasDinnerPotential: hasMeaningfulOverlap(slot, 17, 21, 45),
-      };
-    })
-    .filter((gap) => gap.duration >= 15); // Drop useless micro-gaps
-};
-
-// --- 3. THE UI HELPERS ---
-export const canActivityFit = (
-  timeline: TimeSlot[],
-  activity: Activity,
-): boolean => {
-  const activityDuration = Number(activity.est_duration_minutes) || 0;
-  const gaps = getAvailableGaps(timeline);
-  return gaps.some((gap) => gap.duration >= activityDuration);
-};
-
-// --- 4. THE CO-PILOT TRIGGER ---
-export type UI_Trigger = "PROMPT_DINNER" | "PROMPT_LUNCH" | null;
-
-export const analyzeTriggers = (
-  timeline: TimeSlot[],
-  targetSlotId: string,
-): UI_Trigger => {
-  // Find what we just placed
-  const newlyPlacedSlot = timeline.find(
-    (s) => s.id === targetSlotId && s.type === "OCCUPIED",
-  );
-  if (!newlyPlacedSlot) return null;
-
-  const endHourDecimal =
-    new Date(newlyPlacedSlot.endTime).getHours() +
-    new Date(newlyPlacedSlot.endTime).getMinutes() / 60;
-
-  // Did it end right around dinner time (5 PM - 8 PM)?
-  if (endHourDecimal >= 17.0 && endHourDecimal <= 20.0) {
-    const hasDinner = timeline.some(
-      (s) =>
-        s.activity?.activity_type === "MEAL" &&
-        new Date(s.startTime).getHours() >= 16,
-    );
-    if (!hasDinner) return "PROMPT_DINNER";
-  }
-
-  // Did it end right around lunch time (11:30 AM - 1:30 PM)?
-  if (endHourDecimal >= 11.5 && endHourDecimal <= 13.5) {
-    const hasLunch = timeline.some(
-      (s) =>
-        s.activity?.activity_type === "MEAL" &&
-        new Date(s.startTime).getHours() < 16,
-    );
-    if (!hasLunch) return "PROMPT_LUNCH";
-  }
-
-  return null;
 };
