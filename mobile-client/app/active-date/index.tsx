@@ -10,10 +10,11 @@ import {
 } from "react-native";
 import MapView, {Marker, Polyline} from "react-native-maps";
 import {formatTime} from "@/utils/itineraryEngine";
-import {Activity, TimeSlot} from "@/types/itinerary";
+import {BuilderActivity, TimeSlot} from "@/types/itinerary";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {useActiveDateStore} from "@/store/activeDateStore";
 import {router} from "expo-router";
+import CountdownTimer from "@/components/ui/CountdownTimer";
 
 export default function ActiveModeScreen() {
   // =========================================================================
@@ -26,6 +27,7 @@ export default function ActiveModeScreen() {
 
   const mapRef = useRef<MapView>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [displayTimer, setDisplayTimer] = useState(true);
 
   // We must safely calculate locations BEFORE the early return so the useEffect
   // has valid data to look at. The `|| []` prevents crashes if timeline is null!
@@ -36,7 +38,10 @@ export default function ActiveModeScreen() {
     )
     .map(
       (slot: TimeSlot) =>
-        slot.activity as Activity & {latitude: number; longitude: number},
+        slot.activity as BuilderActivity & {
+          latitude: number;
+          longitude: number;
+        },
     );
 
   useEffect(() => {
@@ -123,7 +128,7 @@ export default function ActiveModeScreen() {
               : undefined
           }
         >
-          {locations.map((loc: Activity, idx: number) => {
+          {locations.map((loc: BuilderActivity, idx: number) => {
             const isActive = idx === currentStepIndex;
 
             if (!loc.latitude || !loc.longitude) return null;
@@ -147,7 +152,7 @@ export default function ActiveModeScreen() {
           })}
 
           <Polyline
-            coordinates={locations.map((loc: Activity) => ({
+            coordinates={locations.map((loc: BuilderActivity) => ({
               latitude: loc.latitude!,
               longitude: loc.longitude!,
             }))}
@@ -167,102 +172,116 @@ export default function ActiveModeScreen() {
           </Text>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {timeline.map((slot: TimeSlot, idx: number) => {
-            if (slot.type === "AVAILABLE") return null;
+        <View className="relative flex-1">
+          {(Date.now() < timeline[0].startTime && displayTimer) && (
+            <View className="absolute z-10 w-full h-full bg-zinc-950/90 flex items-center justify-center">
+              <CountdownTimer targetTime={timeline[0].startTime} />
+            </View>
+          )}
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {timeline.map((slot: TimeSlot, idx: number) => {
+              if (slot.type === "AVAILABLE") return null;
 
-            const isTravel = !slot.activity;
-            const isPast = slot.endTime < Date.now();
-            const isCurrent =
-              Date.now() >= slot.startTime && Date.now() <= slot.endTime;
+              const isTravel = !slot.activity;
+              const isPast = slot.endTime < Date.now();
+              const isCurrent =
+                Date.now() >= slot.startTime && Date.now() <= slot.endTime;
 
-            return (
-              <Pressable
-                key={slot.id ?? idx}
-                onPress={() => {
-                  if (!isTravel) {
-                    const locIdx = locations.findIndex(
-                      (l: Activity) => l.idea_id === slot.activity?.idea_id,
-                    );
-                    if (locIdx !== -1) setCurrentStepIndex(locIdx);
-                  }
-                }}
-                className={`mb-4 p-4 rounded-2xl border ${
-                  idx == 0
-                    ? "bg-zinc-900/50 border-zinc-800 opacity-50"
-                    : idx === 1
-                      ? // We are at idx 0! Give it the blue highlight, AND check if it's also travel!
-                        `border-blue-500 bg-blue-950 ${isTravel ? "border-dashed" : ""}`
-                      : isTravel
-                        ? "bg-zinc-900 border-dashed border-zinc-700"
-                        : "bg-zinc-800 border-zinc-700"
-                }`}
-              >
-                <View className="flex-row justify-between items-center">
-                  <View className="flex-1">
-                    {idx == 1 ? (
+              return (
+                <Pressable
+                  key={slot.id ?? idx}
+                  onPress={() => {
+                    if (!isTravel) {
+                      const locIdx = locations.findIndex(
+                        (l: BuilderActivity) =>
+                          l.idea_id === slot.activity?.idea_id,
+                      );
+                      if (locIdx !== -1) setCurrentStepIndex(locIdx);
+                    }
+                  }}
+                  className={`mb-4 p-4 rounded-2xl border ${
+                    isPast
+                      ? "bg-zinc-900/50 border-zinc-800 opacity-50"
+                      : isCurrent
+                        ? // We are at idx 0! Give it the blue highlight, AND check if it's also travel!
+                          `border-blue-500 bg-blue-950 ${isTravel ? "border-dashed" : ""}`
+                        : isTravel
+                          ? "bg-zinc-900 border-dashed border-zinc-700"
+                          : "bg-zinc-800 border-zinc-700"
+                  }`}
+                >
+                  <View className="flex-row justify-between items-center">
+                    <View className="flex-1">
+                      {idx == 1 ? (
+                        <Text
+                          className={`text-xs ${isPast ? "text-zinc-600" : "text-blue-400"}`}
+                        >
+                          IN PROGRESS
+                        </Text>
+                      ) : null}
                       <Text
-                        className={`text-xs ${isPast ? "text-zinc-600" : "text-blue-400"}`}
+                        className={`font-bold text-lg ${isPast ? "text-zinc-500" : "text-white"}`}
                       >
-                        IN PROGRESS
+                        {slot.title}
                       </Text>
-                    ) : null}
-                    <Text
-                      className={`font-bold text-lg ${isPast ? "text-zinc-500" : "text-white"}`}
-                    >
-                      {slot.title}
-                    </Text>
-                    <Text
-                      className={`text-xs mt-1 ${isPast ? "text-zinc-600" : "text-blue-400"}`}
-                    >
-                      {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
-                    </Text>
-                  </View>
+                      <Text
+                        className={`text-xs mt-1 ${isPast ? "text-zinc-600" : "text-blue-400"}`}
+                      >
+                        {formatTime(slot.startTime)} -{" "}
+                        {formatTime(slot.endTime)}
+                      </Text>
+                    </View>
 
-                  {!isPast && isTravel && (
-                    <Pressable
-                      className="bg-blue-600 px-4 py-4 rounded-lg active:bg-blue-700"
-                      onPress={() => {
-                        if (slot.id === "return-journey") {
-                          if (
-                            userPrefs.currentLocation.latitude &&
-                            userPrefs.currentLocation.longitude
-                          ) {
+                    {!isPast && isTravel && (
+                      <Pressable
+                        className="bg-blue-600 px-4 py-4 rounded-lg active:bg-blue-700"
+                        onPress={() => {
+                          if (slot.id === "return-journey") {
+                            if (
+                              userPrefs.currentLocation.latitude &&
+                              userPrefs.currentLocation.longitude
+                            ) {
+                              handleNavigate(
+                                userPrefs.currentLocation.latitude,
+                                userPrefs.currentLocation.longitude,
+                                "Home",
+                              );
+                            }
+                            return;
+                          }
+
+                          const destination = timeline[idx + 1]?.activity;
+                          if (destination?.latitude && destination?.longitude) {
                             handleNavigate(
-                              userPrefs.currentLocation.latitude,
-                              userPrefs.currentLocation.longitude,
-                              "Home",
+                              destination.latitude,
+                              destination.longitude,
+                              destination.title,
                             );
                           }
-                          return;
-                        }
-
-                        const destination = timeline[idx + 1]?.activity;
-                        if (destination?.latitude && destination?.longitude) {
-                          handleNavigate(
-                            destination.latitude,
-                            destination.longitude,
-                            destination.title,
-                          );
-                        }
-                      }}
-                    >
-                      <Ionicons name="navigate" size={18} color="white" />
-                    </Pressable>
-                  )}
-                </View>
-              </Pressable>
-            );
-          })}
-
-          {/* ─── END DATE BUTTON ─── */}
-          <Pressable
-            onPress={handleEndDate}
-            className="mt-4 mb-10 py-4 bg-red-500/10 border border-red-500/30 rounded-2xl items-center active:bg-red-500/20"
-          >
-            <Text className="text-red-400 font-bold text-base">End Date</Text>
-          </Pressable>
-        </ScrollView>
+                        }}
+                      >
+                        <Ionicons name="navigate" size={18} color="white" />
+                      </Pressable>
+                    )}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+        <Pressable
+          onPress={() => setDisplayTimer(false)}
+          className="mt-4 py-4 bg-green-500/10 border border-green-500/30 rounded-2xl items-center active:bg-green-500/20"
+        >
+          <Text className="text-green-400 font-bold text-base">Skip Timer (Dev)</Text>
+        </Pressable>
+        {/* ─── END DATE BUTTON ─── */}
+        <Pressable
+          onPress={handleEndDate}
+          className="mt-4 mb-10 py-4 bg-red-500/10 border border-red-500/30 rounded-2xl items-center active:bg-red-500/20"
+        >
+          <Text className="text-red-400 font-bold text-base">End Plans</Text>
+        </Pressable>
       </View>
     </View>
   );

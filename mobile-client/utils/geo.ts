@@ -1,5 +1,3 @@
-import {Activity, UserPrefs} from "@/types/itinerary";
-
 export const getBoundingBox = (
   lat: number,
   lon: number,
@@ -24,33 +22,40 @@ export const getBoundingBox = (
   };
 };
 
+// 1. Define a generic shape that catches EVERYTHING (Prefs, Activities, Builder, etc.)
+type Locatable = {
+  latitude?: number | null;
+  longitude?: number | null;
+  currentLocation?: {latitude: number; longitude: number} | null;
+};
+
 export const getDistance = (
-  location1: UserPrefs | Activity,
-  location2: Activity,
+  location1: Locatable,
+  location2: Locatable,
 ): number => {
-  // 1. Safe Extraction using Type Guards
-  let lat1: number, lon1: number;
+  // 2. Safe Extraction: Fallback to the object itself if currentLocation doesn't exist
+  const coords1 = location1.currentLocation || location1;
+  const coords2 = location2.currentLocation || location2;
 
-  if ("currentLocation" in location1 && location1.currentLocation) {
-    // It's UserPrefs
-    lat1 = Number(location1.currentLocation.latitude);
-    lon1 = Number(location1.currentLocation.longitude);
-  } else {
-    // It's an Activity (or we assume it has top-level lats)
-    lat1 = Number((location1 as Activity).latitude);
-    lon1 = Number((location1 as Activity).longitude);
-  }
-
-  const lat2 = Number(location2?.latitude);
-  const lon2 = Number(location2?.longitude);
-
-  // 2. The "NaN" Prevention Check
-  if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) {
-    console.warn("One or more latitudes/longitudes are NaN. Check to see if user location is missing.")
+  // 3. The Strict Null/Undefined Check (Fixes the Africa bug)
+  // Using == null checks for BOTH undefined and null instantly
+  if (
+    coords1.latitude == null ||
+    coords1.longitude == null ||
+    coords2.latitude == null ||
+    coords2.longitude == null
+  ) {
+    console.warn("Missing coordinates detected. Skipping distance math.");
     return 999;
   }
 
-  // ... rest of your Haversine math remains the same
+  // Now we safely have numbers
+  const lat1 = coords1.latitude;
+  const lon1 = coords1.longitude;
+  const lat2 = coords2.latitude;
+  const lon2 = coords2.longitude;
+
+  // ... Haversine math remains identical!
   const toRad = (value: number) => (value * Math.PI) / 180;
   const R = 3959;
   const dLat = toRad(lat2 - lat1);

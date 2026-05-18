@@ -1,4 +1,5 @@
-import {Activity, TimeSlot, PlanningStep} from "@/types/itinerary";
+import * as Haptics from "expo-haptics";
+import {BuilderActivity, TimeSlot, PlanningStep} from "@/types/itinerary";
 import {
   PlacedActivity,
   deriveTimeline,
@@ -23,11 +24,10 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {useActiveDateStore} from "@/store/activeDateStore";
 import {Ionicons} from "@expo/vector-icons";
+import {usePrefsStore} from "@/store/usePrefsStore";
 
 export default function BuilderScreen() {
-  const {prefs} = useLocalSearchParams();
-  // Memoised so JSON.parse only runs once, not on every render
-  const userPrefs = useMemo(() => JSON.parse(prefs as string), [prefs]);
+  const userPrefs = usePrefsStore((state) => state.prefs);
   const headCount = userPrefs.headCount;
   const prefsStartDate = new Date(userPrefs.startDate);
   const prefsEndDate = new Date(userPrefs.endDate);
@@ -78,6 +78,7 @@ export default function BuilderScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [tempSelectedDate, setTempSelectedDate] = useState<Date>(new Date());
   const [expandedSlotId, setExpandedSlotId] = useState<string | null>(null);
+  const [reviewingItinerary, setReviewingItinerary] = useState<Boolean>(false);
 
   // ─── Derived Timeline ─────────────────────────────────────────────────────────
   const timeline = useMemo(
@@ -104,6 +105,17 @@ export default function BuilderScreen() {
     () =>
       timeline
         .filter((slot) => slot.type === "AVAILABLE")
+        .reduce(
+          (total, slot) => total + (slot.endTime - slot.startTime) / 60_000,
+          0,
+        ),
+    [timeline],
+  );
+
+  const flexTime = useMemo(
+    () =>
+      timeline
+        .filter((slot) => slot.type === "AVAILABLE" || slot.type === "BUFFER")
         .reduce(
           (total, slot) => total + (slot.endTime - slot.startTime) / 60_000,
           0,
@@ -159,15 +171,16 @@ export default function BuilderScreen() {
   }, []);
 
   // Fire meal-time triggers whenever the placed list changes
-  useEffect(() => {
-    if (placed.length === 0) return;
-    const lastPlaced = placed[placed.length - 1];
-    const trigger = analyzeTriggers(
-      timeline,
-      String(lastPlaced.activity.idea_id),
-    );
-    if (trigger === "PROMPT_DINNER") setShowDinnerModal(true);
-  }, [placed]);
+  // TODO: Finish implementing triggers after finalizing itinerary builder flow
+  // useEffect(() => {
+  //   if (placed.length === 0) return;
+  //   const lastPlaced = placed[placed.length - 1];
+  //   const trigger = analyzeTriggers(
+  //     timeline,
+  //     String(lastPlaced.activity.idea_id),
+  //   );
+  //   if (trigger === "PROMPT_DINNER") setShowDinnerModal(true);
+  // }, [placed]);
 
   // ─── Data Fetching ────────────────────────────────────────────────────────────
   const loadAnchors = async () => {
@@ -176,7 +189,7 @@ export default function BuilderScreen() {
       const result = await queryAnchors(userPrefs);
       if (result.success) {
         setActivities(result.data || []);
-        setRetry(result.retried);
+        setRetry(result.retried ?? false);
       } else {
         setActivities([]);
         console.error("Failed to load anchors:", result.error);
@@ -231,7 +244,9 @@ export default function BuilderScreen() {
    * ANCHOR step → calculate optimal time and make it the anchor.
    * FILLER step → splice into `placed` at the active insert index.
    */
-  const handlePlaceActivity = (activity: Activity & {fitStatus?: string}) => {
+  const handlePlaceActivity = (
+    activity: BuilderActivity & {fitStatus?: string},
+  ) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 
     if (step === "ANCHOR") {
@@ -277,7 +292,7 @@ export default function BuilderScreen() {
   /**
    * Called when the user selects a new time from the native picker.
    * We shift the 'anchoredAt' property to the newly edited activity,
-   * which forces deriveTimeline to automatically rebuild the day around it!
+   * which forces deriveTimeline to automatically rebuild the day around it
    */
   /**
    * Tracks the wheel spinning without closing the modal
@@ -383,7 +398,7 @@ export default function BuilderScreen() {
         onScrollBeginDrag={closeDrawer}
         scrollEnabled={!expandedSlotId}
       >
-        {Math.round(remainingTime) >= 30 ? (
+        {!reviewingItinerary ? (
           // ── PLANNING VIEW ──────────────────────────────────────────────────────
           <View className="flex-1 p-6 relative">
             {/* TIMELINE — only shown once an anchor exists */}
@@ -440,8 +455,14 @@ export default function BuilderScreen() {
                     // The insert index for any gap at this position in the timeline
                     const insertAt = placedSeen + 1;
                     const isActiveGap = activeInsertIndex === insertAt;
-                    const isTravel = !slot.activity;
+                    const isTravel = !slot.activity && slot.type === "OCCUPIED";
                     const isExpanded = expandedSlotId === slot.id;
+
+                    const isAnchor = placed.some(
+                      (p) =>
+                        p.anchoredAt != null &&
+                        slot.id == `act-${p.activity.idea_id}`,
+                    );
 
                     return (
                       <View
@@ -449,17 +470,23 @@ export default function BuilderScreen() {
                         className="flex-row items-start my-4"
                       >
                         {/* Vertical timeline track */}
-                        <View className="items-center w-4 mr-4">
+                        <View className="items-center w-4 mr-4 mt-2">
                           <View
                             className={`w-2 h-2 rounded-full z-10 top-2 ${
-                              slot.type === "AVAILABLE"
-                                ? "bg-zinc-700"
-                                : "bg-blue-500"
+                              isAnchor
+                                ? "bg-yellow-500"
+                                : slot.type === "BUFFER"
+                                  ? "border border-blue-500/50"
+                                  : slot.type === "AVAILABLE"
+                                    ? "bg-zinc-700"
+                                    : isTravel
+                                      ? "bg-green-500"
+                                      : "bg-blue-500"
                             }`}
                           />
                           {idx < timeline.length - 1 && (
                             <View
-                              className={`w-0 flex-1 border-l-[2px] border-zinc-800 -my-1 top-2 ${
+                              className={`absolute w-0 flex-1 border-l-[2px] border-zinc-800 -my-1 top-6 bottom-[-54px] ${
                                 idx === timeline.length - 1
                                   ? "border-dotted"
                                   : ""
@@ -470,7 +497,7 @@ export default function BuilderScreen() {
 
                         {/* Slot content */}
                         <View className="flex-1 flex-row justify-between pr-2">
-                          {slot.type === "AVAILABLE" ? (
+                          {slot.type === "AVAILABLE" && (
                             // Gap → tappable "Add Activity" button
                             <Pressable
                               onPress={() => handleOpenGap(insertAt, slot)}
@@ -494,7 +521,19 @@ export default function BuilderScreen() {
                                     )} min`}
                               </Text>
                             </Pressable>
-                          ) : (
+                          )}
+                          {slot.type === "BUFFER" && (
+                            <View className="w-full h-10 bg-blue-500/20 border border-blue-500/20 rounded-xl flex items-center justify-center opacity-70">
+                              <Text className="text-blue-500 font-medium text-sm">
+                                {slot.title} (
+                                {Math.round(
+                                  (slot.endTime - slot.startTime) / 60_000,
+                                )}{" "}
+                                min)
+                              </Text>
+                            </View>
+                          )}
+                          {slot.type === "OCCUPIED" && (
                             // Occupied slot (activity or travel)
                             <View className="flex-1 flex-row justify-between">
                               <View>
@@ -545,7 +584,7 @@ export default function BuilderScreen() {
                         {isExpanded && (
                           <>
                             <Pressable
-                              className="absolute inset-0 bg-red-900/10 top-[-2000] bottom-[-2000] left-[-2000] right-[-2000]"
+                              className="absolute inset-0 top-[-2000] bottom-[-2000] left-[-2000] right-[-2000]"
                               onPress={closeDrawer}
                             />
                             <View className="absolute right-0 top-10 mt-4 border rounded-xl border-zinc-700/50 z-20 overflow-hidden">
@@ -605,6 +644,26 @@ export default function BuilderScreen() {
                   {/* Faint, solid hairline */}
                   <View className="flex-1 h-[1px] bg-violet-500/20" />
                 </View>
+
+                {/* Button to move on for any reason */}
+                <Pressable
+                  onTouchStart={() => {
+                    if (process.env.EXPO_OS === "ios") {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                  }}
+                  onTouchEnd={() => {
+                    if (process.env.EXPO_OS === "ios") {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                  }}
+                  onPress={() => setReviewingItinerary(true)}
+                  className="w-full h-[50px] justify-center items-center rounded-[10px] mt-4 bg-blue-500 active:bg-blue-400"
+                >
+                  <Text className="text-white font-semibold text-[16px]">
+                    Finish & Review
+                  </Text>
+                </Pressable>
               </View>
             )}
 
@@ -716,7 +775,8 @@ export default function BuilderScreen() {
             {/* ── CONTINUOUS CALENDAR TIMELINE ── */}
             <View className="flex-1">
               {timeline.map((slot, idx) => {
-                const isAvailable = slot.type === "AVAILABLE";
+                const isAvailable =
+                  slot.type === "AVAILABLE" || slot.type === "BUFFER";
                 const isActivity = slot.type === "OCCUPIED" && !!slot.activity;
                 const isTravel = slot.type === "OCCUPIED" && !slot.activity;
 
@@ -735,10 +795,12 @@ export default function BuilderScreen() {
                     <View className="items-center w-4 mr-4 relative">
                       {/* The Node Dot */}
                       <View
-                        className={`rounded-full z-10 ${
+                        className={`rounded-full mt-1.5 z-10 ${
                           isActivity
-                            ? "w-2.5 h-2.5 bg-blue-500 mt-1.5 shadow-sm shadow-blue-500/50"
-                            : "w-1.5 h-1.5 bg-green-700 mt-1.5"
+                            ? "w-2.5 h-2.5 bg-blue-500 shadow-sm"
+                            : isAvailable
+                              ? "w-1.5 h-1.5 bg-transparent border border-zinc-500/50"
+                              : "w-1.5 h-1.5 bg-green-700"
                         }`}
                       />
 
@@ -746,9 +808,11 @@ export default function BuilderScreen() {
                       {idx < timeline.length - 1 && (
                         <View
                           className={`absolute top-4 bottom-0 w-0 border-l-[2px] ${
-                            isTravel || isAvailable
-                              ? "border-green-700/60 border-dashed"
-                              : "border-blue-800"
+                            isAvailable
+                              ? "border-zinc-500/50"
+                              : isTravel
+                                ? "border-green-700/60"
+                                : "border-blue-800"
                           }`}
                         />
                       )}
@@ -785,7 +849,12 @@ export default function BuilderScreen() {
                         </View>
                       ) : (
                         <View className="flex-row items-center mt-0.5">
-                          <Text className="text-zinc-600 text-xs font-medium italic">
+                          <Ionicons
+                            name="hourglass-outline"
+                            size={14}
+                            color="#71717a"
+                          />
+                          <Text className="text-zinc-600 text-xs ml-2 font-medium italic">
                             {Math.round(
                               (slot.endTime - slot.startTime) / 60_000,
                             )}{" "}
@@ -816,14 +885,14 @@ export default function BuilderScreen() {
                     Flex Time
                   </Text>
                   <Text className="text-white text-xl font-mono">
-                    {Math.round(remainingTime)}m
+                    {Math.round(flexTime)}m
                   </Text>
                 </View>
               </View>
 
               {/* Action Buttons */}
               <Pressable
-                className="bg-blue-600 py-5 rounded-2xl items-center mb-3 shadow-lg shadow-blue-500/20 active:bg-blue-700"
+                className="bg-blue-600 py-5 rounded-2xl items-center mb-3 active:bg-blue-700 border border-blue-500"
                 onPress={() => {
                   startActiveDate(timeline, userPrefs);
                   router.push("/active-date");
@@ -840,6 +909,7 @@ export default function BuilderScreen() {
                   setPlaced([]);
                   setStep("ANCHOR");
                   setActiveInsertIndex(null);
+                  setReviewingItinerary(false);
                   loadAnchors();
                 }}
               >

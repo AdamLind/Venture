@@ -40,7 +40,7 @@ export default function InOrOutSelector({
             key={loc.value}
             onPress={() => handlePress(loc.value)}
             className={`flex-grow p-[13px] m-auto border rounded-[10px] bg-zinc-900 ${
-              isActive ? "border-white" : "border-zinc-500"
+              isActive ? "border-white" : "border-zinc-700"
             }`}
           >
             <Text

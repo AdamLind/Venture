@@ -17,15 +17,6 @@ interface DateIdea {
   longitude?: number;
 }
 
-// Interface for the JOIN result
-interface TaggedDateIdea {
-  idea_id: number;
-  title: string;
-  description: string;
-  est_price_per_person: string;
-  tag_name: string;
-}
-
 interface User {
   user_id: number;
   username: string;
@@ -39,7 +30,7 @@ interface User {
 const pool = new Pool({
   user: "postgres",
   host: "localhost",
-  database: "date_ideas_db",
+  database: "postgres",
   password: "mysecretpassword",
   port: 5432,
 });
@@ -57,8 +48,8 @@ app.get(
         SELECT
             di.idea_id,
             di.title,
-            di.description, -- <--- Add this line
-            di.activity_type, -- TODO: Need to rename "activity_type" to "modality" when rebuilding db
+            di.description,
+            di.modality,
             di.est_price_per_person::text as est_price_per_person, 
             di.latitude,
             di.longitude,
@@ -113,9 +104,9 @@ app.post(
 
       // 2. Insert the Idea
       const queryText = `
-          INSERT INTO Date_Ideas (title, description, activity_type, est_price_per_person, user_id, is_public, latitude, longitude)
+          INSERT INTO Date_Ideas (title, description, modality, est_price_per_person, user_id, is_public, latitude, longitude)
           VALUES ($1, $2, $3, $4::DECIMAL, $5, TRUE, $6, $7) 
-          RETURNING idea_id, title, description, activity_type, est_price_per_person::text
+          RETURNING idea_id, title, description, modality, est_price_per_person::text
       `;
 
       const values = [
@@ -194,10 +185,10 @@ app.put(
       // 1. Update the Date Idea
       const queryText = `
           UPDATE Date_Ideas
-          SET title = $1, description = $2, activity_type = $3, est_price_per_person = $4::DECIMAL,
+          SET title = $1, description = $2, modality = $3, est_price_per_person = $4::DECIMAL,
               latitude = $6, longitude = $7
           WHERE idea_id = $5
-          RETURNING idea_id, title, description, activity_type, est_price_per_person::text -- <--- Add here
+          RETURNING idea_id, title, description, modality, est_price_per_person::text -- <--- Add here
       `;
 
       const values = [
@@ -320,7 +311,7 @@ app.get(
                 d.idea_id, 
                 d.title, 
                 d.description, 
-                d.activity_type,
+                d.modality,
                 d.est_price_per_person::text,
                 u.username as creator_username,
                 d.latitude,
@@ -367,12 +358,12 @@ app.get("/api/tags", async (req: Request, res: Response) => {
 });
 
 app.post("/api/ideas/anchors", async (req, res) => {
-  const {vibe, budget, modality, currentLocation, travelDistance} =
+  const {userId, vibes, budget, modality, currentLocation, travelDistance} =
     req.body;
 
-  // 1. Calculate bounds ONLY if location exists
+  // Calculate bounds ONLY if going out AND location is provided
   let bounds = null;
-  if (currentLocation) {
+  if (modality === "GO_OUT" && currentLocation && travelDistance) {
     const {latitude, longitude} = currentLocation;
     const MILES_PER_LAT = 69;
     const latDelta = travelDistance / MILES_PER_LAT;
@@ -388,67 +379,129 @@ app.post("/api/ideas/anchors", async (req, res) => {
   }
 
   try {
+    // The Query: No JOINs, Native Arrays, and UGC Protection
     const queryText = `
-      SELECT DISTINCT di.* FROM Date_Ideas di
-      LEFT JOIN idea_tags it ON di.idea_id = it.idea_id
-      LEFT JOIN tags t ON it.tag_id = t.tag_id
-      WHERE di.activity_type = $1 -- TODO: replace with "modality
-        AND di.est_price_per_person <= $2
-        AND (t.name ILIKE $3 OR $3 IS NULL)
-        -- CONDITIONAL LOCATION FILTER --
+      SELECT * FROM activities
+      WHERE modality = $1
+        AND est_price_per_person <= $2
+        
+        -- UGC GATEKEEPER: See all public ideas, plus their own private/pending ones
         AND (
-          $4::boolean IS FALSE OR 
-          (di.latitude >= $5 AND di.latitude <= $6 AND di.longitude >= $7 AND di.longitude <= $8)
+          visibility = 'PUBLISHED' 
+          OR ($3::uuid IS NOT NULL AND user_id = $3::uuid AND visibility IN ('PRIVATE', 'PENDING'))
         )
+        
+        -- TAGS FILTER: The && operator checks if the arrays overlap (has at least one matching tag)
+        AND ($4::text[] IS NULL OR tags && $4::text[])
+        
+        -- LOCATION FILTER: Ignored if STAY_IN, otherwise checks the bounding box
+        AND (
+          $5::boolean IS FALSE 
+          OR modality = 'STAY_IN' 
+          OR (latitude >= $6 AND latitude <= $7 AND longitude >= $8 AND longitude <= $9)
+        )
+      ORDER BY RANDOM() -- Shuffle results so the user doesn't see the exact same anchors every time
       LIMIT 20;
     `;
 
-    // $4 is a boolean: "Should we filter by location?"
     const hasLocation = bounds !== null;
 
+    // Ensure vibes is either a valid array (e.g., ['casual', 'soda']) or strictly null for the query
+    const formattedVibes =
+      vibes && Array.isArray(vibes) && vibes.length > 0 ? vibes : null;
+
     const result = await pool.query(queryText, [
-      modality,
-      budget,
-      vibe ? `%${vibe}%` : null,
-      hasLocation, // $4
-      bounds?.minLat || 0, // $5
-      bounds?.maxLat || 0, // $6
-      bounds?.minLon || 0, // $7
-      bounds?.maxLon || 0, // $8
+      modality, // $1 ('STAY_IN' or 'GO_OUT')
+      budget, // $2 (Numeric)
+      userId || null, // $3 (Pass null if they are a guest)
+      formattedVibes, // $4 (Array of strings)
+      hasLocation, // $5 (Boolean)
+      bounds?.minLat || 0, // $6
+      bounds?.maxLat || 0, // $7
+      bounds?.minLon || 0, // $8
+      bounds?.maxLon || 0, // $9
     ]);
 
     res.json(result.rows);
   } catch (err) {
+    console.error("Error fetching anchors:", err);
     res.status(500).json({error: "Internal server error"});
   }
 });
 
-// --- NEW ENDPOINT: GET FILLERS BASED ON USER PREFS ---
-app.get("/api/ideas/fill-schedule", async (req, res) => {
-  const {vibe, budget, type, minutes} = req.query;
+// --- NEW ENDPOINT: GET FILLERS BASED ON USER PREFS & CURRENT LOCATION ---
+app.post("/api/ideas/fill-schedule", async (req, res) => {
+  const {
+    userId,
+    vibes,
+    budget,
+    modality,
+    maxDuration,
+    currentLocation,
+    travelDistance,
+  } = req.body;
+
+  // 1. Calculate bounds ONLY if going out AND location is provided
+  let bounds = null;
+  if (modality === "GO_OUT" && currentLocation && travelDistance) {
+    const {latitude, longitude} = currentLocation;
+    const MILES_PER_LAT = 69;
+    const latDelta = travelDistance / MILES_PER_LAT;
+    const latInRadians = (latitude * Math.PI) / 180;
+    const lonDelta = travelDistance / (MILES_PER_LAT * Math.cos(latInRadians));
+
+    bounds = {
+      minLat: latitude - latDelta,
+      maxLat: latitude + latDelta,
+      minLon: longitude - lonDelta,
+      maxLon: longitude + lonDelta,
+    };
+  }
 
   try {
+    // 2. The Clean Query: No JOINs, Native Arrays, UGC Protection, and Time Limits
     const queryText = `
-      SELECT * FROM (
-        SELECT DISTINCT di.* FROM Date_Ideas di
-        LEFT JOIN idea_tags it ON di.idea_id = it.idea_id
-        LEFT JOIN tags t ON it.tag_id = t.tag_id
-        WHERE di.activity_type = $1 
-          AND COALESCE(di.est_price_per_person, 0) <= $2
-          -- We'll assume a 'Filler' is anything under 60 mins if minutes isn't provided
-          AND (t.name ILIKE $3 OR $3 IS NULL OR t.name IS NULL)
-          AND (di.est_duration_minutes <= $4)
-      ) as unique_ideas
+      SELECT * FROM activities
+      WHERE modality = $1 
+        AND est_price_per_person <= $2
+        AND est_duration_minutes <= $3
+        
+        -- UGC GATEKEEPER: See all public ideas, plus their own private/pending ones
+        AND (
+          visibility = 'PUBLISHED' 
+          OR ($4::uuid IS NOT NULL AND user_id = $4::uuid AND visibility IN ('PRIVATE', 'PENDING'))
+        )
+        
+        -- TAGS FILTER: Check if the arrays overlap
+        AND ($5::text[] IS NULL OR tags && $5::text[])
+        
+        -- CONDITIONAL LOCATION FILTER
+        AND (
+          $6::boolean IS FALSE 
+          OR modality = 'STAY_IN'
+          OR (latitude >= $7 AND latitude <= $8 AND longitude >= $9 AND longitude <= $10)
+        )
       ORDER BY RANDOM()
-      LIMIT 4;
+      LIMIT 4; -- Fillers only need a few options
     `;
 
+    const hasLocation = bounds !== null;
+    const formattedVibes =
+      vibes && Array.isArray(vibes) && vibes.length > 0 ? vibes : null;
+
     const result = await pool.query(queryText, [
-      type,
-      budget,
-      `%${vibe}%`,
-      minutes,
+      modality, // $1 ('STAY_IN' or 'GO_OUT')
+      budget, // $2
+      maxDuration || 60, // $3 (Fallback to 60 mins if undefined)
+      userId || null, // $4
+      formattedVibes, // $5
+      hasLocation, // $6
+      bounds?.minLat || 0, // $7
+      bounds?.maxLat || 0, // $8
+      bounds?.minLon || 0, // $9
+      bounds?.maxLon || 0, // $10
     ]);
+
     res.json(result.rows);
   } catch (err) {
     console.error("SQL Error in Fill-Schedule:", err);

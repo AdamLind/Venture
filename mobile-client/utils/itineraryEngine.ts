@@ -1,10 +1,11 @@
-import {Activity, TimeSlot, UserPrefs} from "@/types/itinerary";
+import {BaseActivity, ScoredActivity, TimeSlot} from "@/types/itinerary";
 import {getDistance} from "./geo";
+import {UserPrefs} from "@/store/usePrefsStore";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 export type PlacedActivity = {
-  activity: Activity;
+  activity: ScoredActivity; // THE FIX: Placed activities MUST be scored to be on the timeline!
   anchoredAt?: number; // Unix ms — set only on the anchor; undefined for fillers
 };
 
@@ -25,22 +26,27 @@ export const snapTo15 = (minutes: number): number => {
   return remainder <= 3 ? minutes - remainder : minutes + (15 - remainder);
 };
 
-const makeGap = (start: number, end: number): TimeSlot => ({
-  id: `gap-${Math.random().toString(36).slice(2, 7)}`,
-  title: "Empty",
-  startTime: start,
-  endTime: end,
-  type: "AVAILABLE",
-  activity: null,
-});
+const makeGap = (start: number, end: number): TimeSlot => {
+  const durationMins = Math.round((end - start) / 60_000);
+  const isBuffer = durationMins < 30;
+
+  return {
+    id: `gap-${Math.random().toString(36).slice(2, 7)}`,
+    title: isBuffer ? "Flex Time" : "Empty",
+    startTime: start,
+    endTime: end,
+    type: isBuffer ? "BUFFER" : "AVAILABLE",
+    activity: null,
+  };
+};
 
 /**
  * Returns travel duration in ms between two locations.
  * Returns 0 if the user is staying in, or if the distance is zero.
  */
 const getTravelMs = (
-  from: Activity | UserPrefs,
-  to: Activity,
+  from: ScoredActivity | UserPrefs,
+  to: ScoredActivity,
   prefs: UserPrefs,
 ): number => {
   if (prefs.modality === "STAY_IN") return 0;
@@ -49,30 +55,26 @@ const getTravelMs = (
 };
 
 const getTravelLabel = (
-  from: Activity | UserPrefs,
-  to: Activity,
+  from: ScoredActivity | UserPrefs,
+  to: ScoredActivity,
   prefs: UserPrefs,
 ): string => {
   const dist = getDistance(from, to);
   return `Travel & Parking (${dist.toFixed(1)} mi)`;
 };
 
-// ─── Optimal Anchor Placement ──────────────────────────────────────────────────
+const roundDate = (date: string | Date) => {
+  const d = new Date(date);
+  const hour = d.getHours();
+  const minute = d.getMinutes();
+  d.setHours(hour, minute, 0, 0);
+  return d;
+};
 
-/**
- * Calculates the best start time for an anchor activity within the user's day.
- *
- * Rules:
- *  - MEAL at dinner hours → 6:30 PM
- *  - MEAL at any other time → 12:30 PM
- *  - Everything else → 1/3 of the way through the day.
- *    (This guarantees a meaningful pre-gap for fillers, while leaving 2/3 of
- *    the day for post-fillers and flex time.)
- *
- * In all cases the result is clamped so the activity fits before dayEnd.
- */
+// ─── Optimal Anchor Placement ────────────────────────────────────────────────
+
 export const getOptimalAnchorTime = (
-  activity: Activity,
+  activity: ScoredActivity,
   prefs: UserPrefs,
 ): number => {
   const dayStart = new Date(prefs.startDate).getTime();
@@ -81,7 +83,7 @@ export const getOptimalAnchorTime = (
   const durationMs =
     snapTo15(Number(activity.est_duration_minutes) || 60) * 60_000;
 
-  // Estimate the travel tax (drive there + drive back)
+  // Estimate the travel time (drive there + drive back)
   const travelMs = getTravelMs(prefs, activity, prefs);
 
   // The absolute boundaries: we must leave room for travel TO and FROM the anchor
@@ -124,36 +126,12 @@ export const getOptimalAnchorTime = (
 
 // ─── Core Timeline Deriver ─────────────────────────────────────────────────────
 
-/**
- * Derives the full display timeline from the canonical placed-activity list.
- *
- * Layout contract:
- *  1. Anchor sits at its pinned `anchoredAt` time.
- *  2. Pre-fillers pack RIGHT-TO-LEFT, ending just before the anchor's inbound
- *     travel — so the only free gap is at the BEGINNING of the day.
- *  3. Post-fillers pack LEFT-TO-RIGHT from the anchor's end — so the only free
- *     gap is at the END of the day.
- *  4. Gaps ≤ 30 min are silently absorbed into the adjacent activity.
- *  5. Return journey is appended for GO_OUT modality.
- *
- * Result: at most TWO "Add Activity" buttons are ever visible simultaneously.
- */
 export const deriveTimeline = (
   placed: PlacedActivity[],
   prefs: UserPrefs,
 ): TimeSlot[] => {
-  const dayStartRaw = new Date(prefs.startDate);
-  const dayStartHour = dayStartRaw.getHours();
-  const dayStartMin = dayStartRaw.getMinutes();
-  dayStartRaw.setHours(dayStartHour, dayStartMin, 0, 0);
-  const dayStart = dayStartRaw.getTime();
-
-  const dayEndRaw = new Date(prefs.endDate);
-  const dayEndHour = dayEndRaw.getHours();
-  const dayEndMin = dayStartRaw.getMinutes();
-  dayEndRaw.setHours(dayEndHour, dayEndMin, 0, 0);
-  const dayEnd = dayEndRaw.getTime();
-
+  const dayStart = roundDate(prefs.startDate).getTime();
+  const dayEnd = roundDate(prefs.endDate).getTime();
   const GAP_ABSORB_MS = 30 * 60_000;
 
   // Empty state — one big available gap
@@ -179,22 +157,18 @@ export const deriveTimeline = (
   const slots: TimeSlot[] = [];
 
   // ── PRE-ANCHOR: build right-to-left ─────────────────────────────────────────
-  // The anchor's inbound origin is the last pre-filler (or the user's home).
-  const anchorOrigin: Activity | UserPrefs =
+  const anchorOrigin: ScoredActivity | UserPrefs =
     preActivities.length > 0
       ? preActivities[preActivities.length - 1].activity
       : prefs;
   const anchorInboundMs = getTravelMs(anchorOrigin, anchor.activity, prefs);
 
-  // preRight is the right edge of the slot available for pre-fillers
   let preRight = anchorStart - anchorInboundMs;
-
-  // Collect pre-slots in reverse, then unshift into the main array
   const preSlots: TimeSlot[] = [];
 
   for (let i = preActivities.length - 1; i >= 0; i--) {
     const curr = preActivities[i].activity;
-    const prev: Activity | UserPrefs =
+    const prev: ScoredActivity | UserPrefs =
       i > 0 ? preActivities[i - 1].activity : prefs;
 
     const durationMs =
@@ -231,17 +205,12 @@ export const deriveTimeline = (
     preRight = travelStart;
   }
 
-  // Pre-gap (from dayStart to wherever pre-fillers begin)
+  // Pre-gap
   const preBlockStart =
     preSlots.length > 0 ? preSlots[0].startTime : anchorStart - anchorInboundMs;
 
   if (preBlockStart > dayStart) {
-    const gapMs = preBlockStart - dayStart;
-    if (gapMs > GAP_ABSORB_MS) {
-      slots.push(makeGap(dayStart, preBlockStart));
-    }
-    // Gaps ≤ 30 min before the first pre-filler are silently discarded;
-    // the first pre-filler simply starts a bit later in the day.
+    slots.push(makeGap(dayStart, preBlockStart));
   }
 
   slots.push(...preSlots);
@@ -270,7 +239,7 @@ export const deriveTimeline = (
 
   // ── POST-ANCHOR: build left-to-right ─────────────────────────────────────────
   let postCursor = anchorEnd;
-  let prevLocation: Activity | UserPrefs = anchor.activity;
+  let prevLocation: ScoredActivity | UserPrefs = anchor.activity;
 
   for (const {activity} of postActivities) {
     const travelMs = getTravelMs(prevLocation, activity, prefs);
@@ -303,7 +272,7 @@ export const deriveTimeline = (
 
   // ── RETURN JOURNEY ────────────────────────────────────────────────────────────
   if (prefs.modality === "GO_OUT") {
-    const dist = getDistance(prefs, prevLocation as Activity);
+    const dist = getDistance(prefs, prevLocation as ScoredActivity);
     if (dist > 0) {
       const travelMs = snapTo15(Math.round(dist * 3 + 5)) * 60_000;
       slots.push({
@@ -320,10 +289,7 @@ export const deriveTimeline = (
 
   // ── TRAILING GAP ──────────────────────────────────────────────────────────────
   if (postCursor < dayEnd) {
-    const gapMs = dayEnd - postCursor;
-    if (gapMs > GAP_ABSORB_MS) {
-      slots.push(makeGap(postCursor, dayEnd));
-    }
+    slots.push(makeGap(postCursor, dayEnd));
   }
   return slots;
 };
@@ -362,7 +328,7 @@ export const getAvailableGaps = (timeline: TimeSlot[]) =>
 
 export const canActivityFit = (
   timeline: TimeSlot[],
-  activity: Activity,
+  activity: BaseActivity, // Any activity, scored or raw, can be checked for time fit
 ): boolean => {
   const duration = Number(activity.est_duration_minutes) || 0;
   return getAvailableGaps(timeline).some((gap) => gap.duration >= duration);
@@ -370,10 +336,6 @@ export const canActivityFit = (
 
 // ─── Trigger Analysis ──────────────────────────────────────────────────────────
 
-/**
- * After placing an activity, checks whether the user should be prompted to
- * add a meal. Pass the `idea_id` of the activity that was just placed.
- */
 export const analyzeTriggers = (
   timeline: TimeSlot[],
   placedIdeaId: string,
@@ -410,19 +372,25 @@ export const analyzeTriggers = (
 
 // ─── Scoring ───────────────────────────────────────────────────────────────────
 
+// ─── Scoring ───────────────────────────────────────────────────────────────────
+
 const scoreActivities = ({
   activities,
   prefs,
   origin,
 }: {
-  activities: any[];
+  activities: BaseActivity[];
   prefs: UserPrefs;
-  origin: Activity | UserPrefs | null;
-}) => {
+  origin: ScoredActivity | UserPrefs | null;
+}): ScoredActivity[] => {
   if (!activities?.length) return [];
 
   const budgetPerPerson =
     (Number(prefs.budget) || 0) / (Number(prefs.headCount) || 1);
+
+  // 1. Calculate the absolute total time the user has for this date
+  const totalAvailableMs =
+    new Date(prefs.endDate).getTime() - new Date(prefs.startDate).getTime();
 
   return activities
     .map((item) => {
@@ -432,10 +400,18 @@ const scoreActivities = ({
           : getDistance(origin, item);
 
       let score = 50;
-      if (item.tags?.includes(prefs.vibe)) score += 40;
+
+      if (prefs.vibes && prefs.vibes.length > 0) {
+        const matchCount = prefs.vibes.filter((v) =>
+          item.tags?.includes(v),
+        ).length;
+        score += matchCount * 25;
+      }
+
       score -=
         Math.abs((Number(item.est_price_per_person) || 0) - budgetPerPerson) *
         2;
+
       if (item.modality !== "STAY_IN" && prefs.modality !== "STAY_IN") {
         score += 5 - distance;
       }
@@ -445,12 +421,30 @@ const scoreActivities = ({
         est_price_per_person: Number(item.est_price_per_person) || 0,
         score,
         distance: parseFloat((distance || 0).toFixed(2)),
-      };
+      } as ScoredActivity;
     })
     .filter((item) => {
-      if (item.modality === "STAY_IN" || prefs.modality === "STAY_IN")
-        return true;
-      return item.distance <= prefs.travelDistance;
+      // --- GATEKEEPER 1: Distance ---
+      if (item.modality !== "STAY_IN" && prefs.modality !== "STAY_IN") {
+        if (item.distance > prefs.travelDistance) return false;
+      }
+
+      // --- GATEKEEPER 2: Time ---
+      const durationMs = (Number(item.est_duration_minutes) || 60) * 60_000;
+
+      // Calculate travel time (using the exact same formula from your getTravelMs helper)
+      const travelMs =
+        item.modality !== "STAY_IN" && prefs.modality !== "STAY_IN"
+          ? snapTo15(item.distance > 0 ? item.distance * 3 + 5 : 0) * 60_000
+          : 0;
+
+      // Does the activity duration + a round trip physically fit in their time window?
+      // If not, instantly kill it.
+      if (durationMs + travelMs * 2 > totalAvailableMs) {
+        return false;
+      }
+
+      return true;
     })
     .sort((a, b) => (b.score || 0) - (a.score || 0));
 };
@@ -459,26 +453,52 @@ const scoreActivities = ({
 
 const API_HOST = process.env.EXPO_PUBLIC_API_HOST;
 
+// THE FIX: Define strict return types for your queries so the UI Builder knows what it gets
+type QueryResponse = {
+  success: boolean;
+  data?: ScoredActivity[];
+  retried?: boolean;
+  error?: any;
+};
+
 export const queryAnchors = async (
-  prefs: UserPrefs,
+  prefs: UserPrefs, // Make sure UserPrefs includes `userId` and `vibes: string[]`
   isRetry = false,
-): Promise<any> => {
+): Promise<QueryResponse> => {
   try {
     const response = await fetch(`${API_HOST}/api/ideas/anchors`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(prefs),
     });
+
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}`);
+    }
+
     const data = await response.json();
 
+    // The Retry Fallback: If no activities match their exact vibes, widen the net.
     if ((!data || data.length === 0) && !isRetry) {
+      console.log(
+        "No anchors found. Wiping vibes and expanding distance for retry...",
+      );
       return queryAnchors(
-        {...prefs, vibe: null, travelDistance: prefs.travelDistance * 2},
+        {
+          ...prefs,
+          vibes: [], // Clear the array instead of using an empty string
+          // Only expand the search radius if they are actually leaving the house
+          travelDistance:
+            prefs.modality === "GO_OUT"
+              ? prefs.travelDistance * 2
+              : prefs.travelDistance,
+        },
         true,
       );
     }
 
     const rawArray = Array.isArray(data) ? data : [];
+
     return {
       success: true,
       data: scoreActivities({activities: rawArray, prefs, origin: prefs}),
@@ -494,15 +514,43 @@ export const queryFillers = async (
   prefs: UserPrefs,
   minutes: number,
   budget: number,
-  origin: Activity | UserPrefs,
-): Promise<any> => {
-  const budgetPerPerson = budget / prefs.headCount;
+  origin: ScoredActivity | UserPrefs,
+): Promise<QueryResponse> => {
+  // Budget passed here is the remaining budget for this timeline slot
+  const budgetPerPerson = budget / (Number(prefs.headCount) || 1);
+
+  // Extract the coordinates of the previous activity so we find a filler nearby.
+  // If the previous activity was STAY_IN (null coords), fallback to their home base.
+  const originLat = "latitude" in origin ? origin.latitude : null;
+  const originLng = "longitude" in origin ? origin.longitude : null;
+
+  const searchLocation =
+    originLat !== null && originLng !== null
+      ? {latitude: originLat, longitude: originLng}
+      : prefs.currentLocation;
+
   try {
-    const response = await fetch(
-      `${API_HOST}/api/ideas/fill-schedule?vibe=${prefs.vibe || "cozy"}&budget=${budgetPerPerson}&type=${prefs.modality}&minutes=${minutes}`,
-    );
+    const response = await fetch(`${API_HOST}/api/ideas/fill-schedule`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        userId: prefs.userId || null,
+        vibes: prefs.vibes || [], // Pass our new array!
+        budget: budgetPerPerson,
+        modality: prefs.modality,
+        maxDuration: minutes, // The time gap we need to fill
+        currentLocation: searchLocation,
+        travelDistance: prefs.travelDistance,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}`);
+    }
+
     const data = await response.json();
     const rawArray = Array.isArray(data) ? data : data?.data || [];
+
     return {
       success: true,
       data: scoreActivities({activities: rawArray, prefs, origin}),
