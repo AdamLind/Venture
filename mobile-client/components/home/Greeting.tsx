@@ -8,17 +8,19 @@ export default function Greeting() {
   // On mount check current time and format greeting appropriately.
   useEffect(() => {
     if (currentHours >= 5 && currentHours < 12) {
-      setGreeting("Good Morning");
+      setGreeting("Good Morning, Adam");
     } else if (currentHours >= 12 && currentHours < 17) {
-      setGreeting("Good Afternoon");
+      setGreeting("Good Afternoon, Adam");
     } else if (currentHours >= 17 && currentHours < 21) {
-      setGreeting("Good Evening");
+      setGreeting("Good Evening, Adam");
     } else {
-      setGreeting("Good Night");
+      setGreeting("Good Night, Adam");
     }
   }, []);
 
   return (
-    <Text className="text-white font-bold text-3xl">{greeting}</Text>
+    <Text className="text-zinc-400 font-semibold text-sm uppercase tracking-wider mb-1">
+      {greeting}
+    </Text>
   );
 }
