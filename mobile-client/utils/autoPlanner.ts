@@ -1,8 +1,8 @@
 // src/utils/autoPlanner.ts
-import { ScoredActivity, TimeSlot } from "@/types/itinerary";
-import { UserPrefs } from "@/store/usePrefsStore";
-import { getDistance } from "./geo";
-import { snapTo15 } from "./itineraryEngine"; // Assuming snapTo15 remains in itineraryEngine
+import {ScoredActivity, TimeSlot} from "@/types/itinerary";
+import {UserPrefs} from "@/src/store/usePrefsStore";
+import {getDistance} from "./geo";
+import {snapTo15} from "./itineraryEngine"; // Assuming snapTo15 remains in itineraryEngine
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -224,7 +224,7 @@ export const derivePremiumTimeline = (
   let postCursor = anchorEnd;
   let prevLocation: ScoredActivity | UserPrefs = anchor.activity;
 
-  for (const { activity } of postActivities) {
+  for (const {activity} of postActivities) {
     const travelMs = getTravelMs(prevLocation, activity, prefs);
     const durationMs =
       snapTo15(Number(activity.est_duration_minutes) || 60) * 60_000;

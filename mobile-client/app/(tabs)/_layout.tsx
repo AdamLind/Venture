@@ -38,9 +38,9 @@ export default function TabLayout() {
         }}
       >
         <Tabs.Screen
-          name="index"
+          name="explore"
           options={{
-            title: "Home",
+            title: "Explore",
             tabBarIcon: ({color, focused}) => (
               <Ionicons
                 name={focused ? "home" : "home-outline"}
@@ -51,9 +51,9 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="explore"
+          name="feed"
           options={{
-            title: "Explore",
+            title: "Feed",
             tabBarIcon: ({color, focused}) => (
               <Ionicons
                 name={focused ? "people" : "people-outline"}
@@ -108,6 +108,16 @@ export default function TabLayout() {
                 color={color}
               />
             ),
+          }}
+        />
+
+        {/* DETAIL SCREEN */}
+        <Tabs.Screen
+          name="detail/[id]"
+          options={{
+            href: null,
+            title: "Activity Idea",
+            headerShown: false,
           }}
         />
       </Tabs>

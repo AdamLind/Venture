@@ -46,16 +46,16 @@ app.get(
       // I've removed that WHERE clause to fetch all ideas, as intended for an "Explore" screen.
       const queryText = `
         SELECT
-            di.idea_id,
-            di.title,
-            di.description,
-            di.modality,
-            di.est_price_per_person::text as est_price_per_person, 
-            di.latitude,
-            di.longitude,
+            a.idea_id,
+            a.title,
+            a.description,
+            a.modality,
+            a.est_price_per_person::text as est_price_per_person, 
+            a.latitude,
+            a.longitude,
             u.username as creator_username
-        FROM Date_Ideas di
-        LEFT JOIN Users u ON di.user_id = u.user_id
+        FROM activities a
+        LEFT JOIN Users u ON a.user_id = u.user_id
         ORDER BY RANDOM()
     `;
 

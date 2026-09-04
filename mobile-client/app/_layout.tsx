@@ -1,13 +1,15 @@
+import {useEffect} from "react";
 import {DarkTheme, DefaultTheme, ThemeProvider} from "@react-navigation/native";
 import {useFonts} from "expo-font";
-import {Stack} from "expo-router";
+import {Stack, useRouter, useSegments} from "expo-router";
 import {StatusBar} from "expo-status-bar";
 import "react-native-reanimated";
 import "../global.css";
 import Toast, {ToastConfig} from "react-native-toast-message";
-import {View, Text} from "react-native"; // <-- Import View and Text
+import {View, Text} from "react-native";
 
 import {useColorScheme} from "@/hooks/useColorScheme";
+import {AuthProvider, useAuth} from "../src/providers/AuthProvider";
 
 // --- CREATE YOUR CUSTOM TOAST THEMES ---
 const toastConfig: ToastConfig = {
@@ -23,7 +25,7 @@ const toastConfig: ToastConfig = {
     </View>
   ),
 
-  // Override the default 'success' toast (for later use)
+  // Override the default 'success' toast
   success: ({text1, text2}) => (
     <View className="w-[90%] bg-zinc-900 border border-zinc-700 rounded-2xl p-4 shadow-2xl flex-row items-center">
       <View className="flex-1">
@@ -36,11 +38,33 @@ const toastConfig: ToastConfig = {
   ),
 };
 
-export default function RootLayout() {
+// --- THE TRAFFIC COP ---
+// We moved your original layout into this component so it has access to the useAuth hook
+function InitialLayout() {
+  const {session, initialized} = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
   const colorScheme = useColorScheme();
+
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+
+  // The Reactive Auth Routing Logic
+  useEffect(() => {
+    // Wait until fonts load AND Supabase checks for a token
+    if (!initialized || !loaded) return;
+
+    const inAuthGroup = segments[0] === "(auth)";
+
+    if (session && inAuthGroup) {
+      // ✅ Logged in but stuck on login screen -> push to tabs
+      router.replace("/(tabs)/explore");
+    } else if (!session && !inAuthGroup) {
+      // ❌ Not logged in but trying to see the app -> push to login
+      router.replace("/(auth)/login");
+    }
+  }, [session, initialized, segments, loaded]);
 
   if (!loaded) {
     return null;
@@ -49,25 +73,18 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <Stack>
+        {/* ADDED: Auth Group (hides the header for the login screen) */}
+        <Stack.Screen name="(auth)/login" options={{headerShown: false}} />
+
         {/* Tabs Group */}
         <Stack.Screen name="(tabs)" options={{headerShown: false, title: ""}} />
 
         {/* THE NEW SLIDING FORM MODAL */}
         <Stack.Screen
-          name="plan"
+          name="plan/index"
           options={{
-            presentation: "modal", // Tells iOS to slide it up as a card!
-            headerShown: false,
-          }}
-        />
-
-        {/* DETAIL SCREEN */}
-        <Stack.Screen
-          name="detail/[id]"
-          options={{
-            title: "Edit Date Idea",
-            headerShown: true,
             presentation: "modal",
+            headerShown: false,
           }}
         />
 
@@ -98,9 +115,17 @@ export default function RootLayout() {
       </Stack>
 
       <StatusBar style="light" />
-
-      {/* Pass your custom config into the Toast provider */}
       <Toast config={toastConfig} />
     </ThemeProvider>
+  );
+}
+
+// --- THE ROOT PROVIDER ---
+// Wraps your app in the AuthContext so useAuth() works everywhere
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <InitialLayout />
+    </AuthProvider>
   );
 }

@@ -1,6 +1,5 @@
 // app/plan.tsx
 import ActivityTagsSelector from "@/components/home/ActivityTagsSelector";
-import * as Haptics from "expo-haptics";
 import BudgetInput from "@/components/home/BudgetInput";
 import InOrOutSelector from "@/components/home/InOrOutSelector";
 import {useEffect, useRef, useState} from "react";
@@ -14,21 +13,22 @@ import {
   Platform,
 } from "react-native";
 import SocialSelector from "@/components/home/SocialSelector";
-import {ActivityLocation, SimpleLocation} from "@/types/itinerary";
+import {ActivityLocation} from "@/types/itinerary";
+import {SimpleLocation} from "@/types/activities";
 import {useRouter} from "expo-router";
-import {usePrefsStore} from "@/store/usePrefsStore";
-import {useActiveDateStore} from "@/store/activeDateStore";
+import {usePrefsStore} from "@/src/store/usePrefsStore";
+import {useActiveDateStore} from "@/src/store/activeDateStore";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {Ionicons} from "@expo/vector-icons";
 
-export default function PlanModal() {
-  const TAG_TAXONOMY: Record<string, string[]> = {
-    Food: ["casual", "fancy", "sweets", "soda", "cafes"],
-    Active: ["nature", "stroll", "games", "sweat", "seasonal"],
-    Shows: ["film", "music", "comedy", "stage", "arts"],
-    Close: ["intimate", "quiet", "create", "views", "spa"],
-  };
+// IMPORT SHARED CONSTANTS
+import {
+  TAG_TAXONOMY,
+  BASE_ACTIVITY_CLASSES,
+  DATE_ACTIVITY_CLASS,
+} from "@/src/constants/tags";
 
+export default function PlanModal() {
   const router = useRouter();
   const setPrefs = usePrefsStore((state) => state.setPrefs);
   const timeline = useActiveDateStore((state) => state.timeline);
@@ -53,70 +53,15 @@ export default function PlanModal() {
   const [isCustomBudget, setIsCustomBudget] = useState<boolean>(false);
   const [customBudget, setCustomBudget] = useState<number | null>(null);
   const budgetRef = useRef<TextInput | null>(null);
-  const [selectedTagClasses, setSelectedTagClasses] = useState<number[]>([1]);
-  const [selectedTags, setSelectedTags] = useState<string[]>(
-    TAG_TAXONOMY["Food"] || [],
-  );
-  const [expandedClassId, setExpandedClassId] = useState<number | null>(null);
 
-  const lastActivityElement =
-    socialType === "Date"
-      ? {
-          id: 4,
-          name: "Close",
-          icon: "heart-outline",
-          bg: "bg-pink-500",
-          border: "border-pink-500",
-          text: "text-pink-500",
-          rawColor: "#EC4899",
-        }
-      : {
-          id: 4,
-          name: "Cozy",
-          icon: "cafe-outline",
-          bg: "bg-green-600",
-          border: "border-green-600",
-          text: "text-green-600",
-          rawColor: "#16A34A",
-        };
+  // Tag State - Drastically simplified!
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
+  // Safely grab the first 3 base classes, and swap the 4th based on socialType
   const activityClasses = [
-    {
-      id: 1,
-      name: "Food",
-      icon: "pizza-outline",
-      bg: "bg-red-500",
-      border: "border-red-500",
-      text: "text-red-500",
-      rawColor: "#EF4444",
-    },
-    {
-      id: 2,
-      name: "Active",
-      icon: "basketball-outline",
-      bg: "bg-amber-500",
-      border: "border-amber-500",
-      text: "text-amber-500",
-      rawColor: "#F59E0B",
-    },
-    {
-      id: 3,
-      name: "Shows",
-      icon: "ticket-outline",
-      bg: "bg-blue-500",
-      border: "border-blue-500",
-      text: "text-blue-500",
-      rawColor: "#3B82F6",
-    },
-    lastActivityElement,
+    ...BASE_ACTIVITY_CLASSES.slice(0, 3),
+    socialType === "Date" ? DATE_ACTIVITY_CLASS : BASE_ACTIVITY_CLASSES[3],
   ];
-
-  const expandedCategory = activityClasses.find(
-    (a) => a.id === expandedClassId,
-  );
-  const lookupKey =
-    expandedCategory?.name === "Cozy" ? "Close" : expandedCategory?.name;
-  const tagsToRender = lookupKey ? TAG_TAXONOMY[lookupKey] : [];
 
   const formatStartDisplay = (date: Date) => {
     const today = new Date();
@@ -137,50 +82,6 @@ export default function PlanModal() {
       date.getFullYear() === tomorrow.getFullYear();
     if (isTomorrow) return `Tomorrow, ${timeStr}`;
     return `${date.toLocaleDateString([], {month: "short", day: "numeric"})}, ${timeStr}`;
-  };
-
-  const handleKingClassChange = (newClassId: number) => {
-    const clickedCategory = activityClasses.find((a) => a.id === newClassId);
-    if (!clickedCategory) return;
-    const key =
-      clickedCategory.name === "Cozy" ? "Close" : clickedCategory.name;
-    const categoryTags = TAG_TAXONOMY[key] || [];
-
-    if (selectedTagClasses.includes(newClassId)) {
-      if (selectedTagClasses.length === 1) return;
-      if (expandedClassId) {
-        setExpandedClassId(newClassId);
-        return;
-      }
-      setSelectedTagClasses((prev) => prev.filter((id) => id !== newClassId));
-      setSelectedTags((prev) =>
-        prev.filter((tag) => !categoryTags.includes(tag)),
-      );
-    } else {
-      setSelectedTagClasses((prev) => [...prev, newClassId]);
-      setSelectedTags((prev) =>
-        Array.from(new Set([...prev, ...categoryTags])),
-      );
-      expandedClassId && setExpandedClassId(newClassId);
-    }
-  };
-
-  const toggleTag = (tag: string) => {
-    if (selectedTags.includes(tag)) {
-      if (selectedTags.length === 1) return;
-      const nextTags = selectedTags.filter((t) => t !== tag);
-      setSelectedTags(nextTags);
-      setSelectedTagClasses((prevClasses) =>
-        prevClasses.filter((classId) => {
-          const category = activityClasses.find((a) => a.id === classId);
-          const key = category?.name === "Cozy" ? "Close" : category?.name;
-          const categoryTags = key ? TAG_TAXONOMY[key] : [];
-          return categoryTags.some((catTag) => nextTags.includes(catTag));
-        }),
-      );
-    } else {
-      setSelectedTags((prev) => [...prev, tag]);
-    }
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
@@ -228,17 +129,15 @@ export default function PlanModal() {
       currentLocation: location,
       travelDistance: 15,
       budget: finalBudget,
-      vibes: selectedTags,
+      vibes: selectedTags, // Saves the tags passed up from our component
       headCount: computedHeadCount,
     });
 
-    // Replace the modal with the builder so the back button goes to the feed
     router.replace("/builder");
   };
 
   return (
     <View className="flex-1 bg-zinc-950">
-      {/* Visual drag handle for the Modal */}
       <View className="w-full items-center pt-4 pb-2">
         <View className="w-12 h-1.5 bg-zinc-600 rounded-full" />
       </View>
@@ -248,9 +147,8 @@ export default function PlanModal() {
         contentContainerClassName="justify-start items-center pb-12"
       >
         <View className="w-full px-6 pt-2">
-          {/* Modal Header */}
           <View className="flex-row justify-between items-center mb-6">
-            <Text className="text-white text-2xl font-bold">New Activity</Text>
+            <Text className="text-white text-2xl font-bold">New Plan</Text>
             <Pressable
               onPress={() => router.back()}
               className="bg-zinc-700 w-8 h-8 rounded-full items-center justify-center"
@@ -346,52 +244,26 @@ export default function PlanModal() {
               )}
             </View>
 
+            {/* Micro-copy guiding the user */}
+            <View className="items-center mt-2 mb-1">
+              <Text className="text-zinc-500 text-[11px] uppercase font-bold tracking-widest">
+                Tap to select • Press & Hold to refine
+              </Text>
+            </View>
+
+            {/* THE NEW, SELF-MANAGING TAG COMPONENT */}
             <ActivityTagsSelector
+              mode="plan"
               taxonomy={TAG_TAXONOMY}
               classes={activityClasses}
-              selectedTagClasses={selectedTagClasses}
-              setSelectedClass={handleKingClassChange}
-              activeTags={selectedTags}
-              onLongPressClass={(id) =>
-                setExpandedClassId((prevId) => (prevId === id ? null : id))
-              }
+              onTagsChange={(newTags) => setSelectedTags(newTags)}
             />
-
-            {expandedClassId && (
-              <View className="w-full flex-row flex-wrap justify-center gap-3 mt-2 bg-zinc-900/80 p-5 rounded-2xl border border-zinc-700">
-                {tagsToRender.map((tag) => {
-                  const isSelected = selectedTags.includes(tag);
-                  const categoryTheme = activityClasses.find(
-                    (a) => a.id === expandedClassId,
-                  );
-                  return (
-                    <Pressable
-                      key={tag}
-                      onPress={() => {
-                        if (process.env.EXPO_OS === "ios")
-                          Haptics.impactAsync(
-                            Haptics.ImpactFeedbackStyle.Light,
-                          );
-                        toggleTag(tag);
-                      }}
-                      className={`px-4 py-2 rounded-full border ${isSelected ? `${categoryTheme?.bg} border-transparent` : `bg-transparent ${categoryTheme?.border}`}`}
-                    >
-                      <Text
-                        className={`text-[14px] font-medium ${isSelected ? "text-white" : categoryTheme?.text}`}
-                      >
-                        {tag.charAt(0).toUpperCase() + tag.slice(1)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
 
             <Pressable
               onPress={
                 timeline ? () => router.push("/active-date") : handleGenerate
               }
-              className={`w-full h-[50px] justify-center rounded-[10px] mt-4 bg-blue-600`}
+              className={`w-full h-[50px] justify-center rounded-[10px] mt-6 bg-blue-600`}
             >
               <Text className="text-center text-white font-semibold text-[18px]">
                 {timeline ? "Activity in Progress" : "Start Planning"}

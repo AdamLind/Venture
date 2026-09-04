@@ -29,12 +29,15 @@ export default function ProfileScreen() {
         {/* --- CENTERED IDENTITY & VIBE --- */}
         <View className="items-center mb-6">
           {/* Stripped the relative wrapper and the off-center badge for perfect symmetry */}
-          <Image
-            source={{
-              uri: "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=250&auto=format&fit=crop",
-            }}
-            className="w-28 h-28 rounded-full bg-zinc-900 border-4 border-zinc-900"
-          />
+
+          <View className="w-28 h-28 rounded-full bg-zinc-900 border-4 border-zinc-900 overflow-hidden">
+            <Image
+              source={{
+                uri: "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=250&auto=format&fit=crop",
+              }}
+              style={{width: "100%", height: "100%"}}
+            />
+          </View>
 
           <Text className="text-white font-bold text-2xl mt-4 tracking-tight">
             Sarah & John

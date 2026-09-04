@@ -19,9 +19,9 @@ import {
   LayoutAnimation,
   Modal,
 } from "react-native";
-import {useActiveDateStore} from "@/store/activeDateStore";
+import {useActiveDateStore} from "@/src/store/activeDateStore";
 import {Ionicons} from "@expo/vector-icons";
-import {usePrefsStore} from "@/store/usePrefsStore";
+import {usePrefsStore} from "@/src/store/usePrefsStore";
 
 export default function BuilderScreen() {
   const scrollViewRef = useRef<ScrollView>(null);

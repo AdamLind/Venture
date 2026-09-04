@@ -2,11 +2,10 @@ import {View, Text, ScrollView, Pressable} from "react-native";
 import {useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
 import {SafeAreaView} from "react-native-safe-area-context";
-import Greeting from "@/components/home/Greeting";
 import Animated from "react-native-reanimated";
 import {useFloatingAnimation} from "@/hooks/useFloatingAnimation";
 import {BlurView} from "expo-blur";
-import {useActiveDateStore} from "@/store/activeDateStore";
+import {useActiveDateStore} from "@/src/store/activeDateStore";
 
 export default function FeedScreen() {
   const router = useRouter();
@@ -19,14 +18,13 @@ export default function FeedScreen() {
       <SafeAreaView edges={["top"]} className="bg-zinc-950/90 z-10">
         <View className="px-6 pb-4 flex-row justify-between items-end">
           <View>
-            <Greeting />
             <Text className="text-white text-3xl font-bold tracking-tight">
-              Discover
+              Social
             </Text>
           </View>
           <Pressable className="bg-zinc-900 w-12 h-12 rounded-full items-center justify-center border border-zinc-800 active:bg-zinc-800">
-            <Ionicons name="notifications-outline" size={22} color="white" />
-            <View className="absolute top-3 right-3 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-zinc-900" />
+            <Ionicons name="heart-outline" size={22} color="white" />
+            <View className="absolute top-2 right-2 w-2.5 h-2.5 bg-pink-500 rounded-full border-2 border-zinc-900" />
           </Pressable>
         </View>
       </SafeAreaView>

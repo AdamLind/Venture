@@ -1,7 +1,7 @@
 // src/utils/itineraryEngine.ts
-import { BaseActivity, ScoredActivity, TimeSlot } from "@/types/itinerary";
-import { getDistance } from "./geo";
-import { UserPrefs } from "@/store/usePrefsStore";
+import {BaseActivity, ScoredActivity, TimeSlot} from "@/types/itinerary";
+import {getDistance} from "./geo";
+import {UserPrefs} from "@/src/store/usePrefsStore";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -108,14 +108,14 @@ export const deriveSequentialTimeline = (
     prevLocation = activity;
   });
 
-// 2. Return Journey
+  // 2. Return Journey
   if (prefs.modality === "GO_OUT" && placed.length > 0) {
     // Safely grab the last activity directly from the array to keep TypeScript happy
     const lastActivity = placed[placed.length - 1].activity;
-    
+
     // Pass prefs and lastActivity without any forceful casting
-    const dist = getDistance(prefs, lastActivity); 
-    
+    const dist = getDistance(prefs, lastActivity);
+
     if (dist > 0) {
       const travelMs = snapTo15(Math.round(dist * 3 + 5)) * 60_000;
       slots.push({
@@ -134,7 +134,7 @@ export const deriveSequentialTimeline = (
   if (cursor < dayEnd) {
     slots.push(makeGap(cursor, dayEnd));
   }
-  
+
   return slots;
 };
 
@@ -305,7 +305,7 @@ export const queryAnchors = async (
   try {
     const response = await fetch(`${API_HOST}/api/ideas/anchors`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {"Content-Type": "application/json"},
       body: JSON.stringify(prefs),
     });
 
@@ -316,7 +316,9 @@ export const queryAnchors = async (
     const data = await response.json();
 
     if ((!data || data.length === 0) && !isRetry) {
-      console.log("No activities found. Wiping vibes and expanding distance...");
+      console.log(
+        "No activities found. Wiping vibes and expanding distance...",
+      );
       return queryAnchors(
         {
           ...prefs,
@@ -333,12 +335,12 @@ export const queryAnchors = async (
     const rawArray = Array.isArray(data) ? data : [];
     return {
       success: true,
-      data: scoreActivities({ activities: rawArray, prefs, origin: prefs }),
+      data: scoreActivities({activities: rawArray, prefs, origin: prefs}),
       retried: isRetry,
     };
   } catch (error) {
     console.error("queryAnchors error:", error);
-    return { success: false, error };
+    return {success: false, error};
   }
 };
 
@@ -356,13 +358,13 @@ export const queryFillers = async (
 
   const searchLocation =
     originLat !== null && originLng !== null
-      ? { latitude: originLat, longitude: originLng }
+      ? {latitude: originLat, longitude: originLng}
       : prefs.currentLocation;
 
   try {
     const response = await fetch(`${API_HOST}/api/ideas/fill-schedule`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         userId: prefs.userId || null,
         vibes: prefs.vibes || [],
@@ -383,10 +385,10 @@ export const queryFillers = async (
 
     return {
       success: true,
-      data: scoreActivities({ activities: rawArray, prefs, origin }),
+      data: scoreActivities({activities: rawArray, prefs, origin}),
     };
   } catch (error) {
     console.error("queryFillers error:", error);
-    return { success: false, error, data: [] };
+    return {success: false, error, data: []};
   }
 };

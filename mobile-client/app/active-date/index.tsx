@@ -12,7 +12,7 @@ import MapView, {Marker, Polyline} from "react-native-maps";
 import {formatTime} from "@/utils/itineraryEngine";
 import {BuilderActivity, TimeSlot} from "@/types/itinerary";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import {useActiveDateStore} from "@/store/activeDateStore";
+import {useActiveDateStore} from "@/src/store/activeDateStore";
 import {router} from "expo-router";
 import CountdownTimer from "@/components/ui/CountdownTimer";
 
@@ -173,7 +173,7 @@ export default function ActiveModeScreen() {
         </View>
 
         <View className="relative flex-1">
-          {(Date.now() < timeline[0].startTime && displayTimer) && (
+          {Date.now() < timeline[0].startTime && displayTimer && (
             <View className="absolute z-10 w-full h-full bg-zinc-950/90 flex items-center justify-center">
               <CountdownTimer targetTime={timeline[0].startTime} />
             </View>
@@ -273,7 +273,9 @@ export default function ActiveModeScreen() {
           onPress={() => setDisplayTimer(false)}
           className="mt-4 py-4 bg-green-500/10 border border-green-500/30 rounded-2xl items-center active:bg-green-500/20"
         >
-          <Text className="text-green-400 font-bold text-base">Skip Timer (Dev)</Text>
+          <Text className="text-green-400 font-bold text-base">
+            Skip Timer (Dev)
+          </Text>
         </Pressable>
         {/* ─── END DATE BUTTON ─── */}
         <Pressable
