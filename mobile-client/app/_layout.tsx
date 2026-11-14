@@ -1,5 +1,9 @@
 import {useEffect} from "react";
-import {DarkTheme, DefaultTheme, ThemeProvider} from "@react-navigation/native";
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from "expo-router/react-navigation";
 import {useFonts} from "expo-font";
 import {Stack, useRouter, useSegments} from "expo-router";
 import {StatusBar} from "expo-status-bar";
@@ -77,15 +81,9 @@ function InitialLayout() {
         <Stack.Screen name="(auth)/login" options={{headerShown: false}} />
 
         {/* Tabs Group */}
-        <Stack.Screen name="(tabs)" options={{headerShown: false, title: ""}} />
-
-        {/* THE NEW SLIDING FORM MODAL */}
         <Stack.Screen
-          name="plan/index"
-          options={{
-            presentation: "modal",
-            headerShown: false,
-          }}
+          name="(tabs)"
+          options={{headerShown: false, title: "", animation: "none"}}
         />
 
         {/* CREATE SCREEN */}

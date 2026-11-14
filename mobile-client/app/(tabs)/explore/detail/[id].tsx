@@ -23,7 +23,6 @@ const {width, height} = Dimensions.get("window");
 export default function IdeaDetailScreen() {
   const router = useRouter();
   const {id} = useLocalSearchParams();
-  const insets = useSafeAreaInsets();
 
   const [idea, setIdea] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -72,7 +71,6 @@ export default function IdeaDetailScreen() {
 
         if (dbError) throw dbError;
         setIdea(data);
-        console.log(data);
       } catch (err: any) {
         console.error("Fetch Error:", err);
         setError(err.message || "Could not load date idea");

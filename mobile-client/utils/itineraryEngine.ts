@@ -1,7 +1,9 @@
 // src/utils/itineraryEngine.ts
-import {BaseActivity, ScoredActivity, TimeSlot} from "@/types/itinerary";
+import {ScoredActivity, TimeSlot} from "@/types/itinerary";
+import {BaseActivity} from "@/types/activities";
 import {getDistance} from "./geo";
 import {UserPrefs} from "@/src/store/usePrefsStore";
+import {supabase} from "@/src/supabase";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -13,6 +15,46 @@ export type PlacedActivity = {
 export type UI_Trigger = "PROMPT_DINNER" | "PROMPT_LUNCH" | null;
 
 // ─── Pure Helpers ──────────────────────────────────────────────────────────────
+
+// PostGIS Hex Decoder
+const parseCoordinates = (hex: string | null | undefined) => {
+  if (!hex || typeof hex !== "string" || hex.length < 25) return null;
+  try {
+    const buffer = new Uint8Array(
+      hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
+    );
+    const view = new DataView(buffer.buffer);
+    const littleEndian = buffer[0] === 1;
+    return {
+      longitude: view.getFloat64(9, littleEndian),
+      latitude: view.getFloat64(17, littleEndian),
+    };
+  } catch {
+    return null;
+  }
+};
+
+// TS Helper to safely extract coordinates and satisfy the Locatable strictness
+const safeGetDistance = (a: any, b: any): number => {
+  const coordsA = a?.currentLocation ? a.currentLocation : a;
+  const coordsB = b?.currentLocation ? b.currentLocation : b;
+
+  // If either location is missing valid coordinates, return 0 distance
+  if (
+    !coordsA?.latitude ||
+    !coordsA?.longitude ||
+    !coordsB?.latitude ||
+    !coordsB?.longitude
+  ) {
+    return 0;
+  }
+
+  // Pass strictly typed objects to the actual getDistance function
+  return getDistance(
+    {latitude: coordsA.latitude, longitude: coordsA.longitude},
+    {latitude: coordsB.latitude, longitude: coordsB.longitude},
+  );
+};
 
 export const formatTime = (timestamp: number): string =>
   new Date(timestamp).toLocaleTimeString("en-US", {
@@ -74,7 +116,7 @@ export const deriveSequentialTimeline = (
     // Calculate Travel from previous location
     let travelMs = 0;
     if (prefs.modality === "GO_OUT") {
-      const dist = getDistance(prevLocation, activity);
+      const dist = safeGetDistance(prevLocation, activity);
       travelMs = snapTo15(dist > 0 ? dist * 3 + 5 : 0) * 60_000;
     }
 
@@ -85,7 +127,7 @@ export const deriveSequentialTimeline = (
     if (travelMs > 0) {
       slots.push({
         id: `travel-${activity.idea_id}-${index}`,
-        title: `Travel & Parking (${getDistance(prevLocation, activity).toFixed(1)} mi)`,
+        title: `Travel & Parking (${safeGetDistance(prevLocation, activity).toFixed(1)} mi)`,
         startTime: cursor,
         endTime: cursor + travelMs,
         type: "OCCUPIED",
@@ -110,11 +152,7 @@ export const deriveSequentialTimeline = (
 
   // 2. Return Journey
   if (prefs.modality === "GO_OUT" && placed.length > 0) {
-    // Safely grab the last activity directly from the array to keep TypeScript happy
-    const lastActivity = placed[placed.length - 1].activity;
-
-    // Pass prefs and lastActivity without any forceful casting
-    const dist = getDistance(prefs, lastActivity);
+    const dist = safeGetDistance(prevLocation, prefs);
 
     if (dist > 0) {
       const travelMs = snapTo15(Math.round(dist * 3 + 5)) * 60_000;
@@ -138,257 +176,210 @@ export const deriveSequentialTimeline = (
   return slots;
 };
 
-// ─── Gap Analysis ──────────────────────────────────────────────────────────────
+// ─── Context Engine (The "Meters") ─────────────────────────────────────────────
 
-export const hasMeaningfulOverlap = (
-  slot: TimeSlot,
-  targetStartHour: number,
-  targetEndHour: number,
-  minOverlapMinutes = 45,
-): boolean => {
-  const base = new Date(slot.startTime);
-  const targetStart = new Date(base).setHours(targetStartHour, 0, 0, 0);
-  const targetEnd = new Date(base).setHours(targetEndHour, 0, 0, 0);
-  const latestStart = Math.max(slot.startTime, targetStart);
-  const earliestEnd = Math.min(slot.endTime, targetEnd);
-  return Math.round((earliestEnd - latestStart) / 60_000) >= minOverlapMinutes;
+export type DayContext = {
+  exhaustion: number; // 0 (Fresh) to 100 (Dead)
+  satiation: number; // 0 (Starving) to 100 (Stuffed)
 };
 
-export const getAvailableGaps = (timeline: TimeSlot[]) =>
-  timeline
-    .filter((slot) => slot.type === "AVAILABLE")
-    .map((slot) => {
-      const durationMins = Math.round((slot.endTime - slot.startTime) / 60_000);
-      return {
-        slotId: slot.id,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        duration: durationMins,
-        hasLunchPotential: hasMeaningfulOverlap(slot, 11, 14, 45),
-        hasDinnerPotential: hasMeaningfulOverlap(slot, 17, 21, 45),
-      };
-    })
-    .filter((gap) => gap.duration >= 15);
-
-export const canActivityFit = (
+// Calculates the physical state of the user at a specific timestamp
+export const evaluateContextAt = (
   timeline: TimeSlot[],
-  activity: BaseActivity,
-): boolean => {
-  const duration = Number(activity.est_duration_minutes) || 0;
-  return getAvailableGaps(timeline).some((gap) => gap.duration >= duration);
+  targetTimeMs: number,
+): DayContext => {
+  let exhaustion = 0;
+  let satiation = 0;
+
+  // Chronologically walk through everything that happened BEFORE the target gap
+  const pastSlots = timeline.filter((s) => s.endTime <= targetTimeMs);
+
+  pastSlots.forEach((slot) => {
+    const durationMins = Math.round((slot.endTime - slot.startTime) / 60_000);
+
+    if (slot.type === "OCCUPIED" && slot.activity) {
+      const type = slot.activity.activity_type;
+
+      // 1. Process Satiation
+      if (type === "MEAL") satiation = 100;
+      else if (type === "TREAT") satiation = Math.min(100, satiation + 40);
+      else satiation -= durationMins * 0.3; // Burn calories while doing things
+
+      // 2. Process Exhaustion
+      if (type === "ACTIVE") {
+        exhaustion += durationMins * 0.8; // +48 points for a 60min hike
+      } else {
+        exhaustion -= durationMins * 0.5; // Resting during movies/meals
+      }
+    } else {
+      // It's a travel gap or buffer (Resting & digesting)
+      exhaustion -= durationMins * 0.5;
+      satiation -= durationMins * 0.3;
+    }
+
+    // Clamp values between 0 and 100
+    exhaustion = Math.max(0, Math.min(100, exhaustion));
+    satiation = Math.max(0, Math.min(100, satiation));
+  });
+
+  return {exhaustion, satiation};
 };
 
-// ─── Trigger Analysis ──────────────────────────────────────────────────────────
+// ─── Unified Scoring ───────────────────────────────────────────────────────────
 
-export const analyzeTriggers = (
-  timeline: TimeSlot[],
-  placedIdeaId: string,
-): UI_Trigger => {
-  const slot = timeline.find(
-    (s) => s.id.startsWith(`act-${placedIdeaId}`) && s.type === "OCCUPIED",
+export const deriveInitialContext = (prefs: UserPrefs): DayContext => {
+  let satiation = 50;
+  let exhaustion = 0;
+
+  // Get the start hour once at the top
+  const startHour = new Date(prefs.startDate || Date.now()).getHours();
+
+  // 1. Tag Inference
+  const wantsFood = prefs.vibes?.some((v) =>
+    ["casual", "fancy", "sweets", "soda", "cafes"].includes(v),
   );
-  if (!slot) return null;
 
-  const endHour =
-    new Date(slot.endTime).getHours() +
-    new Date(slot.endTime).getMinutes() / 60;
-
-  if (endHour >= 17.0 && endHour <= 20.0) {
-    const hasDinner = timeline.some(
-      (s) =>
-        s.activity?.activity_type === "MEAL" &&
-        new Date(s.startTime).getHours() >= 16,
-    );
-    if (!hasDinner) return "PROMPT_DINNER";
+  if (wantsFood) {
+    satiation = 0;
+  } else {
+    // 2. Time Inference
+    if (startHour >= 20) {
+      satiation = 90;
+    } else if (startHour >= 17 && startHour <= 19) {
+      satiation = 20;
+    }
   }
 
-  if (endHour >= 11.5 && endHour <= 13.5) {
-    const hasLunch = timeline.some(
-      (s) =>
-        s.activity?.activity_type === "MEAL" &&
-        new Date(s.startTime).getHours() < 16,
-    );
-    if (!hasLunch) return "PROMPT_LUNCH";
-  }
+  // 3. Late Night Exhaustion
+  if (startHour >= 22) exhaustion = 30;
 
-  return null;
+  return {exhaustion, satiation};
 };
-
-// ─── Scoring ───────────────────────────────────────────────────────────────────
 
 export const scoreActivities = ({
   activities,
   prefs,
   origin,
+  context,
 }: {
   activities: BaseActivity[];
   prefs: UserPrefs;
   origin: ScoredActivity | UserPrefs | null;
+  context: DayContext;
 }): ScoredActivity[] => {
   if (!activities?.length) return [];
 
-  const budgetPerPerson =
-    (Number(prefs.budget) || 0) / (Number(prefs.headCount) || 1);
-
-  const totalAvailableMs =
-    new Date(prefs.endDate).getTime() - new Date(prefs.startDate).getTime();
-
   return activities
     .map((item) => {
-      const distance =
-        item.modality === "STAY_IN" || prefs.modality === "STAY_IN" || !origin
-          ? 0
-          : getDistance(origin, item);
+      const distance = safeGetDistance(origin, item);
+      let score = 50; // Base score
 
-      let score = 50;
+      // --- 1. BIOLOGICAL CONTEXT SCORING ---
+      const type = item.activity_type;
 
+      if (type === "ACTIVE") {
+        // High exhaustion heavily penalizes active ideas
+        score -= context.exhaustion * 0.8;
+      }
+
+      if (type === "MEAL") {
+        // If stuffed (100), massive penalty (-80). If starving (0), massive bonus (+40).
+        if (context.satiation > 70) score -= 80;
+        else score += (100 - context.satiation) * 0.4;
+      }
+
+      if (type === "TREAT") {
+        // Treats are appealing unless completely stuffed
+        if (context.satiation > 85) score -= 40;
+        else score += 15;
+      }
+
+      if (type === "OTHER") {
+        // If exhausted, chill activities get a nice boost
+        if (context.exhaustion > 60) score += 25;
+      }
+
+      // --- 2. VIBES/TAGS MATCHING ---
       if (prefs.vibes && prefs.vibes.length > 0) {
         const matchCount = prefs.vibes.filter((v) =>
           item.tags?.includes(v),
         ).length;
-        score += matchCount * 25;
+        score += matchCount * 15;
       }
 
+      // --- 3. LOGISTICAL PENALTIES ---
+      const budgetPerPerson =
+        (Number(prefs.budget) || 0) / (Number(prefs.headCount) || 1);
       score -=
         Math.abs((Number(item.est_price_per_person) || 0) - budgetPerPerson) *
-        2;
+        1.5;
 
       if (item.modality !== "STAY_IN" && prefs.modality !== "STAY_IN") {
-        score += 5 - distance;
+        score -= distance * 1.2; // Penalize long drives
       }
 
       return {
         ...item,
         est_price_per_person: Number(item.est_price_per_person) || 0,
-        score,
+        score: Math.round(score), // Clean integer
         distance: parseFloat((distance || 0).toFixed(2)),
       } as ScoredActivity;
-    })
-    .filter((item) => {
-      // --- GATEKEEPER 1: Distance ---
-      if (item.modality !== "STAY_IN" && prefs.modality !== "STAY_IN") {
-        if (item.distance > prefs.travelDistance) return false;
-      }
-
-      // --- GATEKEEPER 2: Time ---
-      const durationMs = (Number(item.est_duration_minutes) || 60) * 60_000;
-      const travelMs =
-        item.modality !== "STAY_IN" && prefs.modality !== "STAY_IN"
-          ? snapTo15(item.distance > 0 ? item.distance * 3 + 5 : 0) * 60_000
-          : 0;
-
-      if (durationMs + travelMs * 2 > totalAvailableMs) {
-        return false;
-      }
-
-      return true;
     })
     .sort((a, b) => (b.score || 0) - (a.score || 0));
 };
 
-// ─── API Queries ───────────────────────────────────────────────────────────────
+// ─── Unified Database Query ────────────────────────────────────────────────────
 
-const API_HOST = process.env.EXPO_PUBLIC_API_HOST;
-
-type QueryResponse = {
-  success: boolean;
-  data?: ScoredActivity[];
-  retried?: boolean;
-  error?: any;
-};
-
-// You can use this to fetch the initial batch of activities
-export const queryAnchors = async (
+export const queryCandidates = async (
   prefs: UserPrefs,
-  isRetry = false,
-): Promise<QueryResponse> => {
-  try {
-    const response = await fetch(`${API_HOST}/api/ideas/anchors`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(prefs),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if ((!data || data.length === 0) && !isRetry) {
-      console.log(
-        "No activities found. Wiping vibes and expanding distance...",
-      );
-      return queryAnchors(
-        {
-          ...prefs,
-          vibes: [],
-          travelDistance:
-            prefs.modality === "GO_OUT"
-              ? prefs.travelDistance * 2
-              : prefs.travelDistance,
-        },
-        true,
-      );
-    }
-
-    const rawArray = Array.isArray(data) ? data : [];
-    return {
-      success: true,
-      data: scoreActivities({activities: rawArray, prefs, origin: prefs}),
-      retried: isRetry,
-    };
-  } catch (error) {
-    console.error("queryAnchors error:", error);
-    return {success: false, error};
-  }
-};
-
-// You can use this to fetch subsequent activities based on gaps
-export const queryFillers = async (
-  prefs: UserPrefs,
-  minutes: number,
-  targetBudget: number,
+  maxDuration: number,
+  maxBudget: number,
   origin: ScoredActivity | UserPrefs,
-): Promise<QueryResponse> => {
-  const targetBudgetPerPerson = targetBudget / (Number(prefs.headCount) || 1);
-
-  const originLat = "latitude" in origin ? origin.latitude : null;
-  const originLng = "longitude" in origin ? origin.longitude : null;
-
-  const searchLocation =
-    originLat !== null && originLng !== null
-      ? {latitude: originLat, longitude: originLng}
-      : prefs.currentLocation;
+  context: DayContext,
+) => {
+  const targetBudgetPerPerson = maxBudget / (Number(prefs.headCount) || 1);
 
   try {
-    const response = await fetch(`${API_HOST}/api/ideas/fill-schedule`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        userId: prefs.userId || null,
-        vibes: prefs.vibes || [],
-        budget: targetBudgetPerPerson,
-        modality: prefs.modality,
-        maxDuration: minutes,
-        currentLocation: searchLocation,
-        travelDistance: prefs.travelDistance,
-      }),
+    const {data, error} = await supabase
+      .from("activities")
+      .select(
+        `
+        *, 
+        venues ( name, address, coordinates ),
+        activity_tags ( tags ( name ) )
+      `,
+      )
+      .eq("modality", prefs.modality)
+      .lte("est_price_per_person", targetBudgetPerPerson)
+      .lte("est_duration_minutes", maxDuration);
+
+    if (error) throw error;
+
+    const formatted = (data || []).map((row: any) => {
+      const parsed = parseCoordinates(row.venues?.coordinates);
+      const flatTags = row.activity_tags
+        ? row.activity_tags.map((at: any) => at.tags?.name).filter(Boolean)
+        : [];
+
+      return {
+        ...row,
+        tags: flatTags,
+        latitude: parsed?.latitude ?? null,
+        longitude: parsed?.longitude ?? null,
+      };
     });
-
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
-
-    const data = await response.json();
-    const rawArray = Array.isArray(data) ? data : data?.data || [];
 
     return {
       success: true,
-      data: scoreActivities({activities: rawArray, prefs, origin}),
+      data: scoreActivities({
+        activities: formatted as BaseActivity[],
+        prefs,
+        origin,
+        context,
+      }),
     };
   } catch (error) {
-    console.error("queryFillers error:", error);
+    console.error("queryCandidates error:", error);
     return {success: false, error, data: []};
   }
 };

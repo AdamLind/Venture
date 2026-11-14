@@ -1,11 +1,11 @@
-// src/app/builder.tsx (or wherever this file lives)
+// src/app/builder.tsx
 import * as Haptics from "expo-haptics";
 import {BuilderActivity, TimeSlot} from "@/types/itinerary";
 import {
   PlacedActivity,
   deriveSequentialTimeline,
-  queryAnchors,
-  queryFillers,
+  queryCandidates,
+  evaluateContextAt,
   formatTime,
 } from "@/utils/itineraryEngine";
 import {useLocalSearchParams, router} from "expo-router";
@@ -22,10 +22,12 @@ import {
 import {useActiveDateStore} from "@/src/store/activeDateStore";
 import {Ionicons} from "@expo/vector-icons";
 import {usePrefsStore} from "@/src/store/usePrefsStore";
+import {useBuilderStore} from "@/src/store/useBuilderStore";
 
 export default function BuilderScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
-  const userPrefs = usePrefsStore((state) => state.prefs);
+  const {prefs: userPrefs, resetPrefs} = usePrefsStore();
+  const clearBuilder = useBuilderStore((state) => state.clearBuilder);
   const headCount = userPrefs.headCount;
 
   // Format the visual boundaries of the date
@@ -42,12 +44,11 @@ export default function BuilderScreen() {
   const endMs = new Date(userPrefs.endDate || startMs + 4 * 3600000).getTime();
 
   // ─── Source of Truth ──────────────────────────────────────────────────────────
-  const [placed, setPlaced] = useState<PlacedActivity[]>([]);
+  const {placed, setPlaced, activities, setActivities} = useBuilderStore();
 
   // ─── UI State ─────────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [activities, setActivities] = useState<any[]>([]);
   const [activeGapDuration, setActiveGapDuration] = useState(
     Math.round(Math.abs(endMs - startMs) / 60_000),
   );
@@ -145,13 +146,28 @@ export default function BuilderScreen() {
 
   // ─── Effects ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    loadInitialIdeas();
+    // Only load initial ideas if we don't already have a draft in progress
+    if (activities.length === 0 && placed.length === 0) {
+      loadInitialIdeas();
+    } else {
+      setLoading(false); // Instantly show the saved draft!
+    }
   }, []);
 
   const loadInitialIdeas = async () => {
     try {
       setLoading(true);
-      const result = await queryAnchors(userPrefs);
+      // At the start of the day: 0 exhaustion, 0 satiation (hungry)
+      const initialContext = {exhaustion: 0, satiation: 0};
+
+      const result = await queryCandidates(
+        userPrefs,
+        999, // Infinite duration for the first anchor
+        userPrefs.budget,
+        userPrefs, // Origin is their starting location
+        initialContext,
+      );
+
       if (result.success) {
         setActivities(result.data || []);
       }
@@ -172,19 +188,43 @@ export default function BuilderScreen() {
     );
     setActiveGapDuration(gapDurationMins);
 
+    // Calculate how tired/hungry they are at the moment this gap starts
+    const currentContext = evaluateContextAt(timeline, gapSlot.startTime);
+
     if (placed.length > 0) {
       const origin = placed[placed.length - 1].activity;
       try {
         setIsFetchingFillers(true);
-        const result = await queryFillers(
+        const result = await queryCandidates(
           userPrefs,
           gapDurationMins,
-          userPrefs.budget,
+          remainingBudget,
           origin,
+          currentContext, // <-- Pass the biological state!
         );
         setActivities(result.data || []);
       } catch (error) {
         console.error("handleOpenGap fetch error:", error);
+      } finally {
+        setIsFetchingFillers(false);
+      }
+    } else {
+      // If they deleted everything and are back to the start
+      try {
+        setIsFetchingFillers(true);
+        const initialContext = {exhaustion: 0, satiation: 0};
+        const result = await queryCandidates(
+          userPrefs,
+          999,
+          userPrefs.budget,
+          userPrefs,
+          initialContext,
+        );
+        if (result.success) {
+          setActivities(result.data || []);
+        }
+      } catch (error) {
+        console.error("handleOpenGap anchor fetch error:", error);
       } finally {
         setIsFetchingFillers(false);
       }
@@ -221,6 +261,18 @@ export default function BuilderScreen() {
   };
 
   const startActiveDate = useActiveDateStore((state) => state.startActiveDate);
+
+  const handleFinalize = () => {
+    // 1. Save the final timeline and prefs to your activeDateStore
+    startActiveDate(timeline, userPrefs);
+
+    // 2. Clear out the builder draft so the banner goes away
+    resetPrefs(); // from usePrefsStore
+    clearBuilder(); // from useBuilderStore
+
+    // 3. Send them to the active date screen!
+    router.push("/active-date");
+  };
 
   if (loading) {
     return (
@@ -590,10 +642,7 @@ export default function BuilderScreen() {
 
               <Pressable
                 className="bg-blue-600 py-5 rounded-2xl items-center mb-3 active:bg-blue-700"
-                onPress={() => {
-                  startActiveDate(timeline, userPrefs);
-                  router.push("/active-date");
-                }}
+                onPress={handleFinalize}
               >
                 <Text className="text-white font-bold text-lg">
                   Finalize Itinerary

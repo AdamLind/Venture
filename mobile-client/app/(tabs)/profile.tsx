@@ -40,7 +40,7 @@ export default function ProfileScreen() {
           </View>
 
           <Text className="text-white font-bold text-2xl mt-4 tracking-tight">
-            Sarah & John
+            Anna & Adam
           </Text>
           <Text className="text-zinc-400 font-medium text-sm mt-1">
             @sarah_and_john

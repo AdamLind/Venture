@@ -64,22 +64,16 @@ export default function TabLayout() {
           }}
         />
 
-        {/* --- THE STEALTH ACTION TAB --- */}
         <Tabs.Screen
-          name="action"
-          // 1. Intercept the native tap event before it can change tabs
-          listeners={() => ({
-            tabPress: (e) => {
-              e.preventDefault(); // Stops the tab from highlighting/switching
-              router.push("/plan"); // Fires your modal instead
-            },
-          })}
+          name="plan"
           options={{
             title: "Plan",
-            // 2. Render it as a standard tabBarIcon so the layout math is identical
-            tabBarIcon: () => (
-              // Hardcode the inactive gray so it never looks "selected"
-              <Ionicons name="add-circle-outline" size={28} color="#52525b" />
+            tabBarIcon: ({color, focused}) => (
+              <Ionicons
+                name={focused ? "add-circle" : "add-circle-outline"}
+                size={28}
+                color={color}
+              />
             ),
           }}
         />
@@ -108,16 +102,6 @@ export default function TabLayout() {
                 color={color}
               />
             ),
-          }}
-        />
-
-        {/* DETAIL SCREEN */}
-        <Tabs.Screen
-          name="detail/[id]"
-          options={{
-            href: null,
-            title: "Activity Idea",
-            headerShown: false,
           }}
         />
       </Tabs>

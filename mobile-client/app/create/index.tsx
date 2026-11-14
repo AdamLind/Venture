@@ -714,7 +714,7 @@ export default function CreateScreen() {
                   );
                 }
               }}
-              placeholder="120"
+              placeholder="e.g. 120"
               placeholderTextColor="#71717a"
               keyboardType="number-pad"
               className={`text-white p-4 rounded-2xl border ${
