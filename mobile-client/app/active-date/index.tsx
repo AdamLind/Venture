@@ -19,9 +19,9 @@ import {
   Linking,
   Platform,
   Alert,
-  Animated,
   StyleSheet,
   useWindowDimensions,
+  type ScrollViewInstance,
 } from "react-native";
 import MapView, {Marker, Polyline} from "react-native-maps";
 import {Image} from "expo-image";
@@ -31,6 +31,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import {router} from "expo-router";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 import {GestureDetector, usePanGesture} from "react-native-gesture-handler";
+import Reanimated, {useAnimatedStyle, useSharedValue, withSpring} from "react-native-reanimated";
+import {scheduleOnRN} from "react-native-worklets";
 
 import type {TimeSlot} from "@/types/itinerary";
 import {useActiveDateStore} from "@/src/store/activeDateStore";
@@ -47,6 +49,8 @@ import {
 } from "@/components/builder/BuilderParts";
 
 const BLUE = "#3b82f6";
+// Settles quickly without bouncing past the snap point
+const SHEET_SPRING = {damping: 30, stiffness: 300, mass: 0.9, overshootClamping: true};
 const GREEN = "#22c55e";
 
 const clockTime = (ms: number) =>
@@ -155,36 +159,44 @@ export default function ActiveDateScreen() {
     });
 
   // ─── The sheet: drag the top part between half and full height ──────────
+  // Runs on the UI thread, so it stays smooth while the screen re-renders
   const range = collapsedTop - sheetTop;
-  const [sheetY] = useState(() => new Animated.Value(range));
-  const sheetPos = useRef(range);
-  const dragStart = useRef(0);
+  const sheetY = useSharedValue(range);
+  const dragStart = useSharedValue(0);
   const [expanded, setExpanded] = useState(false);
+  const listRef = useRef<ScrollViewInstance>(null);
+
+  const onSnapped = (toExpanded: boolean) => {
+    setExpanded(toExpanded);
+    // Collapsed shows the top of the plan
+    if (!toExpanded) listRef.current?.scrollTo({y: 0, animated: false});
+  };
 
   const snapSheet = (toExpanded: boolean) => {
-    const to = toExpanded ? 0 : range;
-    sheetPos.current = to;
-    setExpanded(toExpanded);
-    Animated.spring(sheetY, {toValue: to, useNativeDriver: true, bounciness: 2}).start();
+    sheetY.set(withSpring(toExpanded ? 0 : range, SHEET_SPRING));
+    onSnapped(toExpanded);
   };
 
   const sheetPan = usePanGesture({
-    runOnJS: true,
     activeOffsetY: [-8, 8],
     onActivate: () => {
-      dragStart.current = sheetPos.current;
+      "worklet";
+      dragStart.set(sheetY.get());
     },
     onUpdate: (e) => {
-      const y = Math.max(0, Math.min(range, dragStart.current + e.translationY));
-      sheetPos.current = y;
-      sheetY.setValue(y);
+      "worklet";
+      sheetY.set(Math.max(0, Math.min(range, dragStart.get() + e.translationY)));
     },
     onDeactivate: (e) => {
+      "worklet";
       const flungUp = e.velocityY < -500;
       const flungDown = e.velocityY > 500;
-      snapSheet(flungUp || (!flungDown && sheetPos.current < range / 2));
+      const toExpanded = flungUp || (!flungDown && sheetY.get() < range / 2);
+      sheetY.set(withSpring(toExpanded ? 0 : range, SHEET_SPRING));
+      scheduleOnRN(onSnapped, toExpanded);
     },
   });
+  const sheetStyle = useAnimatedStyle(() => ({transform: [{translateY: sheetY.get()}]}));
 
   // ─── Leaving ─────────────────────────────────────────────────────────────
   const close = () => (router.canGoBack() ? router.back() : router.replace("/"));
@@ -583,6 +595,10 @@ export default function ActiveDateScreen() {
           ref={mapRef}
           style={StyleSheet.absoluteFill}
           userInterfaceStyle="dark"
+          mapType={Platform.OS === "ios" ? "mutedStandard" : "standard"}
+          showsPointsOfInterests={false}
+          showsCompass={false}
+          pitchEnabled={false}
           showsUserLocation
           mapPadding={{top: insets.top + 56, bottom: screenHeight - collapsedTop, left: 0, right: 0}}
           initialRegion={{
@@ -604,11 +620,17 @@ export default function ActiveDateScreen() {
                 tracksViewChanges={false}
               >
                 <View
-                  className="rounded-full items-center justify-center border-2 border-white"
+                  className="rounded-full items-center justify-center"
                   style={{
-                    width: isFocus ? 34 : 26,
-                    height: isFocus ? 34 : 26,
-                    backgroundColor: done ? "#3f3f46" : isFocus ? BLUE : "#27272a",
+                    width: isFocus ? 38 : done ? 22 : 28,
+                    height: isFocus ? 38 : done ? 22 : 28,
+                    borderWidth: isFocus ? 3 : 2,
+                    borderColor: "white",
+                    backgroundColor: done ? "#52525b" : isFocus ? BLUE : "#18181b",
+                    shadowColor: "#000",
+                    shadowOpacity: 0.45,
+                    shadowRadius: 6,
+                    shadowOffset: {width: 0, height: 3},
                   }}
                 >
                   {done ? (
@@ -622,9 +644,10 @@ export default function ActiveDateScreen() {
           })}
           <Polyline
             coordinates={locations.map((a) => ({latitude: a.latitude, longitude: a.longitude}))}
-            strokeColor={BLUE}
-            strokeWidth={3}
-            lineDashPattern={[6, 6]}
+            strokeColor="rgba(96,165,250,0.85)"
+            strokeWidth={4}
+            lineCap="round"
+            lineDashPattern={[1, 10]}
           />
         </MapView>
       ) : (
@@ -668,11 +691,8 @@ export default function ActiveDateScreen() {
       </View>
 
       {/* THE SHEET */}
-      <Animated.View
-        style={[
-          styles.sheet,
-          {top: sheetTop, height: screenHeight - sheetTop, transform: [{translateY: sheetY}]},
-        ]}
+      <Reanimated.View
+        style={[styles.sheet, {top: sheetTop, height: screenHeight - sheetTop}, sheetStyle]}
       >
         <GestureDetector gesture={sheetPan}>
           <View>
@@ -691,18 +711,14 @@ export default function ActiveDateScreen() {
         <View className="h-px bg-zinc-800 mx-5" />
 
         <ScrollView
+          ref={listRef}
           scrollEnabled={expanded}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{paddingTop: 12, paddingBottom: insets.bottom + 32}}
         >
-          {!expanded && (
-            <Pressable onPress={() => snapSheet(true)} className="self-center mb-1 active:opacity-70">
-              <Text className="text-zinc-500 text-sm font-semibold">Swipe up for the whole plan</Text>
-            </Pressable>
-          )}
           {timelineView}
         </ScrollView>
-      </Animated.View>
+      </Reanimated.View>
     </View>
   );
 }

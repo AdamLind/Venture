@@ -49,6 +49,9 @@ import {
   formatMinutes,
 } from "@/components/builder/BuilderParts";
 import DraggableStop, {type StopLayouts} from "@/components/builder/DraggableStop";
+import Reanimated, {useAnimatedStyle, useSharedValue, withTiming} from "react-native-reanimated";
+import {scheduleOnRN} from "react-native-worklets";
+import {GestureDetector, usePanGesture} from "react-native-gesture-handler";
 
 export default function BuilderScreen() {
   const scrollViewRef = useRef<ScrollViewInstance>(null);
@@ -302,9 +305,22 @@ export default function BuilderScreen() {
   };
 
   // ─── Reordering (drag, or VoiceOver's Move earlier / later) ─────────────────
+  // One long-press drag on the timeline container (rows move when the list
+  // reorders, and iOS cancels a gesture whose view moves). While dragging, a
+  // floating copy of the stop follows the finger on the UI thread (dragY);
+  // the row stays behind as a faint placeholder, and `placed` reorders as
+  // the copy crosses its neighbours, so times update live.
+  // See components/builder/DraggableStop.tsx.
   const [stopLayouts] = useState<StopLayouts>(() => new Map());
-  const [draggingId, setDraggingId] = useState<number | null>(null);
+  type Drag = {id: number; x: number; y: number; width: number; height: number};
+  const [drag, setDrag] = useState<Drag | null>(null);
+  // The gesture's callbacks are created once, so they read this, not state
+  const dragRef = useRef<Drag | null>(null);
   const lastSwapAt = useRef(0);
+  const dragY = useSharedValue(0);
+  const ghostStyle = useAnimatedStyle(() => ({
+    transform: [{translateY: dragY.get()}, {scale: 1.02}],
+  }));
 
   const moveStop = (ideaId: number, toIndex: number) => {
     setPlaced((prev) => {
@@ -318,32 +334,98 @@ export default function BuilderScreen() {
     });
   };
 
-  const handleDragStart = (ideaId: number) => {
-    setDraggingId(ideaId);
+  // Long press landed at `y` (timeline coordinates): lift the stop there, if any
+  const handleDragStart = (y: number) => {
+    const order = useBuilderStore.getState().placed.map((p) => p.activity.idea_id);
+    const ideaId = order.find((id) => {
+      const layout = stopLayouts.get(id);
+      return layout && y >= layout.y && y <= layout.y + layout.height;
+    });
+    const layout = ideaId != null ? stopLayouts.get(ideaId) : undefined;
+    if (ideaId == null || !layout) return;
+    dragRef.current = {id: ideaId, ...layout};
+    setDrag(dragRef.current);
     if (process.env.EXPO_OS === "ios")
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  // The lifted card's middle crossed a neighbour's middle: swap them
-  const handleDragMove = (ideaId: number, centerY: number) => {
+  // The copy's middle crossed a neighbour's middle: move the stop there
+  const handleDragMove = (translationY: number) => {
+    const current = dragRef.current;
+    if (!current) return;
+    const ideaId = current.id;
     // Let the rows re-measure after a swap before deciding again
-    if (Date.now() - lastSwapAt.current < 120) return;
+    if (Date.now() - lastSwapAt.current < 100) return;
+    // Swap once the copy's leading edge reaches a neighbour's middle (not
+    // its own middle: that meant dragging almost all the way past). Edge vs
+    // middle also leaves a dead zone after a swap, so it can't flip back.
+    const top = current.y + translationY;
+    const bottom = top + current.height;
     const order = useBuilderStore.getState().placed.map((p) => p.activity.idea_id);
     const from = order.indexOf(ideaId);
-    let to = 0;
-    for (const other of order) {
-      if (other === ideaId) continue;
-      const layout = stopLayouts.get(other);
-      if (layout && layout.y + layout.height / 2 < centerY) to++;
+    if (from === -1) return;
+    const middle = (id: number) => {
+      const layout = stopLayouts.get(id);
+      return layout ? layout.y + layout.height / 2 : null;
+    };
+    let to = from;
+    for (let i = from + 1; i < order.length; i++) {
+      const m = middle(order[i]);
+      if (m === null || bottom < m) break;
+      to = i;
     }
-    if (from !== -1 && to !== from) {
+    if (to === from) {
+      for (let i = from - 1; i >= 0; i--) {
+        const m = middle(order[i]);
+        if (m === null || top > m) break;
+        to = i;
+      }
+    }
+    if (to !== from) {
       lastSwapAt.current = Date.now();
       moveStop(ideaId, to);
       if (process.env.EXPO_OS === "ios") Haptics.selectionAsync();
     }
   };
 
-  const handleDragEnd = () => setDraggingId(null);
+  const clearDrag = () => {
+    dragRef.current = null;
+    setDrag(null);
+  };
+
+  // Settle the copy onto the stop's new row, then drop it
+  const handleDragEnd = () => {
+    const current = dragRef.current;
+    const layout = current ? stopLayouts.get(current.id) : undefined;
+    if (!current || !layout) {
+      clearDrag();
+      return;
+    }
+    dragY.set(withTiming(layout.y - current.y, {duration: 160}, () => {
+      "worklet";
+      scheduleOnRN(clearDrag);
+    }));
+  };
+
+  const reorderPan = usePanGesture({
+    enabled: placed.length > 1 && !reviewingItinerary,
+    // Hold first, so a normal swipe still scrolls and taps still work
+    activateAfterLongPress: 250,
+    onActivate: (e) => {
+      "worklet";
+      dragY.set(0);
+      scheduleOnRN(handleDragStart, e.y);
+    },
+    onUpdate: (e) => {
+      "worklet";
+      dragY.set(e.translationY);
+      scheduleOnRN(handleDragMove, e.translationY);
+    },
+    onDeactivate: () => {
+      "worklet";
+      scheduleOnRN(handleDragEnd);
+    },
+  });
 
   const handleRemoveActivity = (ideaId: number | string) => {
     if (process.env.EXPO_OS === "ios")
@@ -575,11 +657,8 @@ export default function BuilderScreen() {
         <DraggableStop
           key={`stop-${ideaId}`}
           id={ideaId}
-          enabled={canMove}
+          dragging={drag?.id === ideaId}
           layouts={stopLayouts}
-          onDragStart={handleDragStart}
-          onDragMove={handleDragMove}
-          onDragEnd={handleDragEnd}
         >
           <TimelineRow node={<StopNode index={index + 1} />}>
             <StopCard
@@ -596,7 +675,37 @@ export default function BuilderScreen() {
       );
     });
 
-  const timelineView = (editable: boolean) => (
+  // The floating copy of the stop being dragged (with its live times)
+  const dragSlot = drag
+    ? timeline.find((slot) => slot.activity?.idea_id === drag.id)
+    : undefined;
+  const dragGhost = drag && dragSlot && (
+    <Reanimated.View
+      pointerEvents="none"
+      style={[
+        {
+          position: "absolute",
+          left: drag.x,
+          top: drag.y,
+          width: drag.width,
+          zIndex: 20,
+          shadowColor: "#000",
+          shadowOpacity: 0.55,
+          shadowRadius: 18,
+          shadowOffset: {width: 0, height: 10},
+          elevation: 14,
+        },
+        ghostStyle,
+      ]}
+    >
+      <TimelineRow node={<StopNode index={stopNumber(dragSlot.id)} />}>
+        <StopCard slot={dragSlot} headCount={headCount} />
+      </TimelineRow>
+    </Reanimated.View>
+  );
+
+  const timelineView = (editable: boolean) => {
+    const view = (
     <View className="px-4">
       <TimelineRow isFirst node={<MarkerNode icon={goingOut ? "home" : "play"} />}>
         <MarkerLabel label={goingOut ? "Leave" : "Start"} time={simpleStartTime} />
@@ -605,8 +714,12 @@ export default function BuilderScreen() {
       <TimelineRow isLast node={<MarkerNode icon="flag" />}>
         <MarkerLabel label="Ends" time={isInfinite ? "Whenever" : simpleEndTime} />
       </TimelineRow>
+      {editable && dragGhost}
     </View>
-  );
+    );
+    // The reorder drag lives on the container (it never moves)
+    return editable ? <GestureDetector gesture={reorderPan}>{view}</GestureDetector> : view;
+  };
 
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -615,7 +728,7 @@ export default function BuilderScreen() {
 
       <ScrollView
         ref={scrollViewRef}
-        scrollEnabled={draggingId === null}
+        scrollEnabled={drag === null}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{paddingBottom: insets.bottom + 120}}
       >
