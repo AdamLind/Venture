@@ -4,6 +4,7 @@ import {BaseActivity} from "@/types/activities";
 import {getDistance} from "./geo";
 import {UserPrefs} from "@/src/store/usePrefsStore";
 import {supabase} from "@/src/supabase";
+import {useProfileStore} from "@/src/store/useProfileStore";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -338,6 +339,7 @@ export const queryCandidates = async (
   context: DayContext,
 ) => {
   const targetBudgetPerPerson = maxBudget / (Number(prefs.headCount) || 1);
+  const userId = useProfileStore.getState().userId;
 
   try {
     const {data, error} = await supabase
@@ -349,9 +351,14 @@ export const queryCandidates = async (
         activity_tags ( tags ( name ) )
       `,
       )
-      // Published ideas, plus your own private ones (meant for your own
-      // plans). Not ideas still in review or turned down.
-      .in("visibility", ["PUBLISHED", "PRIVATE"])
+      // Published ideas, plus ALL of your own: until one is approved it acts
+      // like a private idea (yours to plan with, hidden from everyone else;
+      // RLS enforces the "hidden" part, this just says it out loud)
+      .or(
+        userId
+          ? `visibility.eq.PUBLISHED,user_id.eq.${userId}`
+          : "visibility.eq.PUBLISHED",
+      )
       .eq("modality", prefs.modality)
       .lte("est_price_per_person", targetBudgetPerPerson)
       .lte("est_duration_minutes", maxDuration);

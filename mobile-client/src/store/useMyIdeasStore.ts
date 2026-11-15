@@ -68,9 +68,12 @@ export const useMyIdeasStore = create<MyIdeasState>((set, get) => ({
   },
 
   setVisibility: async (ideaId, visibility) => {
+    // Resubmitting starts a fresh review; withdrawing keeps the last note
+    // so you still have the feedback when you come back to it
+    const resubmit = visibility === "PENDING_REVIEW";
     const {data, error} = await supabase
       .from("activities")
-      .update({visibility, moderation_note: null})
+      .update(resubmit ? {visibility, moderation_note: null} : {visibility})
       .eq("idea_id", ideaId)
       .select("idea_id")
       .maybeSingle();
@@ -80,7 +83,7 @@ export const useMyIdeasStore = create<MyIdeasState>((set, get) => ({
     set({
       ideas: get().ideas.map((idea) =>
         idea.idea_id === ideaId
-          ? {...idea, visibility, moderation_note: null}
+          ? {...idea, visibility, moderation_note: resubmit ? null : idea.moderation_note}
           : idea,
       ),
     });

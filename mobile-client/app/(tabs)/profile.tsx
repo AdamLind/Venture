@@ -19,6 +19,7 @@ import {MyIdeaRow, SavedIdeaRow} from "@/components/ideas/IdeaRows";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {showIdeaActions} from "@/src/lib/ideaActions";
+import type {IdeaVisibility} from "@/types/ideas";
 
 type Tab = "past" | "bucket" | "ideas";
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -48,6 +49,20 @@ const EMPTY_STATES: Record<Tab, {icon: IconName; title: string; body: string}> =
     },
   };
 
+// My Ideas, grouped by what they need from you. The reviewer outcomes you
+// can act on (edit and resubmit, withdraw, or delete) come first, in a
+// highlighted "Needs your attention" panel, still grouped by status.
+const ATTENTION_GROUPS: {title: string; status: IdeaVisibility}[] = [
+  {title: "Needs changes", status: "NEEDS_REVISION"},
+  {title: "Not approved", status: "REJECTED"},
+];
+const IDEA_SECTIONS: {title: string; status: IdeaVisibility}[] = [
+  {title: "In review", status: "PENDING_REVIEW"},
+  {title: "Live", status: "PUBLISHED"},
+  {title: "Private", status: "PRIVATE"},
+];
+const ATTENTION_COLOR = "#fb923c";
+
 function Chip({icon, label}: {icon: IconName; label: string}) {
   return (
     <View className="bg-zinc-900 px-3 py-1.5 rounded-xl border border-zinc-800 flex-row items-center gap-1.5">
@@ -74,6 +89,9 @@ export default function ProfileScreen() {
   const toggleSaved = useSavedStore((s) => s.toggle);
   const reloadSaved = useSavedStore((s) => s.reload);
   const myIdeas = useMyIdeasStore((s) => s.ideas);
+  const attentionCount = myIdeas.filter(
+    (idea) => idea.visibility === "NEEDS_REVISION" || idea.visibility === "REJECTED",
+  ).length;
   const reloadMyIdeas = useMyIdeasStore((s) => s.reload);
   const refresh = useTabRefresh(() =>
     Promise.all([reload(), reloadDates(), reloadSaved(), reloadMyIdeas()]),
@@ -242,11 +260,20 @@ export default function ProfileScreen() {
                 accessibilityState={{selected: active}}
                 className={`flex-1 py-2.5 rounded-xl items-center ${active ? "bg-zinc-800" : ""}`}
               >
-                <Text
-                  className={`font-semibold text-sm ${active ? "text-white" : "text-zinc-500"}`}
-                >
-                  {tab.label}
-                </Text>
+                <View className="flex-row items-center gap-1.5">
+                  <Text
+                    className={`font-semibold text-sm ${active ? "text-white" : "text-zinc-500"}`}
+                  >
+                    {tab.label}
+                  </Text>
+                  {tab.key === "ideas" && attentionCount > 0 && (
+                    <View
+                      className="w-2 h-2 rounded-full"
+                      style={{backgroundColor: ATTENTION_COLOR}}
+                      accessibilityLabel={`${attentionCount} need your attention`}
+                    />
+                  )}
+                </View>
               </Pressable>
             );
           })}
@@ -292,14 +319,72 @@ export default function ProfileScreen() {
             ))}
           </View>
         ) : activeTab === "ideas" && myIdeas.length > 0 ? (
-          <View className="gap-3">
-            {myIdeas.map((idea) => (
-              <MyIdeaRow
-                key={idea.idea_id}
-                idea={idea}
-                onMore={() => showIdeaActions(idea)}
-              />
-            ))}
+          <View className="gap-6">
+            {/* NEEDS YOUR ATTENTION: highlighted, grouped by verdict */}
+            {attentionCount > 0 && (
+              <View
+                className="rounded-3xl p-3 gap-4 border"
+                style={{
+                  backgroundColor: "rgba(251,146,60,0.08)",
+                  borderColor: "rgba(251,146,60,0.35)",
+                }}
+              >
+                <View className="flex-row items-center gap-2 px-1 pt-1">
+                  <Ionicons name="alert-circle" size={18} color={ATTENTION_COLOR} />
+                  <Text className="font-bold text-base flex-1" style={{color: ATTENTION_COLOR}}>
+                    Needs your attention
+                  </Text>
+                  <View
+                    className="min-w-6 h-6 px-1.5 rounded-full items-center justify-center"
+                    style={{backgroundColor: ATTENTION_COLOR}}
+                  >
+                    <Text className="text-black font-bold text-xs">{attentionCount}</Text>
+                  </View>
+                </View>
+                {ATTENTION_GROUPS.map((group) => {
+                  const ideas = myIdeas.filter((idea) => idea.visibility === group.status);
+                  if (ideas.length === 0) return null;
+                  return (
+                    <View key={group.status} className="gap-2">
+                      <Text className="text-zinc-300 text-xs font-bold uppercase tracking-wider px-1">
+                        {group.title} · {ideas.length}
+                      </Text>
+                      {ideas.map((idea) => (
+                        <MyIdeaRow
+                          key={idea.idea_id}
+                          idea={idea}
+                          onMore={() => showIdeaActions(idea)}
+                        />
+                      ))}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {IDEA_SECTIONS.map((section) => {
+              const ideas = myIdeas.filter((idea) => idea.visibility === section.status);
+              if (ideas.length === 0) return null;
+              return (
+                <View key={section.title} className="gap-3">
+                  <View className="flex-row items-baseline gap-2 px-1">
+                    <Text className="text-white font-bold text-base">
+                      {section.title}
+                    </Text>
+                    <Text className="text-zinc-500 font-semibold text-sm">
+                      {ideas.length}
+                    </Text>
+                  </View>
+                  {ideas.map((idea) => (
+                    <MyIdeaRow
+                      key={idea.idea_id}
+                      idea={idea}
+                      onMore={() => showIdeaActions(idea)}
+                    />
+                  ))}
+                </View>
+              );
+            })}
           </View>
         ) : (
           <View className="items-center py-10 px-6">

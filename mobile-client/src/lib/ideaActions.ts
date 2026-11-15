@@ -1,16 +1,18 @@
 // src/lib/ideaActions.ts
 // The ••• menu for one of your own ideas (Profile > My Ideas).
 //
+//   Every idea ........ Edit (saving sends it to review, or keeps it private)
 //   Published ......... Unpublish (back to private)
 //   Private ........... Submit for review, Delete
 //   In review ......... Withdraw from review, Delete
 //   Needs changes /
-//   Not approved ...... Delete
+//   Not approved ...... Withdraw (make private), Delete
 //
 // Published ideas can't be deleted outright: deleting would silently pull
 // them out of other people's dates and bucket lists. Unpublish first.
 
 import {ActionSheetIOS, Alert, Platform} from "react-native";
+import {router} from "expo-router";
 import Toast from "react-native-toast-message";
 
 import {IDEA_STATUS} from "@/src/lib/ideas";
@@ -50,7 +52,13 @@ function confirm(
 
 export function showIdeaActions(idea: IdeaSummary) {
   const {setVisibility, remove} = useMyIdeasStore.getState();
-  const actions: Action[] = [];
+  const actions: Action[] = [
+    {
+      label: "Edit",
+      run: () =>
+        router.push({pathname: "/create", params: {ideaId: String(idea.idea_id)}}),
+    },
+  ];
 
   if (idea.visibility === "PUBLISHED") {
     actions.push({
@@ -82,7 +90,11 @@ export function showIdeaActions(idea: IdeaSummary) {
     });
   }
 
-  if (idea.visibility === "PENDING_REVIEW") {
+  if (
+    idea.visibility === "PENDING_REVIEW" ||
+    idea.visibility === "NEEDS_REVISION" ||
+    idea.visibility === "REJECTED"
+  ) {
     actions.push({
       label: "Withdraw from review",
       run: () =>
@@ -133,14 +145,30 @@ export function showIdeaActions(idea: IdeaSummary) {
       (index) => actions[index]?.run(),
     );
   } else {
-    // Android alerts fit two actions plus Cancel, which is the most we have
-    Alert.alert(idea.title, detail, [
-      {text: "Cancel", style: "cancel"},
-      ...actions.map((a) => ({
-        text: a.label,
-        style: a.destructive ? ("destructive" as const) : ("default" as const),
-        onPress: a.run,
-      })),
-    ]);
+    showAndroidActions(idea.title, detail, actions);
   }
+}
+
+/** Android alerts fit at most three buttons, so overflow goes under "More". */
+function showAndroidActions(title: string, message: string, actions: Action[]) {
+  const toButton = (a: Action) => ({
+    text: a.label,
+    style: a.destructive ? ("destructive" as const) : ("default" as const),
+    onPress: a.run,
+  });
+  if (actions.length <= 2) {
+    Alert.alert(title, message, [
+      {text: "Cancel", style: "cancel"},
+      ...actions.map(toButton),
+    ]);
+    return;
+  }
+  Alert.alert(title, message, [
+    {text: "Cancel", style: "cancel"},
+    toButton(actions[0]),
+    {
+      text: "More",
+      onPress: () => showAndroidActions(title, message, actions.slice(1)),
+    },
+  ]);
 }

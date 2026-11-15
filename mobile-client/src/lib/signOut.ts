@@ -7,6 +7,7 @@ import {useActiveDateStore} from "@/src/store/activeDateStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
+import {useNotificationStore} from "@/src/store/useNotificationStore";
 import {friendlyError} from "@/src/lib/profile";
 
 /** Clears every in-memory store so the next person on this device starts fresh. */
@@ -15,6 +16,7 @@ function clearLocalState() {
   useItineraryStore.getState().clear();
   useSavedStore.getState().clear();
   useMyIdeasStore.getState().clear();
+  useNotificationStore.getState().clear();
   usePrefsStore.getState().resetPrefs();
   useBuilderStore.getState().clearBuilder();
   useActiveDateStore.getState().endActiveDate();

@@ -66,8 +66,22 @@ export function StatusChip({visibility}: {visibility: IdeaVisibility}) {
   );
 }
 
+/** A small status icon pinned to the corner of an idea's photo. */
+export function StatusBadge({visibility}: {visibility: IdeaVisibility}) {
+  const status = IDEA_STATUS[visibility];
+  return (
+    <View
+      className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-black items-center justify-center"
+      accessibilityLabel={status.label}
+    >
+      <Ionicons name={status.icon} size={18} color={status.color} />
+    </View>
+  );
+}
+
 /**
- * My Ideas row: photo, title, status, and the reviewer's note if any.
+ * My Ideas row: photo (with a status icon), title, and the reviewer's note if
+ * any. The list is grouped by status, so the group heading names it.
  * Tapping opens the idea; the ••• button opens its actions.
  */
 export function MyIdeaRow({
@@ -83,16 +97,18 @@ export function MyIdeaRow({
       className="bg-zinc-900 border border-zinc-800 rounded-3xl p-3 active:opacity-80"
     >
       <View className="flex-row items-center">
-        <Image
-          source={{uri: ideaImage(idea)}}
-          style={{width: 64, height: 64, borderRadius: 16}}
-          contentFit="cover"
-        />
-        <View className="flex-1 ml-3 gap-1">
+        <View>
+          <Image
+            source={{uri: ideaImage(idea)}}
+            style={{width: 64, height: 64, borderRadius: 16}}
+            contentFit="cover"
+          />
+          <StatusBadge visibility={idea.visibility} />
+        </View>
+        <View className="flex-1 ml-3 gap-0.5">
           <Text className="text-white font-bold text-base" numberOfLines={1}>
             {idea.title}
           </Text>
-          <StatusChip visibility={idea.visibility} />
           <Meta idea={idea} />
         </View>
         <Pressable
@@ -105,7 +121,8 @@ export function MyIdeaRow({
           <Ionicons name="ellipsis-horizontal" size={20} color="#a1a1aa" />
         </Pressable>
       </View>
-      {idea.moderation_note ? (
+      {idea.moderation_note &&
+      (idea.visibility === "NEEDS_REVISION" || idea.visibility === "REJECTED") ? (
         <View className="mt-3 bg-black/40 rounded-2xl px-3 py-2.5 flex-row gap-2">
           <Ionicons name="chatbubble-ellipses-outline" size={14} color="#a1a1aa" style={{marginTop: 2}} />
           <Text className="text-zinc-300 text-sm flex-1">{idea.moderation_note}</Text>

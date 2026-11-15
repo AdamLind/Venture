@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from "react";
+import React, {useCallback, useState} from "react";
 import {
   View,
   Text,
@@ -8,9 +8,10 @@ import {
   Animated,
   Modal,
   Dimensions,
+  StyleSheet,
 } from "react-native";
 import {Image} from "expo-image";
-import {useRouter, useLocalSearchParams} from "expo-router";
+import {useFocusEffect, useRouter, useLocalSearchParams} from "expo-router";
 import Ionicons from "@expo/vector-icons/build/Ionicons";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 import MapView, {Marker} from "react-native-maps";
@@ -19,6 +20,8 @@ import {supabase} from "@/src/supabase";
 import {useLocationStore} from "@/src/store/useLocationStore";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import SaveButton from "@/components/ideas/SaveButton";
+import GlassSurface from "@/components/ui/GlassSurface";
+import {showIdeaMenu} from "@/src/lib/reportIdea";
 import {StatusChip} from "@/components/ideas/IdeaRows";
 import {IDEA_STATUS} from "@/src/lib/ideas";
 
@@ -56,7 +59,9 @@ export default function IdeaDetailScreen() {
   });
 
   // --- FETCH DATA ---
-  useEffect(() => {
+  // On focus, so coming back from editing the idea shows the new version
+  useFocusEffect(
+    useCallback(() => {
     const fetchIdeaDetails = async () => {
       try {
         const {data, error: dbError} = await supabase
@@ -85,7 +90,8 @@ export default function IdeaDetailScreen() {
     };
 
     if (id) fetchIdeaDetails();
-  }, [id]);
+    }, [id]),
+  );
 
   const handleOpenMap = async () => {
     setIsMapModalVisible(true);
@@ -150,9 +156,21 @@ export default function IdeaDetailScreen() {
   const coords = idea.venues?.coordinates
     ? parseCoordinates(idea.venues.coordinates)
     : null;
-  // Your own idea that isn't live yet: say where it stands
-  const showStatus =
-    idea.user_id === myUserId && idea.visibility !== "PUBLISHED";
+  // Your own idea: say where it stands, and offer to edit it
+  const isMine = !!myUserId && idea.user_id === myUserId;
+  // After a verdict: what the reviewer said (kept for reference if you
+  // withdrew it to private)
+  const review = !isMine
+    ? null
+    : idea.visibility === "NEEDS_REVISION"
+      ? {title: "What to change", color: "#fb923c", canResubmit: true}
+      : idea.visibility === "REJECTED"
+        ? {title: "Why it wasn't approved", color: "#f87171", canResubmit: true}
+        : idea.visibility === "PRIVATE" && idea.moderation_note
+          ? {title: "From the last review", color: "#a1a1aa", canResubmit: false}
+          : null;
+  const editIdea = () =>
+    router.push({pathname: "/create", params: {ideaId: String(idea.idea_id)}});
 
   return (
     <View className="flex-1 bg-black">
@@ -233,20 +251,38 @@ export default function IdeaDetailScreen() {
             </Text>
           </View>
 
-          {showStatus && (
+          {isMine && (
             <View className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 mb-6 gap-2">
               <StatusChip visibility={idea.visibility} />
               <Text className="text-zinc-300 text-sm">
                 {IDEA_STATUS[idea.visibility as keyof typeof IDEA_STATUS]?.detail}
               </Text>
-              {idea.moderation_note ? (
-                <Text className="text-zinc-400 text-sm">
-                  <Text className="text-zinc-200 font-semibold">
-                    {"Reviewer's note: "}
-                  </Text>
-                  {idea.moderation_note}
+            </View>
+          )}
+
+          {/* REVIEWER'S NOTES (your idea, after a verdict) */}
+          {review && (
+            <View
+              className="rounded-3xl p-4 mb-6 border gap-2"
+              style={{backgroundColor: `${review.color}14`, borderColor: `${review.color}55`}}
+            >
+              <View className="flex-row items-center gap-2">
+                <Ionicons name="chatbubble-ellipses" size={16} color={review.color} />
+                <Text className="font-bold text-base" style={{color: review.color}}>
+                  {review.title}
                 </Text>
-              ) : null}
+              </View>
+              <Text className="text-zinc-200 text-[15px] leading-6">
+                {idea.moderation_note || "The reviewer didn't leave a note."}
+              </Text>
+              {review.canResubmit && (
+                <Pressable
+                  onPress={editIdea}
+                  className="mt-2 bg-white rounded-2xl py-3 items-center active:opacity-80"
+                >
+                  <Text className="text-black font-bold">Edit and resubmit</Text>
+                </Pressable>
+              )}
             </View>
           )}
 
@@ -383,16 +419,48 @@ export default function IdeaDetailScreen() {
         </View>
       </Animated.ScrollView>
       {/* BACK BUTTON (Stays totally still while the image zooms!) */}
-      <Pressable
-        onPress={() => router.back()}
-        className="absolute top-15 left-4 w-11 h-11 rounded-full bg-zinc-900/50 backdrop-blur-xl items-center justify-center border border-white/15 shadow-lg z-50"
-      >
-        <Ionicons name="chevron-back" size={24} color="white" />
-      </Pressable>
+      <View className="absolute top-15 left-4 z-50">
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          className="active:opacity-70"
+        >
+          <GlassSurface style={styles.glassButton}>
+            <Ionicons name="chevron-back" size={24} color="white" />
+          </GlassSurface>
+        </Pressable>
+      </View>
 
-      {/* SAVE TO BUCKET LIST (mirrors the back button) */}
-      <View className="absolute top-15 right-4 z-50">
-        <SaveButton ideaId={idea.idea_id} size={44} />
+      {/* TOP RIGHT: edit (your own ideas) and save to bucket list */}
+      <View className="absolute top-15 right-4 z-50 flex-row gap-2">
+        {isMine ? (
+          <Pressable
+            onPress={editIdea}
+            accessibilityRole="button"
+            accessibilityLabel="Edit idea"
+            className="active:opacity-70"
+          >
+            <GlassSurface style={styles.glassButton}>
+              {/* Plain pencil: "create-outline" (pencil + square) is lopsided
+                  and reads off-center even when it's centered */}
+              <Ionicons name="pencil-outline" size={20} color="white" />
+            </GlassSurface>
+          </Pressable>
+        ) : (
+          // Someone else's idea: a menu (Report for now; Share fits here later)
+          <Pressable
+            onPress={() => showIdeaMenu(idea.idea_id)}
+            accessibilityRole="button"
+            accessibilityLabel="More options"
+            className="active:opacity-70"
+          >
+            <GlassSurface style={styles.glassButton}>
+              <Ionicons name="ellipsis-horizontal" size={20} color="white" />
+            </GlassSurface>
+          </Pressable>
+        )}
+        <SaveButton ideaId={idea.idea_id} size={44} variant="glass" />
       </View>
 
       {/* FULL-SCREEN INTERACTIVE MAP MODAL */}
@@ -456,3 +524,15 @@ export default function IdeaDetailScreen() {
     </View>
   );
 }
+
+// The top buttons: tinted Liquid Glass circles, like the tab headers'
+// (GlassSurface takes style, not className)
+const styles = StyleSheet.create({
+  glassButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});

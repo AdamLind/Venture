@@ -17,6 +17,7 @@ import {useSafeAreaInsets} from "react-native-safe-area-context";
 import {useGreeting} from "@/components/home/Greeting";
 import {newSeed, seededShuffle} from "@/src/lib/random";
 import SaveButton from "@/components/ideas/SaveButton";
+import {useUnseenCount} from "@/src/store/useNotificationStore";
 import TabHeader, {
   HeaderIconButton,
   useTabHeader,
@@ -164,6 +165,7 @@ export default function ExploreScreen() {
   // bottom safe-area inset. Android: the screen already ends above the bar.
   const floatingBottom = Platform.OS === "ios" ? insets.bottom + 12 : 24;
   const greeting = useGreeting();
+  const unseenCount = useUnseenCount();
 
   // --- ZUSTAND LOCATION STORE ---
   const {hasPermission, userLocation, requestLocation} = useLocationStore();
@@ -415,9 +417,14 @@ export default function ExploreScreen() {
             onPress={() => router.push("/create")}
           />
           <HeaderIconButton
-            icon="notifications-outline"
-            label="Notifications"
-            badgeColor="#f59e0b"
+            icon={unseenCount > 0 ? "notifications" : "notifications-outline"}
+            label={
+              unseenCount > 0
+                ? `Notifications, ${unseenCount} new`
+                : "Notifications"
+            }
+            onPress={() => router.push("/notifications")}
+            badgeColor={unseenCount > 0 ? "#f59e0b" : undefined}
           />
         </>
       }

@@ -8,6 +8,8 @@ import {Ionicons} from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Toast from "react-native-toast-message";
 
+import GlassSurface from "@/components/ui/GlassSurface";
+
 import {useSavedStore} from "@/src/store/useSavedStore";
 
 export const SAVED_COLOR = "#FF9D0A";
@@ -19,8 +21,12 @@ export default function SaveButton({
 }: {
   ideaId: number;
   size?: number;
-  /** overlay: dark circle for photos. plain: just the icon, for rows. */
-  variant?: "overlay" | "plain";
+  /**
+   * overlay: dark circle for photos in lists.
+   * glass: tinted Liquid Glass circle (matches the tab headers' buttons).
+   * plain: just the icon, for rows.
+   */
+  variant?: "overlay" | "glass" | "plain";
 }) {
   const saved = useSavedStore((s) => s.ids.has(ideaId));
   const toggle = useSavedStore((s) => s.toggle);
@@ -60,7 +66,11 @@ export default function SaveButton({
       accessibilityState={{selected: saved}}
       className="active:opacity-70"
     >
-      {variant === "overlay" ? (
+      {variant === "glass" ? (
+        <GlassSurface style={[styles.center, {width: size, height: size, borderRadius: size / 2}]}>
+          {icon}
+        </GlassSurface>
+      ) : variant === "overlay" ? (
         <View
           style={[
             styles.overlay,
@@ -79,6 +89,7 @@ export default function SaveButton({
 }
 
 const styles = StyleSheet.create({
+  center: {alignItems: "center", justifyContent: "center"},
   overlay: {
     alignItems: "center",
     justifyContent: "center",

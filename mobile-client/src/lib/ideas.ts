@@ -52,19 +52,19 @@ export const IDEA_STATUS: Record<IdeaVisibility, IdeaStatus> = {
   },
   PENDING_REVIEW: {
     label: "In review",
-    detail: "Waiting for review before it shows in Discover.",
+    detail: "Waiting for review before it shows in Discover. You can already use it in your own plans.",
     icon: "time",
     color: "#fbbf24",
   },
   NEEDS_REVISION: {
     label: "Needs changes",
-    detail: "A reviewer asked for changes before it can go live.",
+    detail: "A reviewer asked for changes before it can go live. Until then it's private to you.",
     icon: "create",
     color: "#fb923c",
   },
   REJECTED: {
     label: "Not approved",
-    detail: "This one won't be published.",
+    detail: "This one won't be published, but it's still yours to plan with.",
     icon: "close-circle",
     color: "#f87171",
   },

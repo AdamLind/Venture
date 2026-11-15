@@ -18,6 +18,7 @@ import {useProfileStore} from "@/src/store/useProfileStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
+import {useNotificationStore} from "@/src/store/useNotificationStore";
 import {signOut} from "@/src/lib/signOut";
 
 // --- CREATE YOUR CUSTOM TOAST THEMES ---
@@ -101,10 +102,13 @@ function InitialLayout() {
   const loadSaved = useSavedStore((s) => s.load);
   const myIdeasUserId = useMyIdeasStore((s) => s.userId);
   const loadMyIdeas = useMyIdeasStore((s) => s.load);
+  const notificationsUserId = useNotificationStore((s) => s.userId);
+  const loadNotifications = useNotificationStore((s) => s.load);
   useEffect(() => {
     if (!userId || !onboarded || profileStatus !== "ready") return;
     if (savedUserId !== userId) loadSaved(userId);
     if (myIdeasUserId !== userId) loadMyIdeas(userId);
+    if (notificationsUserId !== userId) loadNotifications(userId);
   }, [
     userId,
     onboarded,
@@ -113,6 +117,8 @@ function InitialLayout() {
     loadSaved,
     myIdeasUserId,
     loadMyIdeas,
+    notificationsUserId,
+    loadNotifications,
   ]);
 
   // The Reactive Auth Routing Logic
@@ -229,6 +235,9 @@ function InitialLayout() {
 
         {/* IDEA DETAIL outside Discover (from Bucket List / My Ideas) */}
         <Stack.Screen name="idea/[id]" options={{headerShown: false}} />
+
+        {/* NOTIFICATIONS (the bell in Discover) */}
+        <Stack.Screen name="notifications" options={{headerShown: false}} />
 
         {/* Not Found Screen */}
         <Stack.Screen name="+not-found" />

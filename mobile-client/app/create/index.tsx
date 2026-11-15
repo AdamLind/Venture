@@ -11,13 +11,15 @@ import {
 } from "react-native";
 import {Image} from "expo-image";
 import {LinearGradient} from "expo-linear-gradient";
-import {useRouter} from "expo-router";
+import {useLocalSearchParams, useRouter} from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as Location from "expo-location";
 import Ionicons from "@expo/vector-icons/build/Ionicons";
 import {supabase} from "@/src/supabase";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
+import {useSavedStore} from "@/src/store/useSavedStore";
+import {parseCoordinates} from "@/utils/itineraryEngine";
 
 import MapPickerModal from "@/components/MapPickerModal";
 import ActivityTagsSelector from "@/components/home/ActivityTagsSelector";
@@ -26,8 +28,33 @@ import ActivityTagsSelector from "@/components/home/ActivityTagsSelector";
 import {TAG_TAXONOMY, BASE_ACTIVITY_CLASSES} from "@/src/constants/tags";
 import {BaseActivity} from "@/types/activities";
 
+// Where an idea's photos live in storage (strip to get the file path)
+const PHOTO_PATH_MARKER = "/storage/v1/object/public/activities/";
+
+/** The idea as loaded for editing, to tell what changed on save. */
+interface EditingOriginal {
+  visibility: BaseActivity["visibility"];
+  imageUrls: string[];
+  venueId: string | null;
+  venueName: string;
+  venueAddress: string;
+  coords: {lat: number; lng: number} | null;
+}
+
+/**
+ * Post a new idea, or edit one of yours with `?ideaId=123`.
+ * Saving an edit always sends the idea back to review or keeps it private:
+ * owners can't publish (the database enforces that), so editing a published
+ * idea takes it out of Discover until it's approved again.
+ */
 export default function CreateScreen() {
   const router = useRouter();
+  const {ideaId} = useLocalSearchParams<{ideaId?: string}>();
+  const editingId = ideaId ? Number(ideaId) : null;
+  const [original, setOriginal] = useState<EditingOriginal | null>(null);
+  const [isLoadingIdea, setIsLoadingIdea] = useState(!!editingId);
+  // Remounts the tag selector once the idea's tags have loaded
+  const [tagsKey, setTagsKey] = useState(0);
 
   // --- FORM STATE ---
   const [title, setTitle] = useState("");
@@ -83,6 +110,79 @@ export default function CreateScreen() {
     {label: "Evening", value: "EVENING"},
     {label: "Late Night", value: "LATE_NIGHT"},
   ] as const;
+
+  // --- EDITING: load the idea into the form ---
+  useEffect(() => {
+    if (!editingId) return;
+    let active = true;
+
+    const loadIdea = async () => {
+      const {data, error} = await supabase
+        .from("activities")
+        .select(
+          `*, venues ( venue_id, name, address, coordinates ),
+          activity_tags ( tags ( name ) )`,
+        )
+        .eq("idea_id", editingId)
+        .maybeSingle();
+      if (!active) return;
+
+      if (error || !data) {
+        Alert.alert(
+          "Couldn't open this idea",
+          error?.message ?? "It may have been deleted.",
+        );
+        router.back();
+        return;
+      }
+
+      const coords = parseCoordinates(data.venues?.coordinates);
+      const preciseFromVenue = coords
+        ? {lat: coords.latitude, lng: coords.longitude}
+        : null;
+
+      setTitle(data.title ?? "");
+      setDescription(data.description ?? "");
+      setUrl(data.url ?? "");
+      setImageUri(data.image_urls?.[0] ?? null);
+      setModality(data.modality);
+      setActivityType(data.activity_type);
+      setEnvironment(data.environment);
+      setTimeOfDay(data.time_of_day ?? []);
+      setMinPeople(String(data.min_people ?? 2));
+      setMaxPeople(String(data.max_people ?? 2));
+      setMinAge(data.min_age ? String(data.min_age) : "");
+      setPrice(String(data.est_price_per_person ?? ""));
+      setDuration(String(data.est_duration_minutes ?? ""));
+      setIsDurationVariable(!!data.is_duration_variable);
+      setVenueName(data.venues?.name ?? "");
+      setVenueAddress(data.venues?.address ?? "");
+      setPreciseCoords(preciseFromVenue);
+      setSelectedTags(
+        (data.activity_tags ?? [])
+          .map((row: any) => row.tags?.name)
+          .filter(Boolean),
+      );
+      setTagsKey((k) => k + 1);
+      // Saving keeps a private idea private; everything else goes to review
+      setVisibility(data.visibility === "PRIVATE" ? "PRIVATE" : "PENDING_REVIEW");
+      setOriginal({
+        visibility: data.visibility,
+        imageUrls: data.image_urls ?? [],
+        venueId: data.venue_id ?? null,
+        venueName: data.venues?.name ?? "",
+        venueAddress: data.venues?.address ?? "",
+        coords: preciseFromVenue,
+      });
+      setIsLoadingIdea(false);
+    };
+
+    loadIdea();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId]);
 
   useEffect(() => {
     const fetchTags = async () => {
@@ -213,86 +313,134 @@ export default function CreateScreen() {
 
     // --- ACTUAL DATABASE UPLOAD ---
     try {
-      let venueId = null;
+      // 1. Venue: reuse the idea's venue when editing and nothing changed,
+      //    otherwise add a new one (venues can be shared, so never edit one)
+      let venueId: string | null = null;
 
       if (modality === "GO_OUT") {
-        let latitude = preciseCoords?.lat || 40.2312;
-        let longitude = preciseCoords?.lng || -111.6614;
+        const venueUnchanged =
+          !!original?.venueId &&
+          venueName === original.venueName &&
+          venueAddress === original.venueAddress &&
+          preciseCoords?.lat === original.coords?.lat &&
+          preciseCoords?.lng === original.coords?.lng;
 
-        if (!preciseCoords) {
-          try {
-            const geocoded = await Location.geocodeAsync(venueAddress);
-            if (geocoded && geocoded.length > 0) {
-              latitude = geocoded[0].latitude;
-              longitude = geocoded[0].longitude;
+        if (venueUnchanged) {
+          venueId = original!.venueId;
+        } else {
+          let latitude = preciseCoords?.lat || 40.2312;
+          let longitude = preciseCoords?.lng || -111.6614;
+
+          if (!preciseCoords) {
+            try {
+              const geocoded = await Location.geocodeAsync(venueAddress);
+              if (geocoded && geocoded.length > 0) {
+                latitude = geocoded[0].latitude;
+                longitude = geocoded[0].longitude;
+              }
+            } catch (e) {
+              console.warn("Geocoding failed, using default coordinates");
             }
-          } catch (e) {
-            console.warn("Geocoding failed, using default coordinates");
           }
+
+          const {data: venueData, error: venueError} = await supabase
+            .from("venues")
+            .insert({
+              name: venueName,
+              address: venueAddress,
+              coordinates: `POINT(${longitude} ${latitude})`,
+            })
+            .select("venue_id")
+            .single();
+
+          if (venueError) throw venueError;
+          venueId = venueData.venue_id;
         }
-
-        const {data: venueData, error: venueError} = await supabase
-          .from("venues")
-          .insert({
-            name: venueName,
-            address: venueAddress,
-            coordinates: `POINT(${longitude} ${latitude})`,
-          })
-          .select("venue_id")
-          .single();
-
-        if (venueError) throw venueError;
-        venueId = venueData.venue_id;
       }
 
       if (!imageUri) {
         throw new Error("Image missing during upload phase");
       }
 
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-      const response = await fetch(imageUri);
-      const arrayBuffer = await response.arrayBuffer();
+      // 2. Photo: upload only if it's new (an edit keeps the existing URL)
+      let imageUrls: string[];
+      const photoChanged = !original || imageUri !== original.imageUrls[0];
+      if (photoChanged) {
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+        const response = await fetch(imageUri);
+        const arrayBuffer = await response.arrayBuffer();
 
-      const {error: uploadError} = await supabase.storage
-        .from("activities")
-        .upload(fileName, arrayBuffer, {
-          contentType: "image/jpeg",
-        });
+        const {error: uploadError} = await supabase.storage
+          .from("activities")
+          .upload(fileName, arrayBuffer, {
+            contentType: "image/jpeg",
+          });
 
-      if (uploadError) throw uploadError;
+        if (uploadError) throw uploadError;
 
-      const {data: publicUrlData} = supabase.storage
-        .from("activities")
-        .getPublicUrl(fileName);
+        const {data: publicUrlData} = supabase.storage
+          .from("activities")
+          .getPublicUrl(fileName);
+        imageUrls = [publicUrlData.publicUrl];
+      } else {
+        imageUrls = original!.imageUrls;
+      }
 
-      const fullImageUrl = publicUrlData.publicUrl;
+      const fields = {
+        venue_id: venueId,
+        title,
+        description,
+        url: url || null,
+        image_urls: imageUrls,
+        modality,
+        activity_type: activityType,
+        environment,
+        time_of_day: timeOfDay.length > 0 ? timeOfDay : null,
+        est_price_per_person: parseFloat(price) || 0,
+        est_duration_minutes: parseInt(duration, 10),
+        is_duration_variable: isDurationVariable,
+        min_people: dbMinPeople,
+        max_people: dbMaxPeople,
+        min_age: dbMinAge,
+        visibility: visibility,
+      };
 
-      const {data: activityData, error: dbError} = await supabase
-        .from("activities")
-        .insert({
-          user_id: userId,
-          venue_id: venueId,
-          title,
-          description,
-          url: url || null,
-          image_urls: [fullImageUrl],
-          modality,
-          activity_type: activityType,
-          environment,
-          time_of_day: timeOfDay.length > 0 ? timeOfDay : null,
-          est_price_per_person: parseFloat(price) || 0,
-          est_duration_minutes: parseInt(duration, 10),
-          is_duration_variable: isDurationVariable,
-          min_people: dbMinPeople,
-          max_people: dbMaxPeople,
-          min_age: dbMinAge,
-          visibility: visibility,
-        })
-        .select("idea_id")
-        .single();
+      // 3. The idea itself
+      let savedIdeaId: number;
+      if (editingId) {
+        const {data: updated, error: dbError} = await supabase
+          .from("activities")
+          // Resubmitting starts a fresh review; keeping it private keeps
+          // the last reviewer note for reference
+          .update(
+            visibility === "PENDING_REVIEW"
+              ? {...fields, moderation_note: null}
+              : fields,
+          )
+          .eq("idea_id", editingId)
+          .select("idea_id")
+          .maybeSingle();
+        if (dbError) throw dbError;
+        if (!updated) throw new Error("Couldn't save your changes.");
+        savedIdeaId = editingId;
+      } else {
+        const {data: activityData, error: dbError} = await supabase
+          .from("activities")
+          .insert({user_id: userId, ...fields})
+          .select("idea_id")
+          .single();
+        if (dbError) throw dbError;
+        savedIdeaId = activityData.idea_id;
+      }
 
-      if (dbError) throw dbError;
-      const newIdeaId = activityData.idea_id;
+      // 4. Tags: an edit replaces them
+      if (editingId) {
+        const {error: untagError} = await supabase
+          .from("activity_tags")
+          .delete()
+          .eq("idea_id", savedIdeaId);
+        if (untagError) throw untagError;
+      }
 
       if (selectedTags.length > 0) {
         const tagInserts = selectedTags.reduce(
@@ -301,7 +449,7 @@ export default function CreateScreen() {
               (db) => db.name.toLowerCase() === tagString.toLowerCase(),
             );
             if (matchedDbTag) {
-              acc.push({idea_id: newIdeaId, tag_id: matchedDbTag.tag_id});
+              acc.push({idea_id: savedIdeaId, tag_id: matchedDbTag.tag_id});
             }
             return acc;
           },
@@ -317,22 +465,62 @@ export default function CreateScreen() {
         }
       }
 
-      // Show it in Profile > My Ideas
+      // 5. An edit replaced the photo: remove the old file (best effort)
+      if (editingId && photoChanged && original) {
+        const oldPaths = original.imageUrls
+          .map((u) => u.split(PHOTO_PATH_MARKER)[1])
+          .filter((path): path is string => !!path);
+        if (oldPaths.length > 0) {
+          supabase.storage
+            .from("activities")
+            .remove(oldPaths)
+            .then(({error}) => {
+              if (error) console.warn("Couldn't remove old photo:", error.message);
+            });
+        }
+      }
+
+      // Show it in Profile > My Ideas (and refresh saved copies of it)
       useMyIdeasStore.getState().reload();
-      Alert.alert(
-        visibility === "PRIVATE" ? "Saved" : "Submitted for review",
-        visibility === "PRIVATE"
-          ? "It's in Profile › My Ideas. Only you can see it, and you can use it when you plan."
-          : "You can follow its review in Profile › My Ideas.",
-      );
-      router.push("/");
+      if (editingId) useSavedStore.getState().reload();
+
+      if (editingId) {
+        Alert.alert(
+          visibility === "PRIVATE" ? "Changes saved" : "Sent for review",
+          visibility === "PRIVATE"
+            ? "Only you can see it, and you can use it when you plan."
+            : "It goes live again once it's approved. You can follow it in Profile › My Ideas.",
+        );
+        router.back();
+      } else {
+        Alert.alert(
+          visibility === "PRIVATE" ? "Saved" : "Submitted for review",
+          visibility === "PRIVATE"
+            ? "It's in Profile › My Ideas. Only you can see it, and you can use it when you plan."
+            : "You can follow its review in Profile › My Ideas.",
+        );
+        router.push("/");
+      }
     } catch (error: any) {
       console.error("Upload Error:", error);
-      Alert.alert("Upload Failed", error.message || "An error occurred");
+      Alert.alert(
+        editingId ? "Couldn't save changes" : "Upload Failed",
+        error.message || "An error occurred",
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const wasPublished = original?.visibility === "PUBLISHED";
+
+  if (isLoadingIdea) {
+    return (
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator color="white" />
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1">
@@ -344,7 +532,7 @@ export default function CreateScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text className="text-3xl font-bold text-white mb-8">
-          Post an Activity
+          {editingId ? "Edit idea" : "Post an Activity"}
         </Text>
 
         {/* IMAGE PICKER */}
@@ -805,6 +993,7 @@ export default function CreateScreen() {
         </Text>
         <View className="mt-2 mb-10 w-full">
           <ActivityTagsSelector
+            key={tagsKey}
             mode="publish"
             taxonomy={TAG_TAXONOMY}
             classes={BASE_ACTIVITY_CLASSES}
@@ -822,6 +1011,14 @@ export default function CreateScreen() {
         <Text className="text-zinc-400 text-sm font-bold ml-1 mb-2">
           VISIBILITY
         </Text>
+        {wasPublished && (
+          <View className="flex-row gap-2 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 mb-3">
+            <Ionicons name="information-circle" size={18} color="#fbbf24" />
+            <Text className="text-amber-100/80 text-sm flex-1">
+              {"This idea is live. Saving changes takes it out of Discover until it's reviewed again."}
+            </Text>
+          </View>
+        )}
         <View className="flex-row gap-2 mb-10">
           <Pressable
             onPress={() => setVisibility("PENDING_REVIEW")}
@@ -888,7 +1085,11 @@ export default function CreateScreen() {
             <ActivityIndicator color="#ffffff" />
           ) : (
             <Text className="text-black font-black text-lg">
-              Post Date Idea
+              {!editingId
+                ? "Post Date Idea"
+                : visibility === "PRIVATE"
+                  ? "Save Changes"
+                  : "Save & Submit for Review"}
             </Text>
           )}
         </Pressable>
