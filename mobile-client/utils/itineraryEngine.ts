@@ -17,7 +17,7 @@ export type UI_Trigger = "PROMPT_DINNER" | "PROMPT_LUNCH" | null;
 // ─── Pure Helpers ──────────────────────────────────────────────────────────────
 
 // PostGIS Hex Decoder
-const parseCoordinates = (hex: string | null | undefined) => {
+export const parseCoordinates = (hex: string | null | undefined) => {
   if (!hex || typeof hex !== "string" || hex.length < 25) return null;
   try {
     const buffer = new Uint8Array(

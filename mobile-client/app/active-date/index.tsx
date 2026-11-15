@@ -13,6 +13,7 @@ import {formatTime} from "@/utils/itineraryEngine";
 import {BuilderActivity, TimeSlot} from "@/types/itinerary";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {useActiveDateStore} from "@/src/store/activeDateStore";
+import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {router} from "expo-router";
 import CountdownTimer from "@/components/ui/CountdownTimer";
 
@@ -24,6 +25,8 @@ export default function ActiveModeScreen() {
   const timeline = useActiveDateStore((state) => state.timeline);
   const userPrefs = useActiveDateStore((state) => state.userPrefs);
   const endActiveDate = useActiveDateStore((state) => state.endActiveDate);
+  const itineraryId = useActiveDateStore((state) => state.itineraryId);
+  const completeDate = useItineraryStore((state) => state.completeDate);
 
   const mapRef = useRef<MapView>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -90,14 +93,27 @@ export default function ActiveModeScreen() {
   const handleEndDate = () => {
     Alert.alert(
       "End Date",
-      "Are you sure you want to end your current itinerary?",
+      "This moves it to your Past Dates.",
       [
         {text: "Cancel", style: "cancel"},
         {
           text: "End Date",
           style: "destructive",
-          onPress: () => {
-            endActiveDate();
+          onPress: async () => {
+            if (itineraryId != null) {
+              try {
+                // Marks it COMPLETED and closes this live view
+                await completeDate(itineraryId);
+              } catch (e) {
+                Alert.alert(
+                  "Couldn't end your date",
+                  e instanceof Error ? e.message : "Please try again.",
+                );
+                return;
+              }
+            } else {
+              endActiveDate();
+            }
             router.replace("/");
           },
         },
