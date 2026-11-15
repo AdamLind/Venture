@@ -5,6 +5,8 @@ import {getDistance} from "./geo";
 import {UserPrefs} from "@/src/store/usePrefsStore";
 import {supabase} from "@/src/supabase";
 import {useProfileStore} from "@/src/store/useProfileStore";
+import {useHiddenStore} from "@/src/store/useHiddenStore";
+import {bestTimeLabel, isGoodTime} from "@/src/lib/timeOfDay";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -182,6 +184,8 @@ export const deriveSequentialTimeline = (
 export type DayContext = {
   exhaustion: number; // 0 (Fresh) to 100 (Dead)
   satiation: number; // 0 (Starving) to 100 (Stuffed)
+  /** When the next stop would start (ms), for time-of-day fit */
+  atMs?: number;
 };
 
 // Calculates the physical state of the user at a specific timestamp
@@ -308,7 +312,13 @@ export const scoreActivities = ({
         score += matchCount * 15;
       }
 
-      // --- 3. LOGISTICAL PENALTIES ---
+      // --- 3. TIME OF DAY ---
+      // Outside its best time (stargazing at noon) it sinks, but stays pickable
+      const offHours =
+        context.atMs != null && !isGoodTime(item.time_of_day, new Date(context.atMs));
+      if (offHours) score -= 40;
+
+      // --- 4. LOGISTICAL PENALTIES ---
       const budgetPerPerson =
         (Number(prefs.budget) || 0) / (Number(prefs.headCount) || 1);
       score -=
@@ -324,9 +334,53 @@ export const scoreActivities = ({
         est_price_per_person: Number(item.est_price_per_person) || 0,
         score: Math.round(score), // Clean integer
         distance: parseFloat((distance || 0).toFixed(2)),
+        // Shown on the picker card when it's not a great time for it
+        offHoursLabel: offHours ? bestTimeLabel(item.time_of_day) : null,
       } as ScoredActivity;
     })
     .sort((a, b) => (b.score || 0) - (a.score || 0));
+};
+
+// ─── One idea, ready to place ──────────────────────────────────────────────────
+
+/** Loads one idea and scores it like a candidate ("Plan a date with this"). */
+export const fetchActivityForPlan = async (
+  ideaId: number,
+  prefs: UserPrefs,
+): Promise<ScoredActivity | null> => {
+  const {data, error} = await supabase
+    .from("activities")
+    .select(
+      `
+      *,
+      venues ( name, address, coordinates ),
+      activity_tags ( tags ( name ) )
+    `,
+    )
+    .eq("idea_id", ideaId)
+    .maybeSingle();
+
+  if (error || !data) {
+    if (error) console.error("fetchActivityForPlan error:", error);
+    return null;
+  }
+
+  const parsed = parseCoordinates(data.venues?.coordinates);
+  const formatted = {
+    ...data,
+    tags: (data.activity_tags ?? [])
+      .map((at: any) => at.tags?.name)
+      .filter(Boolean),
+    latitude: parsed?.latitude ?? null,
+    longitude: parsed?.longitude ?? null,
+  };
+  const [scored] = scoreActivities({
+    activities: [formatted as BaseActivity],
+    prefs,
+    origin: prefs,
+    context: {exhaustion: 0, satiation: 0},
+  });
+  return scored ?? null;
 };
 
 // ─── Unified Database Query ────────────────────────────────────────────────────
@@ -365,7 +419,11 @@ export const queryCandidates = async (
 
     if (error) throw error;
 
-    const formatted = (data || []).map((row: any) => {
+    // Skip ideas you marked "Not interested"
+    const hidden = useHiddenStore.getState().ids;
+    const formatted = (data || [])
+      .filter((row: any) => !hidden.has(row.idea_id))
+      .map((row: any) => {
       const parsed = parseCoordinates(row.venues?.coordinates);
       const flatTags = row.activity_tags
         ? row.activity_tags.map((at: any) => at.tags?.name).filter(Boolean)

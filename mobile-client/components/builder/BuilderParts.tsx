@@ -9,6 +9,7 @@ import {Ionicons} from "@expo/vector-icons";
 
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {SAVED_COLOR} from "@/components/ideas/SaveButton";
+import {bestTimeLabel, isGoodTime} from "@/src/lib/timeOfDay";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -124,16 +125,40 @@ export function StopCard({
   slot,
   headCount,
   onRemove,
+  onMoveEarlier,
+  onMoveLater,
 }: {
   slot: {startTime: number; endTime: number; activity?: any};
   headCount: number;
   onRemove?: () => void;
+  /** Reordering without dragging (VoiceOver / TalkBack actions) */
+  onMoveEarlier?: () => void;
+  onMoveLater?: () => void;
 }) {
   const activity = slot.activity;
   const price = (Number(activity?.est_price_per_person) || 0) * headCount;
+  // e.g. stargazing dragged to the afternoon
+  const offHours = !isGoodTime(activity?.time_of_day, new Date(slot.startTime));
+  const bestTime = offHours ? bestTimeLabel(activity?.time_of_day) : null;
+
+  const moveActions = [
+    ...(onMoveEarlier ? [{name: "moveEarlier", label: "Move earlier"}] : []),
+    ...(onMoveLater ? [{name: "moveLater", label: "Move later"}] : []),
+  ];
 
   return (
     <View className="bg-zinc-900 border border-zinc-800 rounded-2xl p-2.5 flex-row items-center">
+      <View
+        className="flex-1 flex-row items-center"
+        accessible
+        accessibilityLabel={`${activity?.title ?? "Stop"}, ${timeOfDay(slot.startTime)} to ${timeOfDay(slot.endTime)}`}
+        accessibilityHint={moveActions.length ? "Hold and drag to reorder" : undefined}
+        accessibilityActions={moveActions}
+        onAccessibilityAction={(e) => {
+          if (e.nativeEvent.actionName === "moveEarlier") onMoveEarlier?.();
+          if (e.nativeEvent.actionName === "moveLater") onMoveLater?.();
+        }}
+      >
       <Image
         source={{uri: activityImage(activity)}}
         style={{width: 64, height: 64, borderRadius: 14}}
@@ -147,11 +172,19 @@ export function StopCard({
           {timeOfDay(slot.startTime)} – {timeOfDay(slot.endTime)} ·{" "}
           {formatMinutes(slotMinutes(slot))}
         </Text>
-        {activity?.venues?.name ? (
+        {bestTime ? (
+          <View className="flex-row items-center gap-1 mt-0.5">
+            <Ionicons name="partly-sunny-outline" size={11} color="#fb923c" />
+            <Text className="text-orange-400 text-xs font-semibold" numberOfLines={1}>
+              {bestTime}
+            </Text>
+          </View>
+        ) : activity?.venues?.name ? (
           <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={1}>
             {activity.venues.name}
           </Text>
         ) : null}
+      </View>
       </View>
       <View className="items-end gap-2">
         <View className="bg-zinc-800 px-2 py-1 rounded-lg">
@@ -309,6 +342,7 @@ function ActivityChips({
       {goingOut && (
         <Chip icon="navigate-outline" text={`${(item.distance || 0).toFixed(1)} mi`} />
       )}
+      {item.offHoursLabel && <Chip icon="partly-sunny-outline" text={item.offHoursLabel} />}
     </View>
   );
 }

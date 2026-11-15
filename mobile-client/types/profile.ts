@@ -32,6 +32,12 @@ export interface UserPreferences {
   updated_at: string;
 }
 
+/** What other people can see of a user (an idea's creator, someone on your date). */
+export type PublicProfile = Pick<
+  UserProfile,
+  "username" | "first_name" | "last_name" | "profile_image_url"
+>;
+
 /** Columns the app is allowed to update on public.users. */
 export type ProfileUpdate = Partial<
   Pick<UserProfile, "username" | "first_name" | "last_name" | "profile_image_url">

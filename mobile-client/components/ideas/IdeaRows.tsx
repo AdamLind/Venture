@@ -14,7 +14,7 @@ import type {IdeaSummary, IdeaVisibility} from "@/types/ideas";
 export const openIdea = (ideaId: number) =>
   router.push({pathname: "/idea/[id]", params: {id: String(ideaId)}});
 
-function Meta({idea}: {idea: IdeaSummary}) {
+export function IdeaMeta({idea}: {idea: IdeaSummary}) {
   return (
     <Text className="text-zinc-400 text-sm" numberOfLines={1}>
       {ideaPrice(idea)} · {ideaDuration(idea)}
@@ -43,7 +43,7 @@ export function SavedIdeaRow({idea}: {idea: IdeaSummary}) {
         <Text className="text-white font-bold text-base mb-0.5" numberOfLines={1}>
           {idea.title}
         </Text>
-        <Meta idea={idea} />
+        <IdeaMeta idea={idea} />
       </View>
       <SaveButton ideaId={idea.idea_id} variant="plain" size={40} />
     </Pressable>
@@ -109,7 +109,7 @@ export function MyIdeaRow({
           <Text className="text-white font-bold text-base" numberOfLines={1}>
             {idea.title}
           </Text>
-          <Meta idea={idea} />
+          <IdeaMeta idea={idea} />
         </View>
         <Pressable
           onPress={onMore}

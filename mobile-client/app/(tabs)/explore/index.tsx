@@ -1,4 +1,4 @@
-import React, {useRef, useState, useEffect, useCallback} from "react";
+import React, {useRef, useState, useEffect, useCallback, useMemo} from "react";
 import {
   Pressable,
   View,
@@ -18,6 +18,7 @@ import {useGreeting} from "@/components/home/Greeting";
 import {newSeed, seededShuffle} from "@/src/lib/random";
 import SaveButton from "@/components/ideas/SaveButton";
 import {useUnseenCount} from "@/src/store/useNotificationStore";
+import {useHiddenStore} from "@/src/store/useHiddenStore";
 import TabHeader, {
   HeaderIconButton,
   useTabHeader,
@@ -27,6 +28,8 @@ import {supabase} from "@/src/supabase";
 import {LinearGradient} from "expo-linear-gradient";
 import {useLocationStore} from "@/src/store/useLocationStore";
 import GlassSurface from "@/components/ui/GlassSurface";
+import Avatar from "@/components/profile/Avatar";
+import type {PublicProfile} from "@/types/profile";
 
 // Shape for the map's floating preview card (GlassSurface takes style, not className)
 const glassStyles = StyleSheet.create({
@@ -45,6 +48,7 @@ interface DateIdea {
   modality: "STAY_IN" | "GO_OUT";
   est_price_per_person: string | number;
   creator_username: string | null;
+  creator: PublicProfile | null;
   latitude?: number | null;
   longitude?: number | null;
   image_urls: string[];
@@ -172,7 +176,13 @@ export default function ExploreScreen() {
 
   // --- STATE & REFS ---
   const lastMarkerPress = useRef(0);
-  const [ideas, setIdeas] = useState<DateIdea[]>([]);
+  const [allIdeas, setIdeas] = useState<DateIdea[]>([]);
+  // "Not interested" ideas drop out right away, and come back on undo
+  const hiddenIds = useHiddenStore((s) => s.ids);
+  const ideas = useMemo(
+    () => allIdeas.filter((idea) => !hiddenIds.has(idea.idea_id)),
+    [allIdeas, hiddenIds],
+  );
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -205,7 +215,7 @@ export default function ExploreScreen() {
         `
         *,
         venues ( name, address, coordinates ),
-        users!activities_user_id_fkey ( username )
+        users!activities_user_id_fkey ( username, first_name, last_name, profile_image_url )
       `,
       )
       // Your own unpublished ideas are visible to you too; they belong in
@@ -228,6 +238,7 @@ export default function ExploreScreen() {
       return {
         ...row,
         creator_username: row.users?.username || null,
+        creator: row.users ?? null,
         latitude: parsed ? parsed.latitude : null,
         longitude: parsed ? parsed.longitude : null,
       };
@@ -337,19 +348,7 @@ export default function ExploreScreen() {
                   {item.title}
                 </Text>
                 <View className="flex-row items-center gap-1.5">
-                  <Image
-                    source={{
-                      uri: "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=100&auto=format&fit=crop",
-                    }}
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: "#71717a",
-                    }}
-                    contentFit="cover"
-                  />
+                  <Avatar profile={item.creator} size={24} small />
                   <Text className="text-zinc-300 text-sm font-medium">
                     By @{item.creator_username || "local_expert"}
                   </Text>

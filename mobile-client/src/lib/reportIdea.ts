@@ -1,5 +1,5 @@
 // src/lib/reportIdea.ts
-// Reporting someone else's idea (the ••• button on an idea's page).
+// The ••• menu on someone else's idea: Not interested, and Report.
 // Reports go to public.idea_reports, which is write-only from the app.
 
 import {ActionSheetIOS, Alert, Platform} from "react-native";
@@ -7,6 +7,7 @@ import Toast from "react-native-toast-message";
 
 import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
+import {useHiddenStore} from "@/src/store/useHiddenStore";
 
 type Reason = "INAPPROPRIATE" | "SPAM" | "UNSAFE" | "AGE_RATING" | "OTHER";
 
@@ -100,23 +101,62 @@ function showAndroidReasons(
   ]);
 }
 
-/** The ••• menu on someone else's idea. */
-export function showIdeaMenu(ideaId: number) {
+/** Hides the idea from Discover and the builder, with a tap-to-undo toast. */
+async function notInterested(ideaId: number, onHidden?: () => void) {
+  const {hide, unhide} = useHiddenStore.getState();
+  try {
+    await hide(ideaId);
+  } catch (e) {
+    Toast.show({
+      type: "error",
+      text1: "Couldn't hide it",
+      text2: e instanceof Error ? e.message : undefined,
+      position: "bottom",
+    });
+    return;
+  }
+  onHidden?.();
+  Toast.show({
+    type: "success",
+    text1: "You won't see this idea again",
+    text2: "Tap to undo",
+    position: "bottom",
+    onPress: () => {
+      Toast.hide();
+      unhide(ideaId).catch((e) =>
+        Toast.show({
+          type: "error",
+          text1: "Couldn't undo",
+          text2: e instanceof Error ? e.message : undefined,
+          position: "bottom",
+        }),
+      );
+    },
+  });
+}
+
+/**
+ * The ••• menu on someone else's idea.
+ * `onHidden` runs after "Not interested" succeeds (e.g. leave the page).
+ */
+export function showIdeaMenu(ideaId: number, {onHidden}: {onHidden?: () => void} = {}) {
   if (Platform.OS === "ios") {
     ActionSheetIOS.showActionSheetWithOptions(
       {
-        options: ["Report idea", "Cancel"],
-        destructiveButtonIndex: 0,
-        cancelButtonIndex: 1,
+        options: ["Not interested", "Report idea", "Cancel"],
+        destructiveButtonIndex: 1,
+        cancelButtonIndex: 2,
         userInterfaceStyle: "dark",
       },
       (index) => {
-        if (index === 0) chooseReason(ideaId);
+        if (index === 0) notInterested(ideaId, onHidden);
+        if (index === 1) chooseReason(ideaId);
       },
     );
   } else {
     Alert.alert("Idea options", undefined, [
       {text: "Cancel", style: "cancel"},
+      {text: "Not interested", onPress: () => notInterested(ideaId, onHidden)},
       {text: "Report idea", style: "destructive", onPress: () => chooseReason(ideaId)},
     ]);
   }

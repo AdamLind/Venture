@@ -5,6 +5,7 @@ import {
   PlacedActivity,
   deriveSequentialTimeline,
   queryCandidates,
+  fetchActivityForPlan,
   evaluateContextAt,
 } from "@/utils/itineraryEngine";
 import {useLocalSearchParams, router} from "expo-router";
@@ -24,6 +25,7 @@ import Toast from "react-native-toast-message";
 import {Ionicons} from "@expo/vector-icons";
 import {usePrefsStore} from "@/src/store/usePrefsStore";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
+import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {START_NOW_WINDOW_MS, autoTitle, formatWhen} from "@/src/lib/dates";
 import {SafeAreaView, useSafeAreaInsets} from "react-native-safe-area-context";
@@ -46,6 +48,7 @@ import {
   activityImage,
   formatMinutes,
 } from "@/components/builder/BuilderParts";
+import DraggableStop, {type StopLayouts} from "@/components/builder/DraggableStop";
 
 export default function BuilderScreen() {
   const scrollViewRef = useRef<ScrollViewInstance>(null);
@@ -166,21 +169,34 @@ export default function BuilderScreen() {
     isInfinite,
   ]);
 
-  // ─── Effects ──────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    // Only load initial ideas if we don't already have a draft in progress
-    if (activities.length === 0 && placed.length === 0) {
-      loadInitialIdeas();
+  // ─── Loading ideas ────────────────────────────────────────────────────────────
+
+  const startWithIdea = async (ideaId: number) => {
+    setLoading(true);
+    const activity = await fetchActivityForPlan(ideaId, userPrefs);
+    if (activity) {
+      setPlaced([{activity}]);
+      setLoading(false);
     } else {
-      setLoading(false); // Instantly show the saved draft!
+      // Gone or unavailable: start the usual way
+      Toast.show({
+        type: "error",
+        text1: "That idea isn't available anymore",
+        position: "bottom",
+      });
+      loadInitialIdeas();
     }
-  }, []);
+  };
 
   const loadInitialIdeas = async () => {
     try {
       setLoading(true);
       // At the start of the day: 0 exhaustion, 0 satiation (hungry)
-      const initialContext = {exhaustion: 0, satiation: 0};
+      const initialContext = {
+        exhaustion: 0,
+        satiation: 0,
+        atMs: new Date(userPrefs.startDate).getTime(),
+      };
 
       const result = await queryCandidates(
         userPrefs,
@@ -199,6 +215,23 @@ export default function BuilderScreen() {
       setLoading(false);
     }
   };
+
+  // Runs once on open (after the loaders above are declared)
+  useEffect(() => {
+    // "Plan a date with this": the idea goes in as the first stop
+    const startWith = usePlanSeedStore.getState().take();
+    if (startWith && placed.length === 0) {
+      startWithIdea(startWith.idea_id);
+      return;
+    }
+    // Only load initial ideas if we don't already have a draft in progress
+    if (activities.length === 0 && placed.length === 0) {
+      loadInitialIdeas();
+    } else {
+      setLoading(false); // Instantly show the saved draft!
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Handlers ─────────────────────────────────────────────────────────────────
   const handleOpenGap = async (gapSlot: TimeSlot) => {
@@ -222,7 +255,8 @@ export default function BuilderScreen() {
           gapDurationMins,
           remainingBudget,
           origin,
-          currentContext, // <-- Pass the biological state!
+          // The biological state, and when this stop would start
+          {...currentContext, atMs: gapSlot.startTime},
         );
         setActivities(result.data || []);
       } catch (error) {
@@ -234,7 +268,7 @@ export default function BuilderScreen() {
       // If they deleted everything and are back to the start
       try {
         setIsFetchingFillers(true);
-        const initialContext = {exhaustion: 0, satiation: 0};
+        const initialContext = {exhaustion: 0, satiation: 0, atMs: gapSlot.startTime};
         const result = await queryCandidates(
           userPrefs,
           999,
@@ -266,6 +300,50 @@ export default function BuilderScreen() {
       scrollViewRef.current?.scrollToEnd({animated: true});
     }, 300);
   };
+
+  // ─── Reordering (drag, or VoiceOver's Move earlier / later) ─────────────────
+  const [stopLayouts] = useState<StopLayouts>(() => new Map());
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const lastSwapAt = useRef(0);
+
+  const moveStop = (ideaId: number, toIndex: number) => {
+    setPlaced((prev) => {
+      const from = prev.findIndex((p) => p.activity.idea_id === ideaId);
+      const to = Math.max(0, Math.min(prev.length - 1, toIndex));
+      if (from === -1 || from === to) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+
+  const handleDragStart = (ideaId: number) => {
+    setDraggingId(ideaId);
+    if (process.env.EXPO_OS === "ios")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  // The lifted card's middle crossed a neighbour's middle: swap them
+  const handleDragMove = (ideaId: number, centerY: number) => {
+    // Let the rows re-measure after a swap before deciding again
+    if (Date.now() - lastSwapAt.current < 120) return;
+    const order = useBuilderStore.getState().placed.map((p) => p.activity.idea_id);
+    const from = order.indexOf(ideaId);
+    let to = 0;
+    for (const other of order) {
+      if (other === ideaId) continue;
+      const layout = stopLayouts.get(other);
+      if (layout && layout.y + layout.height / 2 < centerY) to++;
+    }
+    if (from !== -1 && to !== from) {
+      lastSwapAt.current = Date.now();
+      moveStop(ideaId, to);
+      if (process.env.EXPO_OS === "ios") Haptics.selectionAsync();
+    }
+  };
+
+  const handleDragEnd = () => setDraggingId(null);
 
   const handleRemoveActivity = (ideaId: number | string) => {
     if (process.env.EXPO_OS === "ios")
@@ -381,6 +459,13 @@ export default function BuilderScreen() {
     ? `${simpleStartTime} onward`
     : `${simpleStartTime} – ${simpleEndTime}`;
   const stopSlots = timeline.filter((slot) => slot.activity);
+  // Reordering can add travel and push the date past its end time
+  const lastBusyEnd = timeline
+    .filter((slot) => slot.type === "OCCUPIED")
+    .reduce((end, slot) => Math.max(end, slot.endTime), 0);
+  const overrunMinutes = isInfinite
+    ? 0
+    : Math.max(0, Math.round((lastBusyEnd - new Date(userPrefs.endDate).getTime()) / 60_000));
   const stopCount = stopSlots.length;
   const stopsLabel = `${stopCount} ${stopCount === 1 ? "stop" : "stops"}`;
   const budgetLeftLabel = `$${Math.max(0, remainingBudget)} left`;
@@ -482,18 +567,32 @@ export default function BuilderScreen() {
         );
       }
 
+      const ideaId = slot.activity.idea_id as number;
+      const index = stopNumber(slot.id) - 1;
+      const canMove = editable && stopCount > 1;
       return (
-        <TimelineRow key={slot.id} node={<StopNode index={stopNumber(slot.id)} />}>
-          <StopCard
-            slot={slot}
-            headCount={headCount}
-            onRemove={
-              editable
-                ? () => handleRemoveActivity(slot.activity!.idea_id)
-                : undefined
-            }
-          />
-        </TimelineRow>
+        // Keyed by idea, so a stop keeps its row (and its drag) when it moves
+        <DraggableStop
+          key={`stop-${ideaId}`}
+          id={ideaId}
+          enabled={canMove}
+          layouts={stopLayouts}
+          onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
+          onDragEnd={handleDragEnd}
+        >
+          <TimelineRow node={<StopNode index={index + 1} />}>
+            <StopCard
+              slot={slot}
+              headCount={headCount}
+              onRemove={editable ? () => handleRemoveActivity(ideaId) : undefined}
+              onMoveEarlier={canMove && index > 0 ? () => moveStop(ideaId, index - 1) : undefined}
+              onMoveLater={
+                canMove && index < stopCount - 1 ? () => moveStop(ideaId, index + 1) : undefined
+              }
+            />
+          </TimelineRow>
+        </DraggableStop>
       );
     });
 
@@ -516,6 +615,7 @@ export default function BuilderScreen() {
 
       <ScrollView
         ref={scrollViewRef}
+        scrollEnabled={draggingId === null}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{paddingBottom: insets.bottom + 120}}
       >
@@ -544,7 +644,23 @@ export default function BuilderScreen() {
               />
             </View>
 
+            {overrunMinutes > 0 && (
+              <View className="mx-5 mb-4 flex-row items-center gap-2.5 bg-orange-500/10 border border-orange-500/30 rounded-2xl px-4 py-3">
+                <Ionicons name="alert-circle-outline" size={18} color="#fb923c" />
+                <Text className="flex-1 text-orange-200 text-sm">
+                  This order runs {formatMinutes(overrunMinutes)} past {simpleEndTime}.
+                  Move or remove a stop to fit.
+                </Text>
+              </View>
+            )}
+
             {timelineView(true)}
+
+            {stopCount > 1 && (
+              <Text className="text-zinc-600 text-xs text-center mt-1">
+                Hold and drag a stop to reorder
+              </Text>
+            )}
 
             {/* Before the first stop: tap-to-add suggestions */}
             {firstPicks.length > 0 && (

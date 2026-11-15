@@ -8,6 +8,7 @@ import {useFonts} from "expo-font";
 import {Stack, useRouter, useSegments} from "expo-router";
 import {StatusBar} from "expo-status-bar";
 import "react-native-reanimated";
+import {GestureHandlerRootView} from "react-native-gesture-handler";
 import "../global.css";
 import Toast, {ToastConfig} from "react-native-toast-message";
 import {View, Text, ActivityIndicator, Pressable} from "react-native";
@@ -18,6 +19,7 @@ import {useProfileStore} from "@/src/store/useProfileStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
+import {useHiddenStore} from "@/src/store/useHiddenStore";
 import {useNotificationStore} from "@/src/store/useNotificationStore";
 import {signOut} from "@/src/lib/signOut";
 
@@ -102,12 +104,15 @@ function InitialLayout() {
   const loadSaved = useSavedStore((s) => s.load);
   const myIdeasUserId = useMyIdeasStore((s) => s.userId);
   const loadMyIdeas = useMyIdeasStore((s) => s.load);
+  const hiddenUserId = useHiddenStore((s) => s.userId);
+  const loadHidden = useHiddenStore((s) => s.load);
   const notificationsUserId = useNotificationStore((s) => s.userId);
   const loadNotifications = useNotificationStore((s) => s.load);
   useEffect(() => {
     if (!userId || !onboarded || profileStatus !== "ready") return;
     if (savedUserId !== userId) loadSaved(userId);
     if (myIdeasUserId !== userId) loadMyIdeas(userId);
+    if (hiddenUserId !== userId) loadHidden(userId);
     if (notificationsUserId !== userId) loadNotifications(userId);
   }, [
     userId,
@@ -117,6 +122,8 @@ function InitialLayout() {
     loadSaved,
     myIdeasUserId,
     loadMyIdeas,
+    hiddenUserId,
+    loadHidden,
     notificationsUserId,
     loadNotifications,
   ]);
@@ -229,6 +236,10 @@ function InitialLayout() {
           name="settings/delete-account"
           options={{headerShown: false}}
         />
+        <Stack.Screen
+          name="settings/hidden-ideas"
+          options={{headerShown: false}}
+        />
 
         {/* SAVED DATE DETAIL */}
         <Stack.Screen name="itinerary/[id]" options={{headerShown: false}} />
@@ -282,8 +293,12 @@ function InitialLayout() {
 // Wraps your app in the AuthContext so useAuth() works everywhere
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <InitialLayout />
-    </AuthProvider>
+    // Gesture handler's root: the builder's drag-to-reorder and the live
+    // date's sheet need it
+    <GestureHandlerRootView style={{flex: 1}}>
+      <AuthProvider>
+        <InitialLayout />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }

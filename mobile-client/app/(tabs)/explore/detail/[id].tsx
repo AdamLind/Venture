@@ -22,6 +22,7 @@ import {useProfileStore} from "@/src/store/useProfileStore";
 import SaveButton from "@/components/ideas/SaveButton";
 import GlassSurface from "@/components/ui/GlassSurface";
 import {showIdeaMenu} from "@/src/lib/reportIdea";
+import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {StatusChip} from "@/components/ideas/IdeaRows";
 import {IDEA_STATUS} from "@/src/lib/ideas";
 
@@ -38,6 +39,8 @@ export default function IdeaDetailScreen() {
 
   const {hasPermission, requestLocation} = useLocationStore();
   const myUserId = useProfileStore((s) => s.userId);
+  const setPlanSeed = usePlanSeedStore((s) => s.setSeed);
+  const insets = useSafeAreaInsets();
 
   // --- ANIMATION VALUES ---
   const [scrollY] = useState(() => new Animated.Value(0));
@@ -171,6 +174,19 @@ export default function IdeaDetailScreen() {
           : null;
   const editIdea = () =>
     router.push({pathname: "/create", params: {ideaId: String(idea.idea_id)}});
+  // Off to the Plan tab, with this idea as the date's first stop
+  const planWithThis = () => {
+    setPlanSeed({
+      idea_id: idea.idea_id,
+      title: idea.title,
+      image: idea.image_urls?.[0] ?? null,
+      modality: idea.modality,
+      est_price_per_person: Number(idea.est_price_per_person) || 0,
+      est_duration_minutes: idea.est_duration_minutes ?? null,
+      time_of_day: idea.time_of_day ?? null,
+    });
+    router.navigate("/(tabs)/plan");
+  };
 
   return (
     <View className="flex-1 bg-black">
@@ -221,7 +237,7 @@ export default function IdeaDetailScreen() {
         </View>
 
         {/* CONTENT CONTAINER */}
-        <View className="-mt-16 px-5 pb-20">
+        <View className="-mt-16 px-5" style={{paddingBottom: 120 + insets.bottom}}>
           {/* HEADER */}
           <View className="mb-6">
             <View className="flex-row gap-2 mb-3">
@@ -432,8 +448,10 @@ export default function IdeaDetailScreen() {
         </Pressable>
       </View>
 
-      {/* TOP RIGHT: edit (your own ideas) and save to bucket list */}
+      {/* TOP RIGHT: save, then edit (your own ideas) or ••• (anyone else's)
+          in the corner */}
       <View className="absolute top-15 right-4 z-50 flex-row gap-2">
+        <SaveButton ideaId={idea.idea_id} size={44} variant="glass" />
         {isMine ? (
           <Pressable
             onPress={editIdea}
@@ -450,7 +468,10 @@ export default function IdeaDetailScreen() {
         ) : (
           // Someone else's idea: a menu (Report for now; Share fits here later)
           <Pressable
-            onPress={() => showIdeaMenu(idea.idea_id)}
+            onPress={() =>
+              // After "Not interested", leave: it's gone from Discover
+              showIdeaMenu(idea.idea_id, {onHidden: () => router.back()})
+            }
             accessibilityRole="button"
             accessibilityLabel="More options"
             className="active:opacity-70"
@@ -460,7 +481,31 @@ export default function IdeaDetailScreen() {
             </GlassSurface>
           </Pressable>
         )}
-        <SaveButton ideaId={idea.idea_id} size={44} variant="glass" />
+      </View>
+
+      {/* PLAN A DATE WITH THIS: the page's main action, pinned to the bottom */}
+      <View
+        pointerEvents="box-none"
+        style={{position: "absolute", left: 0, right: 0, bottom: 0}}
+      >
+        <LinearGradient
+          pointerEvents="none"
+          colors={["transparent", "rgba(0,0,0,0.85)", "#000"]}
+          locations={[0, 0.45, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={{paddingHorizontal: 20, paddingTop: 28, paddingBottom: insets.bottom + 12}}>
+          <Pressable
+            onPress={planWithThis}
+            accessibilityRole="button"
+            accessibilityLabel="Plan a date with this idea"
+            className="bg-white rounded-full flex-row items-center justify-center gap-2 active:opacity-80"
+            style={{height: 56}}
+          >
+            <Ionicons name="calendar" size={20} color="black" />
+            <Text className="text-black font-extrabold text-lg">Plan a date with this</Text>
+          </Pressable>
+        </View>
       </View>
 
       {/* FULL-SCREEN INTERACTIVE MAP MODAL */}

@@ -8,6 +8,7 @@ import {Ionicons} from "@expo/vector-icons";
 import ScreenHeader from "@/components/ui/ScreenHeader";
 import {useAuth} from "@/src/providers/AuthProvider";
 import {signOut} from "@/src/lib/signOut";
+import {useHiddenStore} from "@/src/store/useHiddenStore";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -76,6 +77,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const {session} = useAuth();
   const [signingOut, setSigningOut] = useState(false);
+  const hiddenCount = useHiddenStore((s) => s.ids.size);
 
   const confirmSignOut = () => {
     Alert.alert("Sign out?", "You can sign back in anytime.", [
@@ -110,6 +112,13 @@ export default function SettingsScreen() {
             icon="options-outline"
             label="Planning defaults"
             onPress={() => router.push("/settings/planning")}
+          />
+          <Divider />
+          <Row
+            icon="eye-off-outline"
+            label="Hidden ideas"
+            value={hiddenCount ? String(hiddenCount) : null}
+            onPress={() => router.push("/settings/hidden-ideas")}
           />
         </Section>
 

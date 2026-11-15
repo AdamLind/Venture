@@ -3,6 +3,7 @@
 
 import type {
   PlanningDefaults,
+  PublicProfile,
   UserPreferences,
   UserProfile,
 } from "@/types/profile";
@@ -49,7 +50,7 @@ export function displayName(profile: UserProfile | null): string {
   return name || profile.username;
 }
 
-export function initials(profile: UserProfile | null): string {
+export function initials(profile: PublicProfile | null): string {
   if (!profile) return "?";
   const source = profile.first_name || profile.username || "?";
   const second = profile.last_name?.[0] ?? "";

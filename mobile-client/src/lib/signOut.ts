@@ -7,6 +7,8 @@ import {useActiveDateStore} from "@/src/store/activeDateStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
+import {useHiddenStore} from "@/src/store/useHiddenStore";
+import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {useNotificationStore} from "@/src/store/useNotificationStore";
 import {friendlyError} from "@/src/lib/profile";
 
@@ -16,6 +18,8 @@ function clearLocalState() {
   useItineraryStore.getState().clear();
   useSavedStore.getState().clear();
   useMyIdeasStore.getState().clear();
+  useHiddenStore.getState().clear();
+  usePlanSeedStore.getState().clear();
   useNotificationStore.getState().clear();
   usePrefsStore.getState().resetPrefs();
   useBuilderStore.getState().clearBuilder();

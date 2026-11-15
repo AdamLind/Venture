@@ -19,6 +19,7 @@ import {useFocusEffect, useLocalSearchParams, useRouter} from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {Ionicons} from "@expo/vector-icons";
 import * as Location from "expo-location";
+import {Image} from "expo-image";
 
 import {ActivityLocation} from "@/types/itinerary";
 import {SimpleLocation} from "@/types/activities";
@@ -26,6 +27,9 @@ import {usePrefsStore} from "@/src/store/usePrefsStore";
 import {useActiveDateStore} from "@/src/store/activeDateStore";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
 import {useProfileStore} from "@/src/store/useProfileStore";
+import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
+import {ideaDuration} from "@/src/lib/ideas";
+import {bestTimeLabel, isGoodTime, nextGoodStart} from "@/src/lib/timeOfDay";
 import TabHeader, {useTabHeader, useTabRefresh} from "@/components/ui/TabHeader";
 import {
   BUDGET_TIERS,
@@ -119,6 +123,38 @@ export default function PlanScreen() {
   }, [startsOn, router]);
 
   const [durationHours, setDurationHours] = useState<number | null>(4);
+
+  // "Plan a date with this" from an idea's page: show it as the first stop,
+  // and match the form to it (in or out; long enough to fit it)
+  const seed = usePlanSeedStore((state) => state.seed);
+  const setSeed = usePlanSeedStore((state) => state.setSeed);
+  const commitSeed = usePlanSeedStore((state) => state.commit);
+  const [appliedSeedId, setAppliedSeedId] = useState<number | null>(null);
+  if ((seed?.idea_id ?? null) !== appliedSeedId) {
+    // Adjusting state during render (like startsOn above) avoids a flash
+    setAppliedSeedId(seed?.idea_id ?? null);
+    if (seed) {
+      setModality(
+        seed.modality === "GO_OUT" ? ActivityLocation.GoOut : ActivityLocation.StayIn,
+      );
+      const needsHours = (seed.est_duration_minutes ?? 0) / 60;
+      if (durationHours !== null && durationHours < needsHours) {
+        setDurationHours([2, 4, 6].find((h) => h >= needsHours) ?? null);
+      }
+      // Start when the idea is best (e.g. stargazing: the evening)
+      const goodStart = nextGoodStart(seed.time_of_day, startDate);
+      if (goodStart.getTime() !== startDate.getTime()) {
+        setStartDate(goodStart);
+        setTempStartDate(goodStart);
+      }
+    }
+  }
+  const headCountFor = (type: string) =>
+    type === "Date" ? 2 : type === "Solo" ? 1 : 4;
+  // The budget you pick is for the rest of the date, on top of this
+  const seedCost = seed ? seed.est_price_per_person * headCountFor(socialType) : 0;
+  const seedBestTime = seed ? bestTimeLabel(seed.time_of_day) : null;
+  const seedTimeOk = seed ? isGoodTime(seed.time_of_day, startDate) : true;
 
   const [budgetTier, setBudgetTier] = useState<number>(
     defaultIsTier ? defaults.default_budget : 50,
@@ -280,9 +316,10 @@ export default function PlanScreen() {
     const computedEndDate = new Date(
       startDate.getTime() + hoursToPlan * 60 * 60 * 1000,
     );
-    const computedHeadCount =
-      socialType === "Date" ? 2 : socialType === "Solo" ? 1 : 4;
-    const finalBudget = isCustomBudget ? customBudget || 0 : budgetTier;
+    const computedHeadCount = headCountFor(socialType);
+    // Plus the starting idea's cost: the picked budget is for everything else
+    const finalBudget =
+      (isCustomBudget ? customBudget || 0 : budgetTier) + seedCost;
 
     // Save configuration to Zustand
     setPrefs({
@@ -298,6 +335,8 @@ export default function PlanScreen() {
     });
 
     resetLocalForm();
+    // Hand the "Starting with" idea to the builder, which places it first
+    commitSeed();
 
     // PUSH to builder
     router.push("/builder");
@@ -315,7 +354,7 @@ export default function PlanScreen() {
     socialType === "Group-Date" ? "Group date" : socialType,
     goingOut ? "Going out" : "Staying in",
     durationHours === null ? "Open-ended" : `${durationHours}h`,
-    budgetSummary,
+    seedCost > 0 ? `${budgetSummary} + $${seedCost}` : budgetSummary,
   ].join(" · ");
   const locationHint = location
     ? "Using your current location"
@@ -374,6 +413,54 @@ export default function PlanScreen() {
                 <Text className="text-black font-extrabold text-base">
                   Resume draft
                 </Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* --- STARTING WITH (from an idea's "Plan a date with this") --- */}
+          {seed && (
+            <View className="bg-zinc-900 border border-zinc-800 rounded-3xl p-3 flex-row items-center gap-3">
+              <Image
+                source={seed.image ? {uri: seed.image} : undefined}
+                style={{width: 56, height: 56, borderRadius: 16, backgroundColor: "#27272a"}}
+                contentFit="cover"
+              />
+              <View className="flex-1">
+                <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mb-0.5">
+                  Starting with
+                </Text>
+                <Text className="text-white font-bold text-base" numberOfLines={1}>
+                  {seed.title}
+                </Text>
+                <Text className="text-zinc-400 text-sm" numberOfLines={1}>
+                  {[
+                    seed.est_price_per_person > 0
+                      ? `$${seed.est_price_per_person}/person`
+                      : "Free",
+                    seed.est_duration_minutes
+                      ? ideaDuration({est_duration_minutes: seed.est_duration_minutes})
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
+                {seedBestTime && (
+                  <Text
+                    className={`text-xs mt-0.5 ${seedTimeOk ? "text-zinc-500" : "text-orange-400"}`}
+                    numberOfLines={1}
+                  >
+                    {seedTimeOk ? seedBestTime : `${seedBestTime}, not at your start time`}
+                  </Text>
+                )}
+              </View>
+              <Pressable
+                onPress={() => setSeed(null)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Don't start with this idea"
+                className="w-8 h-8 rounded-full bg-zinc-800 items-center justify-center active:opacity-70"
+              >
+                <Ionicons name="close" size={16} color="#a1a1aa" />
               </Pressable>
             </View>
           )}
@@ -439,7 +526,11 @@ export default function PlanScreen() {
           </Section>
 
           {/* --- BUDGET --- */}
-          <Section icon="wallet-outline" title="Budget" hint="Total for the outing">
+          <Section
+            icon="wallet-outline"
+            title="Budget"
+            hint={seedCost > 0 ? "On top of your first stop" : "Total for the outing"}
+          >
             <View className="flex-row bg-zinc-900 rounded-2xl border border-zinc-800 p-1.5">
               {BUDGET_TIERS.map((tier) => {
                 const active = !isCustomBudget && budgetTier === tier.value;
@@ -486,6 +577,12 @@ export default function PlanScreen() {
                   ref={budgetRef}
                 />
               </View>
+            )}
+            {seed && seedCost > 0 && (
+              <Text className="text-zinc-500 text-xs px-1">
+                {seed.title} is ${seedCost} for {headCountFor(socialType)}. That&apos;s
+                covered, so this is for the rest of the date.
+              </Text>
             )}
           </Section>
 
