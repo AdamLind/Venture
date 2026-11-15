@@ -61,8 +61,10 @@ export default function AuthScreen() {
       </View>
 
       <View className="flex flex-col gap-4 mb-8">
+        {/* fontSize in style: text-base's lineHeight clips iOS TextInput text */}
         <TextInput
-          className="bg-[#1e1e1e] text-white p-4 rounded-xl text-base border border-[#333]"
+          className="bg-[#1e1e1e] text-white p-4 rounded-xl border border-[#333]"
+          style={{fontSize: 16}}
           placeholder="Email address"
           placeholderTextColor="#888"
           value={email}
@@ -71,7 +73,8 @@ export default function AuthScreen() {
           keyboardType="email-address"
         />
         <TextInput
-          className="bg-[#1e1e1e] text-white p-4 rounded-xl text-base border border-[#333]"
+          className="bg-[#1e1e1e] text-white p-4 rounded-xl border border-[#333]"
+          style={{fontSize: 16}}
           placeholder="Password"
           placeholderTextColor="#888"
           value={password}

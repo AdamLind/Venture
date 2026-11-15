@@ -10,10 +10,13 @@ import {StatusBar} from "expo-status-bar";
 import "react-native-reanimated";
 import "../global.css";
 import Toast, {ToastConfig} from "react-native-toast-message";
-import {View, Text} from "react-native";
+import {View, Text, ActivityIndicator, Pressable} from "react-native";
 
 import {useColorScheme} from "@/hooks/useColorScheme";
 import {AuthProvider, useAuth} from "../src/providers/AuthProvider";
+import {useProfileStore} from "@/src/store/useProfileStore";
+import {useItineraryStore} from "@/src/store/useItineraryStore";
+import {signOut} from "@/src/lib/signOut";
 
 // --- CREATE YOUR CUSTOM TOAST THEMES ---
 const toastConfig: ToastConfig = {
@@ -50,27 +53,89 @@ function InitialLayout() {
   const router = useRouter();
   const colorScheme = useColorScheme();
 
-  const [loaded] = useFonts({
+  const [loaded, fontError] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+  // A failed font load should not block the app forever
+  const fontsReady = loaded || !!fontError;
+
+  const userId = session?.user.id ?? null;
+  const profileUserId = useProfileStore((s) => s.userId);
+  const profileStatus = useProfileStore((s) => s.status);
+  const profileError = useProfileStore((s) => s.error);
+  const hasProfile = useProfileStore((s) => !!s.profile);
+  const onboarded = useProfileStore((s) => !!s.preferences?.onboarded_at);
+  const loadProfile = useProfileStore((s) => s.load);
+  const reloadProfile = useProfileStore((s) => s.reload);
+  const clearProfile = useProfileStore((s) => s.clear);
+
+  // Keep the profile store in sync with whoever is signed in
+  useEffect(() => {
+    if (!initialized) return;
+    if (userId && userId !== profileUserId) {
+      loadProfile(userId);
+    } else if (!userId && profileUserId) {
+      clearProfile();
+    }
+  }, [initialized, userId, profileUserId, loadProfile, clearProfile]);
+
+  // Load saved dates once the user is set up. This also restores a date that
+  // was in progress when the app was closed.
+  const itineraryUserId = useItineraryStore((s) => s.userId);
+  const loadItineraries = useItineraryStore((s) => s.load);
+  useEffect(() => {
+    if (
+      userId &&
+      onboarded &&
+      profileStatus === "ready" &&
+      itineraryUserId !== userId
+    ) {
+      loadItineraries(userId);
+    }
+  }, [userId, onboarded, profileStatus, itineraryUserId, loadItineraries]);
 
   // The Reactive Auth Routing Logic
   useEffect(() => {
     // Wait until fonts load AND Supabase checks for a token
-    if (!initialized || !loaded) return;
+    if (!initialized || !fontsReady) return;
 
     const inAuthGroup = segments[0] === "(auth)";
+    const inOnboarding = segments[0] === "onboarding";
 
-    if (session && inAuthGroup) {
-      // ✅ Logged in but stuck on login screen -> push to tabs
-      router.replace("/(tabs)/explore");
-    } else if (!session && !inAuthGroup) {
+    if (!session) {
       // ❌ Not logged in but trying to see the app -> push to login
-      router.replace("/(auth)/login");
+      if (!inAuthGroup) router.replace("/(auth)/login");
+      return;
     }
-  }, [session, initialized, segments, loaded]);
 
-  if (!loaded) {
+    // Logged in: wait for the profile to decide between onboarding and the app
+    if (profileStatus !== "ready" || profileUserId !== userId) return;
+
+    if (!onboarded) {
+      if (!inOnboarding) router.replace("/onboarding");
+    } else if (inAuthGroup || inOnboarding) {
+      // ✅ Logged in and set up -> push to tabs
+      router.replace("/(tabs)/explore");
+    }
+  }, [
+    session,
+    initialized,
+    segments,
+    fontsReady,
+    profileStatus,
+    profileUserId,
+    userId,
+    onboarded,
+    router,
+  ]);
+
+  // Signed in, but the profile isn't loaded yet (or failed to load)
+  const showProfileGate =
+    !!session &&
+    (!hasProfile || profileUserId !== userId) &&
+    profileStatus !== "ready";
+
+  if (!fontsReady) {
     return null;
   }
 
@@ -91,15 +156,27 @@ function InitialLayout() {
           name="create/index"
           options={{
             title: "New Date Idea",
-            headerShown: true,
-            presentation: "modal",
+            headerShown: false,
+            // Native iOS sheet: rounded corners, swipe-to-dismiss.
+            // Grabber is custom (in create/index.tsx) for a larger, lower pill.
+            presentation: "formSheet",
+            sheetGrabberVisible: false,
+            sheetAllowedDetents: [1.0],
+            sheetCornerRadius: 24,
+            // Slightly lighter than the black screen behind so the edge reads
+            contentStyle: {backgroundColor: "#121212"},
           }}
         />
 
         {/* BUILDER SCREEN */}
         <Stack.Screen
           name="builder/index"
-          options={{animation: "fade", title: "Build Your Activity"}}
+          options={{
+            animation: "fade",
+            title: "Build Your Activity",
+            // The builder draws its own header
+            headerShown: false,
+          }}
         />
 
         {/* ACTIVE DATE SCREEN */}
@@ -108,9 +185,59 @@ function InitialLayout() {
           options={{headerShown: false, animation: "slide_from_bottom"}}
         />
 
+        {/* ONBOARDING (first sign-in until onboarded_at is set) */}
+        <Stack.Screen
+          name="onboarding/index"
+          options={{headerShown: false, gestureEnabled: false, animation: "fade"}}
+        />
+
+        {/* SETTINGS */}
+        <Stack.Screen name="settings/index" options={{headerShown: false}} />
+        <Stack.Screen
+          name="settings/edit-profile"
+          options={{headerShown: false}}
+        />
+        <Stack.Screen name="settings/planning" options={{headerShown: false}} />
+        <Stack.Screen
+          name="settings/delete-account"
+          options={{headerShown: false}}
+        />
+
+        {/* SAVED DATE DETAIL */}
+        <Stack.Screen name="itinerary/[id]" options={{headerShown: false}} />
+
         {/* Not Found Screen */}
         <Stack.Screen name="+not-found" />
       </Stack>
+
+      {/* Covers the app while the signed-in user's profile loads */}
+      {showProfileGate && (
+        <View className="absolute inset-0 bg-black items-center justify-center px-8">
+          {profileStatus === "error" ? (
+            <>
+              <Text className="text-white font-bold text-xl text-center">
+                {"Couldn't load your profile"}
+              </Text>
+              {profileError && (
+                <Text className="text-zinc-400 text-base text-center mt-2">
+                  {profileError}
+                </Text>
+              )}
+              <Pressable
+                onPress={reloadProfile}
+                className="bg-white rounded-2xl px-8 py-3.5 mt-8 active:opacity-80"
+              >
+                <Text className="text-black font-extrabold">Try again</Text>
+              </Pressable>
+              <Pressable onPress={signOut} className="mt-4 py-2">
+                <Text className="text-zinc-400 font-semibold">Sign out</Text>
+              </Pressable>
+            </>
+          ) : (
+            <ActivityIndicator color="white" size="large" />
+          )}
+        </View>
+      )}
 
       <StatusBar style="light" />
       <Toast config={toastConfig} />
