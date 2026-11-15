@@ -1,163 +1,314 @@
-import React from "react";
-import { View, Text, ScrollView, Pressable } from "react-native";
-import { Image } from "expo-image";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import React, {useMemo, useState} from "react";
+import {
+  Animated,
+  View,
+  Text,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
+import {Ionicons} from "@expo/vector-icons";
+import {router} from "expo-router";
 
-// --- MOCK DATA ---
-const ACTIVE_DATE = {
-  id: "live-1",
-  title: "Tacos & Comedy",
-  currentStop: "Wiseguys Comedy Club",
-  time: "8:30 PM",
-  image: "https://images.unsplash.com/photo-1564767655658-4e6f3659039d?q=80&w=800&auto=format&fit=crop",
-};
+import type {Itinerary} from "@/types/dates";
+import {useItineraryStore} from "@/src/store/useItineraryStore";
+import {countdownLabel, groupItineraries} from "@/src/lib/dates";
+import {parseLocalDate} from "@/src/lib/profile";
+import {LiveDateCard, UpcomingDateCard} from "@/components/dates/DateCards";
+import TabHeader, {
+  HeaderIconButton,
+  useTabHeader,
+  useTabRefresh,
+} from "@/components/ui/TabHeader";
+import WeekStrip, {
+  dayKey,
+  upcomingDays,
+  type DayMark,
+} from "@/components/dates/WeekStrip";
 
-const UPCOMING_DATES = [
-  {
-    id: "up-1",
-    title: "Sundance Film Festival",
-    date: "OCT 14",
-    day: "Saturday",
-    time: "6:00 PM",
-    countdown: "In 9 days",
-    weather: "42° 🌙",
-    image: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=800&auto=format&fit=crop",
-    partner: "Sarah",
-  },
-  {
-    id: "up-2",
-    title: "Anniversary Dinner",
-    date: "NOV 2",
-    day: "Thursday",
-    time: "7:30 PM",
-    countdown: "In 3 weeks",
-    weather: "50° ☁️",
-    image: "https://images.unsplash.com/photo-1551632811-561732d1e306?q=80&w=800&auto=format&fit=crop",
-    partner: "Sarah",
+/** How many days the strip shows, starting today. */
+const STRIP_DAYS = 21;
+
+const DAY_MS = 86_400_000;
+
+function daysFromToday(value: string, now = new Date()) {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor((parseLocalDate(dayKey(value)).getTime() - today.getTime()) / DAY_MS);
+}
+
+/** Splits upcoming dates into "This week" / "Next week" / "Later". */
+function bucketByWeek(dates: Itinerary[]) {
+  const buckets: {title: string; items: Itinerary[]}[] = [
+    {title: "This week", items: []},
+    {title: "Next week", items: []},
+    {title: "Later", items: []},
+  ];
+  for (const date of dates) {
+    const days = daysFromToday(date.starts_at);
+    buckets[days < 7 ? 0 : days < 14 ? 1 : 2].items.push(date);
   }
-];
+  return buckets.filter((b) => b.items.length > 0);
+}
+
+const planFor = (key?: string) =>
+  router.push({pathname: "/(tabs)/plan", params: key ? {startsOn: key} : {}});
 
 export default function Activity() {
+  const itineraries = useItineraryStore((s) => s.itineraries);
+  const status = useItineraryStore((s) => s.status);
+  const error = useItineraryStore((s) => s.error);
+  const reload = useItineraryStore((s) => s.reload);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const header = useTabHeader({subtitle: true});
+  const refresh = useTabRefresh(reload);
+
+  const {active, upcoming, past} = useMemo(
+    () => groupItineraries(itineraries),
+    [itineraries],
+  );
+
+  // Rebuilt with the itineraries so the strip rolls over after midnight on refresh
+  const days = useMemo(() => upcomingDays(STRIP_DAYS), [itineraries]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const marks = useMemo(() => {
+    const result: Record<string, DayMark> = {};
+    for (const date of upcoming) result[dayKey(date.starts_at)] = "planned";
+    if (active) result[dayKey(active.starts_at)] = "live";
+    return result;
+  }, [upcoming, active]);
+
+  const firstLoad = status === "loading" && itineraries.length === 0;
+  const hasAnything = !!active || upcoming.length > 0;
+
+  const selectedDate = selectedDay ? parseLocalDate(selectedDay) : null;
+  const onSelectedDay = selectedDay
+    ? upcoming.filter((d) => dayKey(d.starts_at) === selectedDay)
+    : [];
+  const sections = bucketByWeek(upcoming);
+
+  const monthLabel = (selectedDate ?? new Date()).toLocaleDateString([], {
+    month: "long",
+    year:
+      (selectedDate ?? new Date()).getFullYear() === new Date().getFullYear()
+        ? undefined
+        : "numeric",
+  });
+
+  const subtitle = active
+    ? "You're out right now"
+    : upcoming.length > 0
+      ? `${upcoming.length} planned · next one ${countdownLabel(upcoming[0].starts_at).toLowerCase()}`
+      : "Nothing on the books yet";
+
   return (
-    <SafeAreaView edges={["top"]} className="flex-1 bg-black">
-      {/* --- HEADER --- */}
-      <View className="flex-row justify-between items-center px-5 py-2 mb-2">
-        <Text className="text-white font-extrabold text-3xl tracking-tight">Upcoming</Text>
-        <Pressable className="bg-zinc-900 w-10 h-10 rounded-full items-center justify-center border border-zinc-800 active:bg-zinc-800">
-          <Ionicons name="calendar-outline" size={20} color="white" />
-        </Pressable>
-      </View>
+    // The scroll view is the screen's root (see TabHeader.tsx for why)
+    <Animated.ScrollView
+      {...header.scrollProps}
+      style={{flex: 1, backgroundColor: "#000"}}
+      contentContainerStyle={{paddingBottom: 40}}
+      showsVerticalScrollIndicator={false}
+      refreshControl={refresh.control}
+    >
+      <TabHeader
+        header={header}
+        title="Upcoming"
+        subtitle={subtitle}
+        refreshing={refresh.headerSpinner}
+        right={
+          <HeaderIconButton
+            icon="add"
+            label="Plan a date"
+            onPress={() => planFor()}
+          />
+        }
+      />
+      <View style={{paddingTop: 8}}>
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerClassName="pb-22 px-5 pt-2"
-      >
-        {/* --- 🔴 LIVE MODE CARD (Only shows during an active date) --- */}
-        <View className="mb-8">
-          <View className="flex-row items-center gap-2 mb-3 px-1">
-            <View className="w-2.5 h-2.5 bg-[#FF9D0A] rounded-full shadow-[0_0_8px_rgba(255,157,10,0.8)]" />
-            <Text className="text-[#FF9D0A] font-bold text-sm uppercase tracking-widest">Live Now</Text>
-          </View>
-          
-          <Pressable className="bg-zinc-900 rounded-3xl overflow-hidden border border-[#FF9D0A]/30 active:opacity-90">
-            {/* Live Map / Image Area */}
-            <View className="h-40 w-full relative">
-              <Image 
-                source={{ uri: ACTIVE_DATE.image }} 
-                className="w-full h-full opacity-60"
-                contentFit="cover"
-              />
-              <View className="absolute inset-0 bg-gradient-to-t from-zinc-900 to-transparent" />
-              
-              {/* Floating Route Badge */}
-              <View className="absolute top-4 left-4 bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-zinc-700 flex-row items-center gap-1.5">
-                <Ionicons name="navigate" size={14} color="#FF9D0A" />
-                <Text className="text-white font-bold text-xs">Stop 2 of 3</Text>
-              </View>
-            </View>
-
-            {/* Live Logistics */}
-            <View className="p-5 pt-2">
-              <Text className="text-white font-bold text-2xl mb-1">{ACTIVE_DATE.title}</Text>
-              
-              <View className="flex-row items-center justify-between mt-3 bg-black/50 p-4 rounded-2xl border border-zinc-800">
-                <View>
-                  <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-1">Up Next</Text>
-                  <Text className="text-white font-bold text-base">{ACTIVE_DATE.currentStop}</Text>
-                  <Text className="text-zinc-500 text-sm mt-0.5">Reservation at {ACTIVE_DATE.time}</Text>
-                </View>
-                <Pressable className="bg-[#FF9D0A] w-12 h-12 rounded-full items-center justify-center active:scale-95 transition-transform">
-                  <Ionicons name="map" size={20} color="black" />
-                </Pressable>
-              </View>
-            </View>
-          </Pressable>
-        </View>
-
-        {/* --- 🎫 UPCOMING TICKETS --- */}
-        <Text className="text-white font-bold text-xl mb-4 tracking-tight px-1">Later This Month</Text>
-        
-        <View className="gap-5">
-          {UPCOMING_DATES.map((date) => (
-            <Pressable key={date.id} className="bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 active:opacity-90">
-              
-              {/* The "Ticket Stub" Header */}
-              <View className="flex-row items-center justify-between bg-zinc-800/50 p-4 border-b border-zinc-800">
-                <View className="flex-row items-center gap-3">
-                  {/* Calendar Date Block */}
-                  <View className="bg-black py-1 px-3 rounded-xl border border-zinc-700 items-center">
-                    <Text className="text-red-400 font-bold text-[10px] uppercase">{date.date.split(' ')[0]}</Text>
-                    <Text className="text-white font-bold text-lg leading-6">{date.date.split(' ')[1]}</Text>
-                  </View>
-                  <View>
-                    <Text className="text-white font-bold text-base">{date.day}</Text>
-                    <Text className="text-zinc-400 text-sm">{date.time}</Text>
-                  </View>
-                </View>
-
-                {/* Countdown & Weather Badge */}
-                <View className="items-end gap-1">
-                  <Text className="text-zinc-300 font-bold text-sm bg-zinc-700/50 px-2 py-1 rounded-md overflow-hidden">
-                    {date.countdown}
-                  </Text>
-                  <Text className="text-zinc-500 text-xs font-semibold">{date.weather}</Text>
-                </View>
-              </View>
-
-              {/* The Event Image & Details */}
-              <View className="h-32 w-full relative">
-                <Image 
-                  source={{ uri: date.image }} 
-                  className="w-full h-full"
-                  contentFit="cover"
-                />
-                <View className="absolute inset-0 bg-black/40" />
-                
-                <View className="absolute bottom-4 left-4 right-4 flex-row justify-between items-end">
-                  <View>
-                    <Text className="text-white font-bold text-xl drop-shadow-md">{date.title}</Text>
-                    <Text className="text-zinc-200 text-sm drop-shadow-md font-medium mt-1">With {date.partner}</Text>
-                  </View>
-                  
-                  {/* Avatar stack for shared dates */}
-                  <View className="flex-row">
-                    <Image 
-                      source={{ uri: "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=100&auto=format&fit=crop" }} 
-                      className="w-8 h-8 rounded-full border-2 border-zinc-900 z-10"
-                    />
-                    <View className="w-8 h-8 rounded-full border-2 border-zinc-900 bg-blue-600 -ml-3 items-center justify-center">
-                      <Text className="text-white text-[10px] font-bold">You</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-
+        {/* --- WEEK STRIP --- */}
+        <View className="flex-row items-center justify-between px-5 mb-3">
+          <Text className="text-white font-bold text-lg tracking-tight">
+            {monthLabel}
+          </Text>
+          {selectedDay && (
+            <Pressable onPress={() => setSelectedDay(null)} hitSlop={8}>
+              <Text className="text-blue-400 font-semibold">Show all</Text>
             </Pressable>
-          ))}
+          )}
         </View>
+        <WeekStrip
+          days={days}
+          marks={marks}
+          selected={selectedDay}
+          onSelect={setSelectedDay}
+        />
 
-      </ScrollView>
-    </SafeAreaView>
+        <View className="px-5 pt-7">
+          {firstLoad && (
+            <View className="py-16 items-center">
+              <ActivityIndicator color="white" />
+            </View>
+          )}
+
+          {status === "error" && (
+            <View className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 mb-6">
+              <Text className="text-red-300 font-bold">
+                {"Couldn't load your dates"}
+              </Text>
+              {error && <Text className="text-red-200/70 mt-1">{error}</Text>}
+              <Text className="text-red-200/70 mt-1">
+                Pull down to try again.
+              </Text>
+            </View>
+          )}
+
+          {/* --- LIVE NOW (only during a date) --- */}
+          {active && !selectedDay && (
+            <View className="mb-8">
+              <View className="flex-row items-center gap-2 mb-3 px-1">
+                <View className="w-2.5 h-2.5 bg-[#FF9D0A] rounded-full" />
+                <Text className="text-[#FF9D0A] font-bold text-sm uppercase tracking-widest">
+                  Live Now
+                </Text>
+              </View>
+              <LiveDateCard itinerary={active} />
+            </View>
+          )}
+
+          {/* --- ONE DAY (a day is selected in the strip) --- */}
+          {!firstLoad && selectedDate && (
+            <>
+              <SectionTitle
+                title={selectedDate.toLocaleDateString([], {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+                count={onSelectedDay.length}
+              />
+              {onSelectedDay.length > 0 ? (
+                <View className="gap-5">
+                  {onSelectedDay.map((itinerary) => (
+                    <UpcomingDateCard
+                      key={itinerary.itinerary_id}
+                      itinerary={itinerary}
+                    />
+                  ))}
+                  <PlanThisDay dayKey={selectedDay!} compact />
+                </View>
+              ) : (
+                <PlanThisDay dayKey={selectedDay!} />
+              )}
+            </>
+          )}
+
+          {/* --- ALL PLANNED, BY WEEK --- */}
+          {!firstLoad && !selectedDay && (
+            <View className="gap-8">
+              {sections.map((section) => (
+                <View key={section.title}>
+                  <SectionTitle
+                    title={section.title}
+                    count={section.items.length}
+                  />
+                  <View className="gap-5">
+                    {section.items.map((itinerary) => (
+                      <UpcomingDateCard
+                        key={itinerary.itinerary_id}
+                        itinerary={itinerary}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* --- EMPTY STATE --- */}
+          {!firstLoad && status !== "error" && !hasAnything && !selectedDay && (
+            <View className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 items-center">
+              <View className="w-14 h-14 rounded-full bg-blue-500/15 items-center justify-center mb-4">
+                <Ionicons name="calendar" size={24} color="#60a5fa" />
+              </View>
+              <Text className="text-white font-bold text-lg">
+                Nothing planned yet
+              </Text>
+              <Text className="text-zinc-500 text-center mt-1 mb-5">
+                Pick a day above, or start a plan and it&apos;ll land here once
+                you finalize it.
+              </Text>
+              <Pressable
+                onPress={() => planFor()}
+                className="bg-white rounded-2xl px-6 py-3 active:opacity-80"
+              >
+                <Text className="text-black font-bold">Plan a date</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* --- PAST DATES LINK --- */}
+          {!firstLoad && !selectedDay && past.length > 0 && (
+            <Pressable
+              onPress={() => router.push("/(tabs)/profile")}
+              className="flex-row items-center bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 mt-8 active:opacity-70"
+            >
+              <Ionicons name="time-outline" size={18} color="#a1a1aa" />
+              <Text className="text-zinc-300 font-semibold flex-1 ml-3">
+                {past.length} past {past.length === 1 ? "date" : "dates"}
+              </Text>
+              <Text className="text-zinc-500 text-sm mr-1">On your profile</Text>
+              <Ionicons name="chevron-forward" size={16} color="#71717a" />
+            </Pressable>
+          )}
+        </View>
+      </View>
+    </Animated.ScrollView>
+  );
+}
+
+function SectionTitle({title, count}: {title: string; count: number}) {
+  return (
+    <View className="flex-row items-baseline gap-2 mb-4 px-1">
+      <Text className="text-white font-bold text-xl tracking-tight">
+        {title}
+      </Text>
+      {count > 0 && (
+        <Text className="text-zinc-500 font-semibold">{count}</Text>
+      )}
+    </View>
+  );
+}
+
+/** "Nothing on Thursday" card (or a slim "Add another" row under existing dates). */
+function PlanThisDay({dayKey: key, compact}: {dayKey: string; compact?: boolean}) {
+  const weekday = parseLocalDate(key).toLocaleDateString([], {weekday: "long"});
+
+  if (compact) {
+    return (
+      <Pressable
+        onPress={() => planFor(key)}
+        className="flex-row items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-2xl py-3.5 active:opacity-70"
+      >
+        <Ionicons name="add" size={18} color="#a1a1aa" />
+        <Text className="text-zinc-300 font-semibold">
+          Plan something else on {weekday}
+        </Text>
+      </Pressable>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={() => planFor(key)}
+      className="border border-dashed border-blue-500/40 bg-blue-500/5 rounded-3xl p-6 items-center active:opacity-80"
+    >
+      <View className="w-12 h-12 rounded-full bg-blue-500/15 items-center justify-center mb-3">
+        <Ionicons name="add" size={24} color="#60a5fa" />
+      </View>
+      <Text className="text-white font-bold text-base">
+        {`Nothing on ${weekday} yet`}
+      </Text>
+      <Text className="text-blue-200/60 text-sm mt-1">
+        Tap to start a plan for this day
+      </Text>
+    </Pressable>
   );
 }

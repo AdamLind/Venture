@@ -5,7 +5,7 @@ import SocialSelector from "@/components/home/SocialSelector";
 import React, {useEffect, useRef, useState, useCallback} from "react";
 import {
   Pressable,
-  ScrollView,
+  Animated,
   Text,
   View,
   Alert,
@@ -15,8 +15,7 @@ import {
   Modal,
   ActivityIndicator,
 } from "react-native";
-import {useFocusEffect, useRouter} from "expo-router";
-import {SafeAreaView} from "react-native-safe-area-context";
+import {useFocusEffect, useLocalSearchParams, useRouter} from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {Ionicons} from "@expo/vector-icons";
 import * as Location from "expo-location";
@@ -26,6 +25,13 @@ import {SimpleLocation} from "@/types/activities";
 import {usePrefsStore} from "@/src/store/usePrefsStore";
 import {useActiveDateStore} from "@/src/store/activeDateStore";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
+import {useProfileStore} from "@/src/store/useProfileStore";
+import TabHeader, {useTabHeader, useTabRefresh} from "@/components/ui/TabHeader";
+import {
+  BUDGET_TIERS,
+  parseLocalDate,
+  toPlanningDefaults,
+} from "@/src/lib/profile";
 
 // IMPORT SHARED CONSTANTS
 import {
@@ -39,6 +45,26 @@ export default function PlanScreen() {
   const {prefs, setPrefs, resetPrefs, draftUpdatedAt} = usePrefsStore();
   const timeline = useActiveDateStore((state) => state.timeline);
   const clearBuilder = useBuilderStore((state) => state.clearBuilder);
+
+  // Saved planning defaults (Settings > Planning defaults) seed the form
+  const preferences = useProfileStore((state) => state.preferences);
+  const firstName = useProfileStore((state) => state.profile?.first_name);
+  const header = useTabHeader({subtitle: true});
+  // Pulls the latest planning defaults (e.g. changed on another device);
+  // the form re-applies them when they change
+  const refresh = useTabRefresh(useProfileStore((state) => state.reload));
+  const defaults = toPlanningDefaults(preferences);
+  const defaultModality =
+    defaults.default_modality === "GO_OUT"
+      ? ActivityLocation.GoOut
+      : ActivityLocation.StayIn;
+  const defaultIsTier = BUDGET_TIERS.some(
+    (tier) => tier.value === defaults.default_budget,
+  );
+  const homeLocation: SimpleLocation | null =
+    defaults.home_lat != null && defaults.home_lng != null
+      ? {latitude: defaults.home_lat, longitude: defaults.home_lng}
+      : null;
 
   // If there is a timestamp, they have an active draft!
   const hasActiveDraft = !!draftUpdatedAt;
@@ -61,9 +87,7 @@ export default function PlanScreen() {
 
   // --- LOCAL FORM STATE ---
   const [socialType, setSocialType] = useState("Date");
-  const [modality, setModality] = useState<ActivityLocation>(
-    ActivityLocation.StayIn,
-  );
+  const [modality, setModality] = useState<ActivityLocation>(defaultModality);
   const [location, setLocation] = useState<SimpleLocation | null>(null);
 
   const [startDate, setStartDate] = useState(getRoundedDate(new Date()));
@@ -73,11 +97,38 @@ export default function PlanScreen() {
     getRoundedDate(new Date()),
   );
 
+  // Activity tab's "Plan for this day" passes ?startsOn=YYYY-MM-DD.
+  // Start at 7 PM that day (or the next 15-minute mark if that's already passed),
+  // then clear the param so coming back to the tab doesn't re-apply it.
+  const {startsOn} = useLocalSearchParams<{startsOn?: string}>();
+  const [appliedStartsOn, setAppliedStartsOn] = useState<string | undefined>();
+  if (startsOn !== appliedStartsOn) {
+    // Adjusting state during render (rather than in an effect) avoids a flash
+    setAppliedStartsOn(startsOn);
+    if (startsOn && /^\d{4}-\d{2}-\d{2}$/.test(startsOn)) {
+      const evening = parseLocalDate(startsOn);
+      evening.setHours(19, 0, 0, 0);
+      const rounded = getRoundedDate(new Date());
+      const start = evening > rounded ? evening : rounded;
+      setStartDate(start);
+      setTempStartDate(start);
+    }
+  }
+  useEffect(() => {
+    if (startsOn) router.setParams({startsOn: undefined});
+  }, [startsOn, router]);
+
   const [durationHours, setDurationHours] = useState<number | null>(4);
 
-  const [budgetTier, setBudgetTier] = useState<number>(50);
-  const [isCustomBudget, setIsCustomBudget] = useState<boolean>(false);
-  const [customBudget, setCustomBudget] = useState<number | null>(null);
+  const [budgetTier, setBudgetTier] = useState<number>(
+    defaultIsTier ? defaults.default_budget : 50,
+  );
+  const [isCustomBudget, setIsCustomBudget] = useState<boolean>(
+    !defaultIsTier,
+  );
+  const [customBudget, setCustomBudget] = useState<number | null>(
+    defaultIsTier ? null : defaults.default_budget,
+  );
   const budgetRef = useRef<TextInput | null>(null);
 
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -86,17 +137,28 @@ export default function PlanScreen() {
   const resetLocalForm = () => {
     const roundedNow = getRoundedDate(new Date());
     setSocialType("Date");
-    setModality(ActivityLocation.StayIn);
+    setModality(defaultModality);
     setLocation(null);
     setStartDate(roundedNow);
     setTempStartDate(roundedNow);
     setDurationHours(4);
-    setBudgetTier(50);
-    setIsCustomBudget(false);
-    setCustomBudget(null);
+    setBudgetTier(defaultIsTier ? defaults.default_budget : 50);
+    setIsCustomBudget(!defaultIsTier);
+    setCustomBudget(defaultIsTier ? null : defaults.default_budget);
     setSelectedTags([]);
     setResetKey((prev) => prev + 1); // <-- Add this to force child remount
   };
+
+  // Re-apply the form defaults when they're edited in Settings
+  // (tabs stay mounted, so the initial useState values alone would go stale)
+  const defaultsVersion = preferences?.updated_at;
+  const lastDefaultsVersion = useRef(defaultsVersion);
+  useEffect(() => {
+    if (lastDefaultsVersion.current === defaultsVersion) return;
+    lastDefaultsVersion.current = defaultsVersion;
+    resetLocalForm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultsVersion]);
 
   // Safely grab the first 3 base classes, and swap the 4th based on socialType
   const activityClasses = [
@@ -175,32 +237,40 @@ export default function PlanScreen() {
       try {
         const {status} = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
-          Alert.alert(
-            "Location Required",
-            "Please allow location access to find nearby activities.",
-          );
-          setIsLocating(false);
-          return;
+          if (!homeLocation) {
+            Alert.alert(
+              "Location Required",
+              "Allow location access, or set a home area in Settings, to find nearby activities.",
+            );
+            setIsLocating(false);
+            return;
+          }
+          // Location is off: plan around their saved home area instead
+          activeLocation = homeLocation;
+        } else {
+          const currentPosition = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+
+          activeLocation = {
+            latitude: currentPosition.coords.latitude,
+            longitude: currentPosition.coords.longitude,
+          };
         }
-
-        const currentPosition = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-
-        activeLocation = {
-          latitude: currentPosition.coords.latitude,
-          longitude: currentPosition.coords.longitude,
-        };
 
         setLocation(activeLocation);
       } catch (error) {
         console.error("Location fetch error:", error);
-        Alert.alert(
-          "Location Error",
-          "Could not determine your location. Please check your settings.",
-        );
-        setIsLocating(false);
-        return;
+        if (!homeLocation) {
+          Alert.alert(
+            "Location Error",
+            "Could not determine your location. Please check your settings.",
+          );
+          setIsLocating(false);
+          return;
+        }
+        activeLocation = homeLocation;
+        setLocation(activeLocation);
       } finally {
         setIsLocating(false);
       }
@@ -221,6 +291,7 @@ export default function PlanScreen() {
       startDate: startDate.toISOString(),
       endDate: computedEndDate.toISOString(),
       currentLocation: activeLocation,
+      travelDistance: defaults.default_travel_miles,
       budget: finalBudget,
       vibes: selectedTags,
       headCount: computedHeadCount,
@@ -232,170 +303,183 @@ export default function PlanScreen() {
     router.push("/builder");
   };
 
+  // ─── Display helpers ─────────────────────────────────────────────────────────
+  const goingOut = modality === ActivityLocation.GoOut;
+  const budgetSummary = isCustomBudget
+    ? customBudget != null
+      ? `$${customBudget}`
+      : "Exact budget"
+    : (BUDGET_TIERS.find((tier) => tier.value === budgetTier)?.label ??
+      `$${budgetTier}`);
+  const planSummary = [
+    socialType === "Group-Date" ? "Group date" : socialType,
+    goingOut ? "Going out" : "Staying in",
+    durationHours === null ? "Open-ended" : `${durationHours}h`,
+    budgetSummary,
+  ].join(" · ");
+  const locationHint = location
+    ? "Using your current location"
+    : homeLocation
+      ? `We'll use your location, or ${defaults.home_label ?? "your home area"} if it's off`
+      : "We'll ask for your location when you start";
+
   return (
-    <View className="flex-1 bg-black">
+    // Fragment, so the scroll view is the screen's root view (see
+    // TabHeader.tsx). StatusBar renders nothing and the Modals render nothing
+    // while hidden, so the scroll view stays the only view at the root.
+    <>
       <StatusBar barStyle="light-content" />
 
-      <SafeAreaView edges={["top"]} className="bg-zinc-950/90 z-10">
-        <View className="px-6 pb-4 pt-2">
-          <View className="flex-row justify-between items-end">
-            <Text className="text-white text-3xl font-bold tracking-tight">
-              Plan
-            </Text>
-          </View>
-        </View>
-      </SafeAreaView>
-
-      <ScrollView
-        className="flex-1 bg-black"
-        contentContainerClassName="px-6 pt-6 pb-32"
+      <Animated.ScrollView
+        {...header.scrollProps}
+        style={{flex: 1, backgroundColor: "#000"}}
+        contentContainerStyle={{paddingBottom: 64}}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={refresh.control}
       >
-        <View className="flex-col gap-8">
-          {/* 🚀 THE MISSING BANNER */}
+        <TabHeader
+          header={header}
+          title="Plan"
+          refreshing={refresh.headerSpinner}
+          subtitle={firstName ? `What's the plan, ${firstName}?` : "What's the plan?"}
+        />
+        <View className="gap-4" style={{paddingHorizontal: 20, paddingTop: 8}}>
+          {/* --- DRAFT IN PROGRESS --- */}
           {hasActiveDraft && (
-            <View className="bg-zinc-900 border border-zinc-700 rounded-3xl p-4 shadow-lg">
-              <View className="flex-row justify-between items-center mb-4">
-                <View>
-                  <Text className="text-white font-bold text-lg">
-                    Continue Planning
+            <View className="bg-blue-600/10 border border-blue-500/30 rounded-3xl p-4">
+              <View className="flex-row items-center mb-4">
+                <View className="w-10 h-10 rounded-full bg-blue-500/20 items-center justify-center mr-3">
+                  <Ionicons name="construct-outline" size={18} color="#60a5fa" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-white font-bold text-base">
+                    Continue planning
                   </Text>
-                  <Text className="text-zinc-400 text-sm mt-0.5">
-                    {prefs.socialType} •{" "}
-                    {prefs.modality === "GO_OUT" ? "Going Out" : "Staying In"}
+                  <Text className="text-blue-200/70 text-sm">
+                    {prefs.socialType === "Group-Date"
+                      ? "Group date"
+                      : prefs.socialType}{" "}
+                    · {prefs.modality === "GO_OUT" ? "Going out" : "Staying in"}
                   </Text>
                 </View>
-                <Pressable
-                  onPress={handleDiscard}
-                  className="bg-zinc-800 px-3 py-1.5 rounded-full"
-                >
-                  <Text className="text-zinc-400 text-xs font-bold uppercase tracking-wider">
-                    Discard
-                  </Text>
+                <Pressable onPress={handleDiscard} hitSlop={8}>
+                  <Text className="text-zinc-400 font-semibold">Discard</Text>
                 </Pressable>
               </View>
-
               <Pressable
                 onPress={() => router.push("/builder")}
                 className="bg-white rounded-2xl py-3.5 items-center active:opacity-80"
               >
                 <Text className="text-black font-extrabold text-base">
-                  Resume Draft
+                  Resume draft
                 </Text>
               </Pressable>
             </View>
           )}
 
-          {/* Top Selectors (Social & In/Out) */}
-          <View className="flex-col gap-6">
+          {/* --- WHO --- */}
+          <Section icon="people-outline" title="Who's coming">
             <SocialSelector type={socialType} setType={setSocialType} />
+          </Section>
+
+          {/* --- WHERE --- */}
+          <Section icon="location-outline" title="Where">
             <InOrOutSelector
               inOrOut={modality}
               setInOrOut={setModality}
               setLocation={setLocation}
             />
-          </View>
+            {goingOut && (
+              <Text className="text-zinc-500 text-xs px-1">{locationHint}</Text>
+            )}
+          </Section>
 
-          {/* Time & Duration row */}
-          <View className="flex-row gap-4">
+          {/* --- WHEN --- */}
+          <Section icon="calendar-outline" title="When">
             <Pressable
               onPress={() => {
                 setTempStartDate(startDate);
                 setShowStartPicker(true);
               }}
-              className="flex-1 bg-zinc-900 rounded-3xl p-4 border border-zinc-800 active:bg-zinc-800 justify-center"
+              className="bg-zinc-900 rounded-2xl px-4 py-3.5 border border-zinc-800 flex-row items-center active:bg-zinc-800"
             >
-              <View className="flex-row items-center gap-1.5 mb-1">
-                <Ionicons name="calendar-outline" size={14} color="#a1a1aa" />
-                <Text className="text-zinc-400 text-[11px] uppercase font-bold tracking-wider">
-                  Plan For
+              <View className="flex-1">
+                <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mb-0.5">
+                  Starts
+                </Text>
+                <Text className="text-white font-bold text-base" numberOfLines={1}>
+                  {formatStartDisplay(startDate)}
                 </Text>
               </View>
-              <Text
-                className="text-white font-bold text-[15px]"
-                numberOfLines={1}
-              >
-                {formatStartDisplay(startDate)}
-              </Text>
+              <Ionicons name="chevron-forward" size={18} color="#71717a" />
             </Pressable>
 
-            <View className="flex-1 flex-row bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800">
-              {[2, 4, 6, null].map((val) => (
-                <Pressable
-                  key={val === null ? "inf" : val}
-                  onPress={() => setDurationHours(val)}
-                  className={`flex-1 justify-center items-center ${
-                    durationHours === val ? "bg-zinc-700" : "bg-transparent"
-                  }`}
-                >
-                  <Text
-                    className={`font-bold ${
-                      durationHours === val
-                        ? "text-white text-lg"
-                        : "text-zinc-500 text-base"
-                    }`}
+            <View className="flex-row bg-zinc-900 rounded-2xl border border-zinc-800 p-1.5">
+              {[2, 4, 6, null].map((val) => {
+                const active = durationHours === val;
+                return (
+                  <Pressable
+                    key={val === null ? "inf" : val}
+                    onPress={() => setDurationHours(val)}
+                    accessibilityRole="button"
+                    accessibilityLabel={val === null ? "Open-ended" : `${val} hours`}
+                    accessibilityState={{selected: active}}
+                    className={`flex-1 py-3 rounded-xl items-center ${active ? "bg-zinc-700" : ""}`}
                   >
-                    {val === null ? "∞" : `${val}h`}
-                  </Text>
-                </Pressable>
-              ))}
+                    <Text
+                      className={`font-bold ${active ? "text-white" : "text-zinc-500"}`}
+                    >
+                      {val === null ? "∞" : `${val}h`}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
-          </View>
+          </Section>
 
-          {/* Budget Section */}
-          <View className="flex-col gap-3">
-            <Text className="text-white font-bold text-lg px-1">Budget</Text>
-            <View className="flex-row bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 p-1.5">
-              {[
-                {label: "$", val: 20},
-                {label: "$$", val: 50},
-                {label: "$$$", val: 150},
-              ].map((tier) => (
-                <Pressable
-                  key={tier.label}
-                  onPress={() => {
-                    setIsCustomBudget(false);
-                    setBudgetTier(tier.val);
-                  }}
-                  className={`flex-1 py-3 rounded-2xl items-center ${
-                    !isCustomBudget && budgetTier === tier.val
-                      ? "bg-zinc-700 shadow-sm shadow-black"
-                      : "bg-transparent"
-                  }`}
-                >
-                  <Text
-                    className={`font-bold ${
-                      !isCustomBudget && budgetTier === tier.val
-                        ? "text-white"
-                        : "text-zinc-500"
-                    }`}
+          {/* --- BUDGET --- */}
+          <Section icon="wallet-outline" title="Budget" hint="Total for the outing">
+            <View className="flex-row bg-zinc-900 rounded-2xl border border-zinc-800 p-1.5">
+              {BUDGET_TIERS.map((tier) => {
+                const active = !isCustomBudget && budgetTier === tier.value;
+                return (
+                  <Pressable
+                    key={tier.label}
+                    onPress={() => {
+                      setIsCustomBudget(false);
+                      setBudgetTier(tier.value);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{selected: active}}
+                    className={`flex-1 py-3 rounded-xl items-center ${active ? "bg-zinc-700" : ""}`}
                   >
-                    {tier.label}
-                  </Text>
-                </Pressable>
-              ))}
+                    <Text
+                      className={`font-bold ${active ? "text-white" : "text-zinc-500"}`}
+                    >
+                      {tier.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
               <Pressable
                 onPress={() => {
                   setIsCustomBudget(true);
                   setTimeout(() => budgetRef.current?.focus(), 50);
                 }}
-                className={`flex-1 py-3 rounded-2xl items-center ${
-                  isCustomBudget
-                    ? "bg-zinc-700 shadow-sm shadow-black"
-                    : "bg-transparent"
-                }`}
+                accessibilityRole="button"
+                accessibilityState={{selected: isCustomBudget}}
+                className={`flex-1 py-3 rounded-xl items-center ${isCustomBudget ? "bg-zinc-700" : ""}`}
               >
                 <Text
-                  className={`font-bold ${
-                    isCustomBudget ? "text-white" : "text-zinc-500"
-                  }`}
+                  className={`font-bold ${isCustomBudget ? "text-white" : "text-zinc-500"}`}
                 >
                   Exact
                 </Text>
               </Pressable>
             </View>
             {isCustomBudget && (
-              <View className="flex-row items-center justify-center animate-pulse mt-2">
+              <View className="flex-row items-center justify-center">
                 <BudgetInput
                   budget={customBudget}
                   setBudget={setCustomBudget}
@@ -403,37 +487,45 @@ export default function PlanScreen() {
                 />
               </View>
             )}
-          </View>
+          </Section>
 
-          {/* Vibes / Tags */}
-          <View className="flex-col gap-3">
-            <View className="flex-row justify-between items-end px-1">
-              <Text className="text-white font-bold text-lg">Vibes</Text>
-              <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mb-0.5">
-                Tap • Hold to refine
-              </Text>
+          {/* --- VIBES (the tag selector, unchanged) --- */}
+          <Section icon="sparkles-outline" title="Vibes" hint="Tap • Hold to refine">
+            <View className="pt-1">
+              <ActivityTagsSelector
+                key={resetKey}
+                mode="plan"
+                taxonomy={TAG_TAXONOMY}
+                classes={activityClasses}
+                initialActiveTags={selectedTags}
+                onTagsChange={(newTags) => setSelectedTags(newTags)}
+              />
             </View>
-            <ActivityTagsSelector
-              key={resetKey}
-              mode="plan"
-              taxonomy={TAG_TAXONOMY}
-              classes={activityClasses}
-              initialActiveTags={selectedTags}
-              onTagsChange={(newTags) => setSelectedTags(newTags)}
-            />
-          </View>
+          </Section>
 
-          {/* Primary Call to Action */}
-          <Pressable
-            onPress={handleGenerate}
-            className="w-full h-[56px] justify-center items-center rounded-2xl mt-4 bg-white shadow-xl shadow-white/10 active:opacity-80"
-          >
-            <Text className="text-center text-black font-extrabold text-[18px]">
-              Start Planning
+          {/* --- START --- */}
+          <View className="gap-3 mt-2">
+            <Pressable
+              onPress={handleGenerate}
+              disabled={isLocating}
+              className={`h-14 rounded-2xl items-center justify-center ${
+                isLocating ? "bg-zinc-300" : "bg-white active:opacity-80"
+              }`}
+            >
+              {isLocating ? (
+                <ActivityIndicator color="black" />
+              ) : (
+                <Text className="text-black font-extrabold text-[17px]">
+                  Start planning
+                </Text>
+              )}
+            </Pressable>
+            <Text className="text-zinc-500 text-center text-sm">
+              {planSummary}
             </Text>
-          </Pressable>
+          </View>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* iOS Date Picker Modal (Prevents hiding under Bottom Tabs) */}
       {Platform.OS === "ios" && (
@@ -489,6 +581,38 @@ export default function PlanScreen() {
           textColor="white"
         />
       )}
+    </>
+  );
+}
+
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
+
+/** A titled card that groups one planning question. */
+function Section({
+  icon,
+  title,
+  hint,
+  children,
+}: {
+  icon: IconName;
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View className="bg-zinc-950 border border-zinc-900 rounded-3xl p-4 gap-3">
+      <View className="flex-row items-center justify-between px-1">
+        <View className="flex-row items-center gap-2">
+          <Ionicons name={icon} size={16} color="#a1a1aa" />
+          <Text className="text-white font-bold text-base">{title}</Text>
+        </View>
+        {hint ? (
+          <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">
+            {hint}
+          </Text>
+        ) : null}
+      </View>
+      {children}
     </View>
   );
 }

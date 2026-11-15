@@ -6,7 +6,6 @@ import {
   deriveSequentialTimeline,
   queryCandidates,
   evaluateContextAt,
-  formatTime,
 } from "@/utils/itineraryEngine";
 import {useLocalSearchParams, router} from "expo-router";
 import {useState, useEffect, useMemo, useRef} from "react";
@@ -18,14 +17,38 @@ import {
   ActivityIndicator,
   LayoutAnimation,
   Modal,
+  type ScrollViewInstance,
+  Alert,
 } from "react-native";
-import {useActiveDateStore} from "@/src/store/activeDateStore";
+import Toast from "react-native-toast-message";
 import {Ionicons} from "@expo/vector-icons";
 import {usePrefsStore} from "@/src/store/usePrefsStore";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
+import {useItineraryStore} from "@/src/store/useItineraryStore";
+import {START_NOW_WINDOW_MS, autoTitle, formatWhen} from "@/src/lib/dates";
+import {SafeAreaView, useSafeAreaInsets} from "react-native-safe-area-context";
+import {Image} from "expo-image";
+import {LinearGradient} from "expo-linear-gradient";
+import GlassSurface from "@/components/ui/GlassSurface";
+import {
+  ActivityOptionCard,
+  AddNode,
+  AddStopCard,
+  Connector,
+  MarkerLabel,
+  MarkerNode,
+  PickCard,
+  SmallNode,
+  StatTile,
+  StopCard,
+  StopNode,
+  TimelineRow,
+  activityImage,
+  formatMinutes,
+} from "@/components/builder/BuilderParts";
 
 export default function BuilderScreen() {
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<ScrollViewInstance>(null);
   const {prefs: userPrefs, resetPrefs} = usePrefsStore();
   const clearBuilder = useBuilderStore((state) => state.clearBuilder);
   const headCount = userPrefs.headCount;
@@ -53,7 +76,6 @@ export default function BuilderScreen() {
     Math.round(Math.abs(endMs - startMs) / 60_000),
   );
   const [isFetchingFillers, setIsFetchingFillers] = useState(false);
-  const [expandedSlotId, setExpandedSlotId] = useState<string | null>(null);
   const [reviewingItinerary, setReviewingItinerary] = useState<boolean>(false);
 
   // ─── Derived Timeline (The Canvas) ────────────────────────────────────────────
@@ -232,7 +254,9 @@ export default function BuilderScreen() {
   };
 
   const handlePlaceActivity = (activity: any) => {
-    if (activity.fitStatus === "NO_FIT") return;
+    if (activity.fitStatus !== "FITS_NOW") return;
+    if (process.env.EXPO_OS === "ios")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setPlaced((prev) => [...prev, {activity}]);
@@ -244,522 +268,540 @@ export default function BuilderScreen() {
   };
 
   const handleRemoveActivity = (ideaId: number | string) => {
+    if (process.env.EXPO_OS === "ios")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setPlaced((prev) => prev.filter((p) => p.activity.idea_id !== ideaId));
   };
 
-  const toggleSlotOptions = (id: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedSlotId((prev) => (prev === id ? null : id));
+  const createItinerary = useItineraryStore((state) => state.createItinerary);
+  const startDate = useItineraryStore((state) => state.startDate);
+  const [isSaving, setIsSaving] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  // Clears the draft so the "Continue Planning" banner goes away
+  const clearDraft = () => {
+    resetPrefs();
+    clearBuilder();
   };
 
-  const closeDrawer = () => {
-    if (expandedSlotId) {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setExpandedSlotId(null);
+  const handleFinalize = async () => {
+    if (isSaving) return;
+
+    const activitySlots = timeline.filter((slot) => slot.activity);
+    if (activitySlots.length === 0) {
+      Alert.alert(
+        "Add a stop first",
+        "Your plan needs at least one activity before you can save it.",
+      );
+      return;
+    }
+
+    // The date runs from leaving (first travel leg or stop) to getting home
+    const occupied = timeline.filter((slot) => slot.type === "OCCUPIED");
+    const startsAt = new Date(occupied[0].startTime);
+    const endsAt = new Date(occupied[occupied.length - 1].endTime);
+
+    // 1. Save it
+    setIsSaving(true);
+    let itineraryId: number;
+    try {
+      itineraryId = await createItinerary({
+        title: autoTitle(activitySlots.map((slot) => slot.activity!.title)),
+        startsAt,
+        endsAt,
+        stops: activitySlots.map((slot) => ({
+          activity_id: slot.activity!.idea_id,
+          starts_at: new Date(slot.startTime).toISOString(),
+          ends_at: new Date(slot.endTime).toISOString(),
+        })),
+        prefsSnapshot: userPrefs,
+      });
+    } catch (e) {
+      setIsSaving(false);
+      Alert.alert(
+        "Couldn't save your date",
+        e instanceof Error ? e.message : "Please try again.",
+      );
+      return;
+    }
+    setIsSaving(false);
+
+    // 2. Starting soon? Offer to start it. Otherwise file it under Upcoming.
+    const goToUpcoming = () => {
+      clearDraft();
+      router.dismissTo("/(tabs)/activity");
+    };
+
+    if (startsAt.getTime() - Date.now() <= START_NOW_WINDOW_MS) {
+      Alert.alert("Your date is saved", "It starts soon. Start it now?", [
+        {text: "Later", style: "cancel", onPress: goToUpcoming},
+        {
+          text: "Start now",
+          onPress: async () => {
+            try {
+              await startDate(itineraryId);
+              clearDraft();
+              router.replace("/active-date");
+            } catch (e) {
+              Alert.alert(
+                "Couldn't start your date",
+                e instanceof Error ? e.message : "Please try again.",
+              );
+              goToUpcoming();
+            }
+          },
+        },
+      ]);
+    } else {
+      Toast.show({
+        type: "success",
+        text1: "Date saved",
+        text2: `It's in Upcoming for ${formatWhen(startsAt)}.`,
+        position: "bottom",
+      });
+      goToUpcoming();
     }
   };
 
-  const startActiveDate = useActiveDateStore((state) => state.startActiveDate);
-
-  const handleFinalize = () => {
-    // 1. Save the final timeline and prefs to your activeDateStore
-    startActiveDate(timeline, userPrefs);
-
-    // 2. Clear out the builder draft so the banner goes away
-    resetPrefs(); // from usePrefsStore
-    clearBuilder(); // from useBuilderStore
-
-    // 3. Send them to the active date screen!
-    router.push("/active-date");
+  // ─── Display helpers ─────────────────────────────────────────────────────────
+  const goingOut = userPrefs.modality === "GO_OUT";
+  const SOCIAL_NOUN: Record<string, string> = {
+    Date: "date",
+    "Group-Date": "group date",
+    Activity: "plan",
   };
+  const socialNoun = SOCIAL_NOUN[userPrefs.socialType] ?? "plan";
+  const dayLabel = new Date(userPrefs.startDate).toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const timeRange = isInfinite
+    ? `${simpleStartTime} onward`
+    : `${simpleStartTime} – ${simpleEndTime}`;
+  const stopSlots = timeline.filter((slot) => slot.activity);
+  const stopCount = stopSlots.length;
+  const stopsLabel = `${stopCount} ${stopCount === 1 ? "stop" : "stops"}`;
+  const budgetLeftLabel = `$${Math.max(0, remainingBudget)} left`;
+  const firstPicks =
+    placed.length === 0
+      ? sortedActivities.filter((a) => a.fitStatus === "FITS_NOW").slice(0, 8)
+      : [];
+  const gapSubtitle = (slot: TimeSlot) =>
+    isInfinite
+      ? budgetLeftLabel
+      : `${formatMinutes((slot.endTime - slot.startTime) / 60_000)} free · ${budgetLeftLabel}`;
+
+  const goToReview = () => {
+    if (process.env.EXPO_OS === "ios")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setReviewingItinerary(true);
+    scrollViewRef.current?.scrollTo({y: 0, animated: false});
+  };
+
+  const startOver = () => {
+    setPlaced([]);
+    setIsDrawerOpen(false);
+    setReviewingItinerary(false);
+    loadInitialIdeas();
+  };
+
+  // Stop numbers in timeline order
+  const stopNumber = (slotId: string) =>
+    stopSlots.findIndex((s) => s.id === slotId) + 1;
+
+  const screenStyle = {flex: 1, backgroundColor: "#000"} as const;
 
   if (loading) {
     return (
-      <View className="flex-1 bg-zinc-950 justify-center items-center">
+      <View style={{...screenStyle, alignItems: "center", justifyContent: "center"}}>
         <ActivityIndicator size="large" color="#ffffff" />
-        <Text className="text-white mt-4 font-mono">
-          Curating your ideas...
+        <Text className="text-white font-bold text-lg mt-5">
+          Finding ideas that fit
+        </Text>
+        <Text className="text-zinc-500 mt-1">
+          {goingOut ? "Going out" : "Staying in"} · {timeRange}
         </Text>
       </View>
     );
   }
 
+  // ─── Shared pieces ───────────────────────────────────────────────────────────
+  const header = (
+    <View className="flex-row items-center px-3 pt-1 pb-4">
+      <Pressable
+        onPress={() =>
+          reviewingItinerary ? setReviewingItinerary(false) : router.back()
+        }
+        hitSlop={12}
+        accessibilityRole="button"
+        accessibilityLabel={reviewingItinerary ? "Back to editing" : "Back"}
+        className="w-10 h-10 rounded-full items-center justify-center active:bg-zinc-900"
+      >
+        <Ionicons name="chevron-back" size={24} color="white" />
+      </Pressable>
+      <View className="flex-1 ml-1">
+        <Text className="text-white font-extrabold text-2xl tracking-tight">
+          {reviewingItinerary ? "Review your plan" : `Build your ${socialNoun}`}
+        </Text>
+        <Text className="text-zinc-400 text-sm mt-0.5">
+          {dayLabel} · {timeRange} · {goingOut ? "Going out" : "Staying in"}
+        </Text>
+      </View>
+    </View>
+  );
+
+  /** Timeline rows for every slot (planning shows add cards; review doesn't). */
+  const renderSlots = (editable: boolean) =>
+    timeline.map((slot) => {
+      if (slot.type === "AVAILABLE") {
+        if (!editable) {
+          return isInfinite ? null : (
+            <TimelineRow key={slot.id} node={<SmallNode />}>
+              <Connector slot={{...slot, type: "BUFFER", title: slot.title}} />
+            </TimelineRow>
+          );
+        }
+        return (
+          <TimelineRow key={slot.id} node={<AddNode />}>
+            <AddStopCard
+              first={placed.length === 0}
+              subtitle={gapSubtitle(slot)}
+              onPress={() => handleOpenGap(slot)}
+            />
+          </TimelineRow>
+        );
+      }
+
+      if (slot.type === "BUFFER" || !slot.activity) {
+        return (
+          <TimelineRow key={slot.id} node={<SmallNode />}>
+            <Connector slot={slot} />
+          </TimelineRow>
+        );
+      }
+
+      return (
+        <TimelineRow key={slot.id} node={<StopNode index={stopNumber(slot.id)} />}>
+          <StopCard
+            slot={slot}
+            headCount={headCount}
+            onRemove={
+              editable
+                ? () => handleRemoveActivity(slot.activity!.idea_id)
+                : undefined
+            }
+          />
+        </TimelineRow>
+      );
+    });
+
+  const timelineView = (editable: boolean) => (
+    <View className="px-4">
+      <TimelineRow isFirst node={<MarkerNode icon={goingOut ? "home" : "play"} />}>
+        <MarkerLabel label={goingOut ? "Leave" : "Start"} time={simpleStartTime} />
+      </TimelineRow>
+      {renderSlots(editable)}
+      <TimelineRow isLast node={<MarkerNode icon="flag" />}>
+        <MarkerLabel label="Ends" time={isInfinite ? "Whenever" : simpleEndTime} />
+      </TimelineRow>
+    </View>
+  );
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
   return (
-    <View className="flex-1 bg-zinc-950">
+    <SafeAreaView edges={["top"]} style={screenStyle}>
+      {header}
+
       <ScrollView
         ref={scrollViewRef}
-        className="pb-10 bg-zinc-950"
         showsVerticalScrollIndicator={false}
-        onScrollBeginDrag={closeDrawer}
-        scrollEnabled={!expandedSlotId}
+        contentContainerStyle={{paddingBottom: insets.bottom + 120}}
       >
         {!reviewingItinerary ? (
-          // ── PLANNING VIEW ──────────────────────────────────────────────────────
-          <View className="flex-1 p-6 relative">
-            <View className="mb-8 p-5 bg-zinc-900/50 border border-zinc-800 rounded-[24px]">
-              {/* Header */}
-              <View className="flex-row justify-between items-center mb-6">
-                <Text className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest">
-                  Timeline
-                </Text>
-                <View className="flex-row gap-x-4">
-                  <Text className="text-blue-400 font-mono text-xs">
-                    ${remainingBudget} left
-                  </Text>
-                  {!isInfinite && (
-                    <Text className="text-zinc-400 font-mono text-xs">
-                      {Math.round(flexTime)} min left
+          // ── PLANNING VIEW ──────────────────────────────────────────────────
+          <>
+            <View className="flex-row gap-2.5 px-5 mb-6">
+              <StatTile
+                icon="wallet-outline"
+                label="Budget"
+                value={`$${Math.max(0, remainingBudget)}`}
+                sub={`left of $${availableBudget}`}
+                progress={availableBudget > 0 ? spentBudget / availableBudget : 0}
+              />
+              <StatTile
+                icon="time-outline"
+                label="Free time"
+                value={isInfinite ? "Open" : formatMinutes(flexTime)}
+                sub={isInfinite ? "no end time" : `until ${simpleEndTime}`}
+              />
+              <StatTile
+                icon="flag-outline"
+                label="Stops"
+                value={String(stopCount)}
+                sub={stopCount ? "planned" : "none yet"}
+              />
+            </View>
+
+            {timelineView(true)}
+
+            {/* Before the first stop: tap-to-add suggestions */}
+            {firstPicks.length > 0 && (
+              <View className="mt-6">
+                <View className="flex-row items-end justify-between px-5 mb-3">
+                  <View>
+                    <Text className="text-white font-bold text-lg">Top picks</Text>
+                    <Text className="text-zinc-500 text-sm">
+                      Tap one to start your {socialNoun}
                     </Text>
-                  )}
-                </View>
-              </View>
-
-              {/* Start Time Pill */}
-              <View className="flex-row justify-center items-center my-2">
-                <View className="flex-1 h-[1px] bg-violet-500/20" />
-                <View className="mx-3 px-4 py-1.5 bg-violet-500/10 rounded-full border border-violet-500/20">
-                  <Text className="text-violet-400 font-mono text-xs font-bold tracking-widest">
-                    Start: {simpleStartTime}
-                  </Text>
-                </View>
-                <View className="flex-1 h-[1px] bg-violet-500/20" />
-              </View>
-
-              {/* TIMELINE RENDER */}
-              {timeline.map((slot, idx) => {
-                const isTravel = !slot.activity && slot.type === "OCCUPIED";
-                const isExpanded = expandedSlotId === slot.id;
-
-                return (
-                  <View
-                    key={slot.id ?? idx}
-                    className="flex-row items-start my-4"
+                  </View>
+                  <Pressable
+                    onPress={() => {
+                      const gap = timeline.find((s) => s.type === "AVAILABLE");
+                      if (gap) handleOpenGap(gap);
+                    }}
+                    hitSlop={8}
                   >
-                    {/* Vertical timeline track */}
-                    <View className="items-center w-4 mr-4 mt-2">
-                      <View
-                        className={`w-2 h-2 rounded-full z-10 top-2 ${
-                          slot.type === "BUFFER"
-                            ? "border border-blue-500/50"
-                            : slot.type === "AVAILABLE"
-                              ? "bg-zinc-700"
-                              : isTravel
-                                ? "bg-green-500"
-                                : "bg-blue-500"
-                        }`}
-                      />
-                      {idx < timeline.length - 1 && (
-                        <View
-                          className={`absolute w-0 flex-1 border-l-[2px] border-zinc-800 -my-1 top-6 bottom-[-54px] ${
-                            idx === timeline.length - 1 ? "border-dotted" : ""
-                          }`}
-                        />
-                      )}
-                    </View>
-
-                    {/* Slot content */}
-                    <View className="flex-1 flex-row justify-between pr-2">
-                      {/* 1. AVAILABLE SLOT */}
-                      {slot.type === "AVAILABLE" && (
-                        <Pressable
-                          onPress={() => handleOpenGap(slot)}
-                          className={`flex-1 p-4 rounded-2xl border flex-row items-center justify-center ${
-                            isDrawerOpen
-                              ? "bg-blue-600/20 border-blue-500 shadow-sm"
-                              : "bg-zinc-900/50 border-dashed border-blue-700 active:bg-zinc-800"
-                          }`}
-                        >
-                          <Text
-                            className={`font-bold ${isDrawerOpen ? "text-blue-400" : "text-blue-500"}`}
-                          >
-                            {isDrawerOpen
-                              ? "Select an activity below..."
-                              : `+ Add Next Activity`}
-                          </Text>
-                        </Pressable>
-                      )}
-
-                      {/* 2. BUFFER SLOT (Fixed!) */}
-                      {slot.type === "BUFFER" && (
-                        <View className="w-full h-10 bg-blue-500/20 border border-blue-500/20 rounded-xl flex items-center justify-center opacity-70">
-                          <Text className="text-blue-500 font-medium text-sm">
-                            {slot.title} (
-                            {Math.round(
-                              (slot.endTime - slot.startTime) / 60_000,
-                            )}{" "}
-                            min)
-                          </Text>
-                        </View>
-                      )}
-
-                      {/* 3. OCCUPIED SLOT */}
-                      {slot.type === "OCCUPIED" && (
-                        <View className="flex-1 flex-row justify-between items-center">
-                          <View className="flex-1 pr-2">
-                            <Text className="text-white font-semibold">
-                              {slot.title}
-                            </Text>
-                            <View className="flex-row items-center mt-1">
-                              <Text className="text-blue-400 text-xs font-mono font-bold mr-2">
-                                {formatTime(slot.startTime)} –{" "}
-                                {formatTime(slot.endTime)}
-                              </Text>
-                              <Text className="text-zinc-500 text-xs">
-                                (
-                                {Math.round(
-                                  (slot.endTime - slot.startTime) / 60_000,
-                                )}{" "}
-                                min)
-                              </Text>
-                            </View>
-                          </View>
-
-                          {isTravel ? (
-                            <View className="items-center justify-center">
-                              <Ionicons
-                                name="car-outline"
-                                size={24}
-                                color="#71717a"
-                              />
-                            </View>
-                          ) : slot.activity ? (
-                            <View className="justify-center bg-zinc-800/80 px-2 py-1 rounded-md border border-zinc-700/50">
-                              <Text className="text-zinc-300 font-mono text-xs">
-                                $
-                                {(Number(slot.activity.est_price_per_person) ||
-                                  0) * headCount}
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      )}
-
-                      {/* Ellipsis Menu Button */}
-                      {slot.type === "OCCUPIED" && slot.activity && (
-                        <Pressable
-                          onPress={() => toggleSlotOptions(slot.id)}
-                          className="p-2 -mr-2 rounded-full active:bg-zinc-700/50 z-10 ml-2"
-                        >
-                          <Ionicons
-                            name={isExpanded ? "close" : "ellipsis-vertical"}
-                            size={20}
-                            color="#a1a1aa"
-                          />
-                        </Pressable>
-                      )}
-                    </View>
-
-                    {/* Popover */}
-                    {isExpanded && (
-                      <>
-                        <Pressable
-                          className="absolute inset-0 top-[-2000px] bottom-[-2000px] left-[-2000px] right-[-2000px]"
-                          onPress={closeDrawer}
-                        />
-                        <View className="absolute right-0 top-10 mt-4 border rounded-xl border-zinc-700/50 z-20 overflow-hidden">
-                          <Pressable
-                            className="bg-zinc-900 px-6 py-4 active:bg-zinc-700 border-b border-zinc-700/50 flex-row gap-3 items-center"
-                            onPress={() => {
-                              setExpandedSlotId(null);
-                              handleRemoveActivity(slot.activity!.idea_id);
-                            }}
-                          >
-                            <Ionicons
-                              name={"trash-outline"}
-                              size={20}
-                              color="#ef4444"
-                            />
-                            <Text className="text-red-500 font-medium">
-                              Remove
-                            </Text>
-                          </Pressable>
-                        </View>
-                      </>
-                    )}
-                  </View>
-                );
-              })}
-
-              {/* End Time Pill */}
-              <View className="flex-row justify-center items-center my-2 mt-4">
-                <View className="flex-1 h-[1px] bg-violet-500/20" />
-                <View className="mx-3 px-4 py-1.5 bg-violet-500/10 rounded-full border border-violet-500/20">
-                  <Text className="text-violet-400 font-mono text-xs font-bold tracking-widest">
-                    {isInfinite ? "End: Whenever" : `End: ${simpleEndTime}`}
-                  </Text>
+                    <Text className="text-blue-400 font-semibold">See all</Text>
+                  </Pressable>
                 </View>
-                <View className="flex-1 h-[1px] bg-violet-500/20" />
-              </View>
-
-              {/* Finish Button */}
-              {placed.length > 0 && (
-                <Pressable
-                  onPress={() => {
-                    if (process.env.EXPO_OS === "ios")
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setReviewingItinerary(true);
-                  }}
-                  className="w-full h-[50px] justify-center items-center rounded-[10px] mt-6 bg-blue-500 active:bg-blue-400"
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{paddingHorizontal: 20, gap: 12}}
                 >
-                  <Text className="text-white font-semibold text-[16px]">
-                    Finish & Review
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-          </View>
+                  {firstPicks.map((item) => (
+                    <PickCard
+                      key={item.idea_id}
+                      item={item}
+                      headCount={headCount}
+                      goingOut={goingOut}
+                      onPress={() => handlePlaceActivity(item)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </>
         ) : (
-          // ── COMPLETION VIEW (Restored!) ─────────────────────────────────────────
-          <View className="flex-1 pt-4 pb-8 bg-zinc-950 px-6">
-            <View className="mb-10 mt-2 flex-row items-center">
-              <View className="bg-blue-500/10 w-12 h-12 rounded-full items-center justify-center mr-4">
-                <Text className="text-2xl">✨</Text>
+          // ── REVIEW VIEW ────────────────────────────────────────────────────
+          <>
+            {/* Summary hero */}
+            <View className="mx-5 mb-6 rounded-3xl overflow-hidden border border-zinc-800 bg-zinc-900">
+              <View style={{height: 170}}>
+                <Image
+                  source={{uri: activityImage(stopSlots[0]?.activity)}}
+                  style={{width: "100%", height: "100%"}}
+                  contentFit="cover"
+                />
+                <LinearGradient
+                  colors={["transparent", "rgba(0,0,0,0.85)"]}
+                  locations={[0.35, 1]}
+                  style={{position: "absolute", top: 0, left: 0, right: 0, bottom: 0}}
+                />
+                <View className="absolute bottom-4 left-4 right-4">
+                  <Text className="text-white font-extrabold text-2xl" numberOfLines={2}>
+                    {autoTitle(stopSlots.map((s) => s.activity!.title))}
+                  </Text>
+                  <Text className="text-zinc-300 text-sm mt-1">
+                    {dayLabel} · {timeRange}
+                  </Text>
+                </View>
               </View>
-              <View>
-                <Text className="text-white text-3xl font-bold tracking-tight">
-                  Perfect Night.
-                </Text>
-                <Text className="text-zinc-500 mt-1 font-medium">
-                  Your plans are ready to go.
-                </Text>
-              </View>
-            </View>
-
-            {/* RESTORED: CONTINUOUS CALENDAR TIMELINE */}
-            <View className="flex-1 mb-8">
-              {timeline.map((slot, idx) => {
-                const isAvailable =
-                  slot.type === "AVAILABLE" || slot.type === "BUFFER";
-                const isActivity = slot.type === "OCCUPIED" && !!slot.activity;
-                const isTravel = slot.type === "OCCUPIED" && !slot.activity;
-
-                return (
-                  <View key={slot.id ?? idx} className="flex-row">
-                    {/* 1. Time Column (Left) */}
-                    <View className="w-16 items-end mr-3 pt-0.5">
-                      {isActivity && (
-                        <Text className="text-zinc-400 font-mono text-xs font-bold tracking-tight">
-                          {formatTime(slot.startTime)}
-                        </Text>
-                      )}
-                    </View>
-
-                    {/* 2. Vertical Track (Middle) */}
-                    <View className="items-center w-4 mr-4 relative">
-                      <View
-                        className={`rounded-full mt-1.5 z-10 ${
-                          isActivity
-                            ? "w-2.5 h-2.5 bg-blue-500 shadow-sm"
-                            : isAvailable
-                              ? "w-1.5 h-1.5 bg-transparent border border-zinc-500/50"
-                              : "w-1.5 h-1.5 bg-green-700"
-                        }`}
-                      />
-                      {idx < timeline.length - 1 && (
-                        <View
-                          className={`absolute top-4 bottom-0 w-0 border-l-[2px] ${
-                            isAvailable
-                              ? "border-zinc-500/50"
-                              : isTravel
-                                ? "border-green-700/60"
-                                : "border-blue-800"
-                          }`}
-                        />
-                      )}
-                    </View>
-
-                    {/* 3. Content Column (Right) */}
-                    <View className={`flex-1 pb-5`}>
-                      {isActivity ? (
-                        <View>
-                          <Text className="text-white text-lg font-bold leading-tight">
-                            {slot.title}
-                          </Text>
-                          <Text className="text-zinc-500 text-xs mt-1 font-medium">
-                            {Math.round(
-                              (slot.endTime - slot.startTime) / 60_000,
-                            )}{" "}
-                            min
-                          </Text>
-                        </View>
-                      ) : isTravel ? (
-                        <View className="flex-row items-center mt-0.5">
-                          <Ionicons
-                            name="car-outline"
-                            size={14}
-                            color="#71717a"
-                          />
-                          <Text className="text-zinc-500 text-xs ml-2 font-medium">
-                            {Math.round(
-                              (slot.endTime - slot.startTime) / 60_000,
-                            )}{" "}
-                            min travel
-                            {idx === timeline.length - 1 ? " home" : ""}
-                          </Text>
-                        </View>
-                      ) : !isInfinite ? (
-                        <View className="flex-row items-center mt-0.5">
-                          <Ionicons
-                            name="hourglass-outline"
-                            size={14}
-                            color="#71717a"
-                          />
-                          <Text className="text-zinc-600 text-xs ml-2 font-medium italic">
-                            {Math.round(
-                              (slot.endTime - slot.startTime) / 60_000,
-                            )}{" "}
-                            min free time
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
+              <View className="flex-row border-t border-zinc-800">
+                {[
+                  {label: "Stops", value: String(stopCount)},
+                  {label: "Total", value: `$${spentBudget}`},
+                  {
+                    label: "Flex time",
+                    value: isInfinite ? "∞" : formatMinutes(flexTime),
+                  },
+                ].map((stat, i) => (
+                  <View
+                    key={stat.label}
+                    className={`flex-1 py-3.5 items-center ${i > 0 ? "border-l border-zinc-800" : ""}`}
+                  >
+                    <Text className="text-white font-extrabold text-lg">
+                      {stat.value}
+                    </Text>
+                    <Text className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mt-0.5">
+                      {stat.label}
+                    </Text>
                   </View>
-                );
-              })}
-            </View>
-
-            {/* RESTORED: FOOTER & ACTIONS */}
-            <View className="mt-auto pt-6 border-t border-zinc-800/80">
-              <View className="flex-row justify-between mb-6 px-2">
-                <View>
-                  <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mb-1">
-                    Total Spent
-                  </Text>
-                  <Text className="text-white text-xl font-mono">
-                    ${spentBudget}
-                  </Text>
-                </View>
-                <View className="items-end">
-                  <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mb-1">
-                    Flex Time
-                  </Text>
-                  <Text className="text-white text-xl font-mono">
-                    {isInfinite ? "∞" : `${Math.round(flexTime)}m`}
-                  </Text>
-                </View>
+                ))}
               </View>
+            </View>
 
+            {timelineView(false)}
+
+            <View className="px-5 mt-6 gap-2">
               <Pressable
-                className="bg-blue-600 py-5 rounded-2xl items-center mb-3 active:bg-blue-700"
-                onPress={handleFinalize}
+                onPress={() => setReviewingItinerary(false)}
+                className="bg-zinc-900 border border-zinc-800 rounded-2xl h-12 items-center justify-center active:bg-zinc-800"
               >
-                <Text className="text-white font-bold text-lg">
-                  Finalize Itinerary
-                </Text>
+                <Text className="text-white font-bold">Keep editing</Text>
               </Pressable>
               <Pressable
-                className="py-4 rounded-2xl items-center active:bg-zinc-800/50"
-                onPress={() => {
-                  setPlaced([]);
-                  setIsDrawerOpen(false);
-                  setReviewingItinerary(false);
-                  loadInitialIdeas();
-                }}
+                onPress={() =>
+                  Alert.alert(
+                    "Start over?",
+                    "This clears every stop in this plan.",
+                    [
+                      {text: "Cancel", style: "cancel"},
+                      {text: "Start over", style: "destructive", onPress: startOver},
+                    ],
+                  )
+                }
+                className="h-11 items-center justify-center"
               >
-                <Text className="text-zinc-500 font-semibold">Start Over</Text>
+                <Text className="text-zinc-500 font-semibold">Start over</Text>
               </Pressable>
             </View>
-          </View>
+          </>
         )}
       </ScrollView>
 
-      {/* --- NEW NATIVE SLIDE-UP MODAL DRAWER --- */}
-      <Modal visible={isDrawerOpen} animationType="slide" transparent={true}>
-        {/* Dark blurred background backdrop */}
+      {/* ── FLOATING ACTION BAR ───────────────────────────────────────────── */}
+      <View
+        pointerEvents="box-none"
+        style={{position: "absolute", left: 16, right: 16, bottom: insets.bottom + 8}}
+      >
+        <GlassSurface
+          style={{
+            borderRadius: 26,
+            padding: 8,
+            paddingLeft: 18,
+            flexDirection: "row",
+            alignItems: "center",
+          }}
+        >
+          <View className="flex-1 pr-3">
+            <Text className="text-white font-extrabold text-base">
+              ${spentBudget}
+              <Text className="text-zinc-400 font-semibold text-sm">
+                {" "}
+                total · {stopsLabel}
+              </Text>
+            </Text>
+            <Text className="text-zinc-400 text-xs" numberOfLines={1}>
+              {reviewingItinerary
+                ? "Saves to your Upcoming dates"
+                : stopCount
+                  ? budgetLeftLabel
+                  : "Add a stop to continue"}
+            </Text>
+          </View>
+          {reviewingItinerary ? (
+            <Pressable
+              onPress={handleFinalize}
+              disabled={isSaving}
+              className={`rounded-[20px] px-6 h-12 items-center justify-center ${
+                isSaving ? "bg-zinc-300" : "bg-white active:opacity-80"
+              }`}
+            >
+              {isSaving ? (
+                <ActivityIndicator color="black" />
+              ) : (
+                <Text className="text-black font-extrabold">Finalize</Text>
+              )}
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={goToReview}
+              disabled={stopCount === 0}
+              className={`rounded-[20px] px-6 h-12 items-center justify-center ${
+                stopCount ? "bg-white active:opacity-80" : "bg-zinc-700"
+              }`}
+            >
+              <Text
+                className={`font-extrabold ${stopCount ? "text-black" : "text-zinc-400"}`}
+              >
+                Review
+              </Text>
+            </Pressable>
+          )}
+        </GlassSurface>
+      </View>
+
+      {/* ── ACTIVITY PICKER ───────────────────────────────────────────────── */}
+      <Modal
+        visible={isDrawerOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsDrawerOpen(false)}
+      >
         <View className="flex-1 justify-end bg-black/60">
           <Pressable
             className="absolute inset-0"
             onPress={() => setIsDrawerOpen(false)}
+            accessibilityLabel="Close"
           />
 
-          <View className="bg-zinc-900 rounded-t-[32px] p-6 max-h-[85%] border-t border-zinc-700 shadow-2xl">
-            {/* Drawer Handle / Header (Fixed Alignment!) */}
-            <View className="flex-row justify-between items-start mb-6">
-              <View>
-                <Text className="text-white text-3xl font-bold mb-1">
-                  {placed.length === 0 ? "First Stop" : "Up Next"}
+          <View
+            className="bg-zinc-950 rounded-t-[32px] border-t border-zinc-800"
+            style={{maxHeight: "85%", paddingBottom: insets.bottom + 8}}
+          >
+            <View className="items-center pt-3">
+              <View className="w-10 h-1.5 rounded-full bg-zinc-700" />
+            </View>
+
+            <View className="flex-row justify-between items-start px-6 pt-4 pb-4">
+              <View className="flex-1 pr-4">
+                <Text className="text-white text-2xl font-extrabold tracking-tight">
+                  {placed.length === 0 ? "First stop" : "Up next"}
                 </Text>
-                <Text className="text-zinc-500 text-base">
-                  {placed.length === 0
-                    ? `Let's get this ${userPrefs.socialType.toLowerCase()} started.`
-                    : "What's the next move?"}
+                <Text className="text-zinc-400 mt-1">
+                  {isInfinite
+                    ? budgetLeftLabel
+                    : `${formatMinutes(activeGapDuration)} free · ${budgetLeftLabel}`}
                 </Text>
               </View>
               <Pressable
                 onPress={() => setIsDrawerOpen(false)}
-                className="pt-2"
+                hitSlop={8}
+                accessibilityLabel="Close"
+                className="w-9 h-9 rounded-full bg-zinc-900 border border-zinc-800 items-center justify-center"
               >
-                <Text className="text-zinc-500 font-bold uppercase text-xs">
-                  Cancel
-                </Text>
+                <Ionicons name="close" size={18} color="#a1a1aa" />
               </Pressable>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} className="mb-4">
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{paddingHorizontal: 20, paddingBottom: 12, gap: 10}}
+            >
               {isFetchingFillers ? (
-                <View className="py-12 items-center justify-center">
+                <View className="py-14 items-center justify-center">
                   <ActivityIndicator size="large" color="#3b82f6" />
-                  <Text className="text-blue-400 mt-4 font-mono text-xs uppercase tracking-widest">
-                    Mapping nearby options...
-                  </Text>
+                  <Text className="text-zinc-400 mt-4">Finding what fits…</Text>
                 </View>
               ) : sortedActivities.length > 0 ? (
-                sortedActivities.map((item: any) => {
-                  const disabled = item.fitStatus !== "FITS_NOW";
-                  const isOverBudget = item.fitStatus === "OVER_BUDGET";
-
-                  return (
-                    <Pressable
-                      key={item.idea_id}
-                      disabled={disabled}
-                      onPress={() => handlePlaceActivity(item)}
-                      className={`p-5 rounded-2xl mb-4 border ${
-                        disabled
-                          ? "bg-zinc-950 border-zinc-900 opacity-50"
-                          : "bg-zinc-800 border-zinc-700 active:border-white"
-                      }`}
-                    >
-                      <View className="flex-row justify-between">
-                        <Text className="text-white text-xl font-bold flex-1 pr-4">
-                          {item.title}
-                        </Text>
-                        <Text className="text-zinc-500">
-                          {userPrefs.modality === "GO_OUT"
-                            ? `${(item.distance || 0).toFixed(1)} mi`
-                            : "Anywhere!"}
-                        </Text>
-                      </View>
-
-                      <Text className="text-zinc-400 mt-2" numberOfLines={2}>
-                        {item.description}
-                      </Text>
-
-                      <View className="flex-row mt-4 justify-between">
-                        <Text
-                          className={`font-mono ${isOverBudget ? "text-red-500 font-bold" : "text-blue-400"}`}
-                        >
-                          ${item.totalCost} for {headCount}
-                          {isOverBudget && " (Over Budget)"}
-                        </Text>
-
-                        <Text className="text-zinc-500">
-                          {Math.floor(item.est_duration_minutes / 60)}hr{" "}
-                          {item.est_duration_minutes % 60}min
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })
+                sortedActivities.map((item: any) => (
+                  <ActivityOptionCard
+                    key={item.idea_id}
+                    item={item}
+                    headCount={headCount}
+                    goingOut={goingOut}
+                    onPress={() => handlePlaceActivity(item)}
+                  />
+                ))
               ) : (
-                <Text className="text-zinc-500 text-center mt-10 pb-10">
-                  Nothing fits the remaining time and budget!
-                </Text>
+                <View className="py-12 items-center px-6">
+                  <Ionicons name="search-outline" size={28} color="#52525b" />
+                  <Text className="text-white font-bold text-base mt-3">
+                    Nothing fits this gap
+                  </Text>
+                  <Text className="text-zinc-500 text-center mt-1">
+                    Try removing a stop, or start over with a bigger budget or
+                    more time.
+                  </Text>
+                </View>
               )}
             </ScrollView>
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }

@@ -1,40 +1,42 @@
-import {View, Text, ScrollView, Pressable} from "react-native";
-import {useRouter} from "expo-router";
-import {Ionicons} from "@expo/vector-icons";
-import {SafeAreaView} from "react-native-safe-area-context";
+import { View, Text, Pressable, Animated as RNAnimated } from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import TabHeader, {
+  HeaderIconButton,
+  useTabHeader,
+} from "@/components/ui/TabHeader";
 import Animated from "react-native-reanimated";
-import {useFloatingAnimation} from "@/hooks/useFloatingAnimation";
-import {BlurView} from "expo-blur";
-import {useActiveDateStore} from "@/src/store/activeDateStore";
+import { useFloatingAnimation } from "@/hooks/useFloatingAnimation";
+import { BlurView } from "expo-blur";
+import { useActiveDateStore } from "@/src/store/activeDateStore";
 
 export default function FeedScreen() {
   const router = useRouter();
+  const header = useTabHeader();
   const floatingStyle = useFloatingAnimation();
   const timeline = useActiveDateStore((state) => state.timeline);
 
   return (
-    <View className="flex-1 bg-zinc-950">
-      {/* --- CUSTOM HEADER --- */}
-      <SafeAreaView edges={["top"]} className="bg-zinc-950/90 z-10">
-        <View className="px-6 pb-4 flex-row justify-between items-end">
-          <View>
-            <Text className="text-white text-3xl font-bold tracking-tight">
-              Social
-            </Text>
-          </View>
-          <Pressable className="bg-zinc-900 w-12 h-12 rounded-full items-center justify-center border border-zinc-800 active:bg-zinc-800">
-            <Ionicons name="heart-outline" size={22} color="white" />
-            <View className="absolute top-2 right-2 w-2.5 h-2.5 bg-pink-500 rounded-full border-2 border-zinc-900" />
-          </Pressable>
-        </View>
-      </SafeAreaView>
-
-      {/* --- THE FEED --- */}
-      <ScrollView
-        className="flex-1 px-5 bg-black"
-        contentContainerClassName="pb-10 pt-3" // Increased padding to clear the higher FAB
-        showsVerticalScrollIndicator={false}
-      >
+    // The scroll view is the screen's root view; the header is its first,
+    // sticky child (stickyHeaderIndices in header.scrollProps)
+    <RNAnimated.ScrollView
+      {...header.scrollProps}
+      style={{ flex: 1, backgroundColor: "#000" }}
+      contentContainerStyle={{ paddingBottom: 40 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <TabHeader
+        header={header}
+        title="Social"
+        right={
+          <HeaderIconButton
+            icon="heart-outline"
+            label="Likes"
+            badgeColor="#ec4899"
+          />
+        }
+      />
+      <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
         {/* POST CARD 1 */}
         <View className="bg-zinc-900 rounded-3xl p-5 mb-6 border border-zinc-800 shadow-xl shadow-black/50">
           <View className="flex-row items-center justify-between mb-4">
@@ -181,7 +183,7 @@ export default function FeedScreen() {
             </View>
           </View>
         </View>
-      </ScrollView>
-    </View>
+      </View>
+    </RNAnimated.ScrollView>
   );
 }

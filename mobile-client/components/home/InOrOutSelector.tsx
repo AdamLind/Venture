@@ -1,6 +1,15 @@
 import * as Haptics from "expo-haptics";
 import {Dispatch, SetStateAction, useState, useEffect} from "react";
-import {Pressable, Text, View, Alert, Linking, AppState} from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+  Alert,
+  Linking,
+  AppState,
+  ActivityIndicator,
+} from "react-native";
+import {Ionicons} from "@expo/vector-icons";
 import {ActivityLocation, SimpleLocation} from "../../types/itinerary";
 import * as Location from "expo-location";
 import Toast from "react-native-toast-message";
@@ -113,26 +122,45 @@ export default function InOrOutSelector({
   };
 
   return (
-    <View className="flex flex-row items-center justify-center gap-[34px] w-full">
+    <View className="flex-row bg-zinc-900 rounded-2xl border border-zinc-800 p-1.5">
       {locations.map((loc) => {
         const isActive = inOrOut === loc.value;
+        const isGoOut = loc.value === ActivityLocation.GoOut;
 
         const isPermanentlyDenied =
-          loc.value === ActivityLocation.GoOut &&
+          isGoOut &&
           permissionResponse?.status === Location.PermissionStatus.DENIED;
 
         return (
           <Pressable
             key={loc.value}
             onPress={() => handlePress(loc.value)}
-            className={`flex-grow p-[13px] m-auto border rounded-[10px] bg-zinc-900 ${
-              isActive ? "border-white" : "border-zinc-700"
-            } ${isPermanentlyDenied ? "opacity-50" : "opacity-100"}`}
+            disabled={loading}
+            accessibilityRole="button"
+            accessibilityState={{selected: isActive}}
+            className={`flex-1 flex-row items-center justify-center gap-1.5 py-3 rounded-xl ${
+              isActive ? "bg-zinc-700" : ""
+            } ${isPermanentlyDenied ? "opacity-50" : ""}`}
           >
+            {loading && isGoOut ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Ionicons
+                name={
+                  isGoOut
+                    ? isActive
+                      ? "walk"
+                      : "walk-outline"
+                    : isActive
+                      ? "home"
+                      : "home-outline"
+                }
+                size={16}
+                color={isActive ? "white" : "#71717a"}
+              />
+            )}
             <Text
-              className={`h-6 text-[18px] text-center ${
-                isActive ? "text-white font-semibold" : "text-zinc-200"
-              }`}
+              className={`font-bold ${isActive ? "text-white" : "text-zinc-500"}`}
             >
               {loc.label}
             </Text>

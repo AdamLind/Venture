@@ -10,6 +10,7 @@ import {
   Alert,
 } from "react-native";
 import {Image} from "expo-image";
+import {LinearGradient} from "expo-linear-gradient";
 import {useRouter} from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -326,10 +327,10 @@ export default function CreateScreen() {
   };
 
   return (
-    <View className="flex-1 bg-black">
+    <View className="flex-1">
       <ScrollView
         className="flex-1"
-        contentContainerClassName="px-6 pt-8 pb-16"
+        contentContainerClassName="px-6 pt-10 pb-16"
         showsVerticalScrollIndicator={false}
         automaticallyAdjustKeyboardInsets={true}
         keyboardShouldPersistTaps="handled"
@@ -884,6 +885,21 @@ export default function CreateScreen() {
           )}
         </Pressable>
       </ScrollView>
+
+      {/* SWIPE-DOWN GRABBER (custom; native one is off in app/_layout.tsx).
+          Floats over the ScrollView so content scrolls underneath, with a
+          short fade (sheet color -> transparent) to keep the pill readable. */}
+      <View
+        pointerEvents="none"
+        style={{position: "absolute", top: 0, left: 0, right: 0}}
+      >
+        <LinearGradient
+          colors={["#121212", "rgba(18,18,18,0)"]}
+          style={{height: 32, alignItems: "center", paddingTop: 12}}
+        >
+          <View className="w-12 h-1.5 rounded-full bg-zinc-500" />
+        </LinearGradient>
+      </View>
 
       {/* MAP MODAL */}
       <MapPickerModal

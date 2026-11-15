@@ -1,112 +1,90 @@
-import {Tabs, useRouter} from "expo-router";
+// app/(tabs)/_layout.tsx
+// Native tabs: the system tab bar. On iOS 26+ that's Liquid Glass, with the
+// sliding glass highlight between tabs; older iOS gets the standard blurred
+// bar and Android gets Material's bottom navigation.
+
 import React from "react";
-import {Platform, Pressable, StyleSheet} from "react-native";
-import {Ionicons} from "@expo/vector-icons";
-import {useSafeAreaInsets} from "react-native-safe-area-context";
-import ActiveDateBanner from "@/components/ActiveDateBanner";
+import {Platform} from "react-native";
+import {NativeTabs} from "expo-router/native-tabs";
+import {isLiquidGlassAvailable} from "expo-glass-effect";
+
+import ActiveDateBanner, {ActiveDateAccessory} from "@/components/ActiveDateBanner";
+import {useActiveDateStore} from "@/src/store/activeDateStore";
+
+// iOS 26's tab bar has a slot above it for things like a mini player
+const HAS_ACCESSORY = Platform.OS === "ios" && isLiquidGlassAvailable();
+
+// Each tab's TabHeader sets its own scroll insets on iOS (see TabHeader.tsx),
+// so turn off the automatic ones or the top spacing doubles. Android keeps
+// them: there they just keep content above the tab bar.
+const MANUAL_INSETS = Platform.OS === "ios";
 
 export default function TabLayout() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets(); // <-- Gets the exact size of the Pro Max swipe bar
+  const hasActiveDate = useActiveDateStore((state) => !!state.timeline);
 
   return (
     <>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarShowLabel: false,
-          tabBarActiveTintColor: "#ffffff",
-          tabBarInactiveTintColor: "#52525b",
-
-          tabBarItemStyle: {
-            justifyContent: "center",
-            alignItems: "center",
-          },
-
-          tabBarStyle: {
-            backgroundColor: "#000000",
-            borderTopWidth: StyleSheet.hairlineWidth,
-            borderTopColor: "#27272a",
-
-            paddingTop: 10,
-            paddingHorizontal: 16,
-
-            paddingBottom: Platform.OS === "ios" ? insets.bottom : 10,
-
-            height: Platform.OS === "ios" ? 40 + insets.bottom : 70,
-          },
-        }}
+      <NativeTabs
+        tintColor="#ffffff"
+        iconColor={{default: "#71717a", selected: "#ffffff"}}
+        // Pre-iOS 26 and Android draw their own background; keep it dark
+        backgroundColor="#000000"
+        blurEffect="systemChromeMaterialDark"
+        badgeBackgroundColor="#f59e0b"
+        indicatorColor="#27272a"
+        labelVisibilityMode="unlabeled"
+        // iOS 26+: shrinks to a small pill while scrolling down, back on scroll up
+        minimizeBehavior="onScrollDown"
       >
-        <Tabs.Screen
-          name="explore"
-          options={{
-            title: "Explore",
-            tabBarIcon: ({color, focused}) => (
-              <Ionicons
-                name={focused ? "home" : "home-outline"}
-                size={28}
-                color={color}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="feed"
-          options={{
-            title: "Feed",
-            tabBarIcon: ({color, focused}) => (
-              <Ionicons
-                name={focused ? "people" : "people-outline"}
-                size={28}
-                color={color}
-              />
-            ),
-          }}
-        />
+        <NativeTabs.Trigger name="explore" disableAutomaticContentInsets={MANUAL_INSETS}>
+          <NativeTabs.Trigger.Icon
+            sf={{default: "house", selected: "house.fill"}}
+            md="home"
+          />
+          <NativeTabs.Trigger.Label hidden>Explore</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
 
-        <Tabs.Screen
-          name="plan"
-          options={{
-            title: "Plan",
-            tabBarIcon: ({color, focused}) => (
-              <Ionicons
-                name={focused ? "add-circle" : "add-circle-outline"}
-                size={28}
-                color={color}
-              />
-            ),
-          }}
-        />
+        <NativeTabs.Trigger name="feed" disableAutomaticContentInsets={MANUAL_INSETS}>
+          <NativeTabs.Trigger.Icon
+            sf={{default: "person.2", selected: "person.2.fill"}}
+            md="group"
+          />
+          <NativeTabs.Trigger.Label hidden>Feed</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
 
-        <Tabs.Screen
-          name="activity"
-          options={{
-            title: "Activity",
-            tabBarIcon: ({color, focused}) => (
-              <Ionicons
-                name={focused ? "calendar" : "calendar-outline"}
-                size={28}
-                color={color}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="profile"
-          options={{
-            title: "Profile",
-            tabBarIcon: ({color, focused}) => (
-              <Ionicons
-                name={focused ? "person-circle" : "person-circle-outline"}
-                size={28}
-                color={color}
-              />
-            ),
-          }}
-        />
-      </Tabs>
+        <NativeTabs.Trigger name="plan" disableAutomaticContentInsets={MANUAL_INSETS}>
+          <NativeTabs.Trigger.Icon
+            sf={{default: "plus.circle", selected: "plus.circle.fill"}}
+            md="add_circle"
+          />
+          <NativeTabs.Trigger.Label hidden>Plan</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
 
-      <ActiveDateBanner />
+        <NativeTabs.Trigger name="activity" disableAutomaticContentInsets={MANUAL_INSETS}>
+          <NativeTabs.Trigger.Icon
+            sf={{default: "calendar", selected: "calendar"}}
+            md="calendar_today"
+          />
+          <NativeTabs.Trigger.Label hidden>Activity</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+
+        <NativeTabs.Trigger name="profile" disableAutomaticContentInsets={MANUAL_INSETS}>
+          <NativeTabs.Trigger.Icon
+            sf={{default: "person.crop.circle", selected: "person.crop.circle.fill"}}
+            md="account_circle"
+          />
+          <NativeTabs.Trigger.Label hidden>Profile</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+
+        {HAS_ACCESSORY && hasActiveDate && (
+          <NativeTabs.BottomAccessory>
+            <ActiveDateAccessory />
+          </NativeTabs.BottomAccessory>
+        )}
+      </NativeTabs>
+
+      {/* Everywhere else, the floating banner above the tab bar */}
+      {!HAS_ACCESSORY && <ActiveDateBanner />}
     </>
   );
 }

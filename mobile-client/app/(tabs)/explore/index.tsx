@@ -3,20 +3,38 @@ import {
   Pressable,
   View,
   Text,
-  FlatList,
-  ScrollView,
+  Animated,
   StatusBar,
   ActivityIndicator,
+  StyleSheet,
+  Platform,
 } from "react-native";
 import {Image} from "expo-image";
 import Ionicons from "@expo/vector-icons/build/Ionicons";
 import {useRouter, useFocusEffect} from "expo-router";
 import MapView, {Marker} from "react-native-maps";
-import {useSafeAreaInsets, SafeAreaView} from "react-native-safe-area-context";
-import Greeting from "@/components/home/Greeting";
+import {useSafeAreaInsets} from "react-native-safe-area-context";
+import {useGreeting} from "@/components/home/Greeting";
+import {newSeed, seededShuffle} from "@/src/lib/random";
+import TabHeader, {
+  HeaderIconButton,
+  useTabHeader,
+  useTabRefresh,
+} from "@/components/ui/TabHeader";
 import {supabase} from "@/src/supabase";
 import {LinearGradient} from "expo-linear-gradient";
 import {useLocationStore} from "@/src/store/useLocationStore";
+import GlassSurface from "@/components/ui/GlassSurface";
+
+// Shape for the map's floating preview card (GlassSurface takes style, not className)
+const glassStyles = StyleSheet.create({
+  previewCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 24,
+  },
+});
 
 // --- TYPES & CONSTANTS ---
 interface DateIdea {
@@ -140,6 +158,11 @@ const SkeletonIdea = () => (
 export default function ExploreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const header = useTabHeader({eyebrow: true});
+  // iOS: the screen runs under the floating tab bar, whose height is in the
+  // bottom safe-area inset. Android: the screen already ends above the bar.
+  const floatingBottom = Platform.OS === "ios" ? insets.bottom + 12 : 24;
+  const greeting = useGreeting();
 
   // --- ZUSTAND LOCATION STORE ---
   const {hasPermission, userLocation, requestLocation} = useLocationStore();
@@ -158,55 +181,83 @@ export default function ExploreScreen() {
     requestLocation();
   }, []);
 
+  // The shuffle order for the list. Picked when the screen opens and kept
+  // while you move around the app (the list refetches every time you come
+  // back to the tab); only pull-to-refresh picks a new one.
+  const shuffleSeed = useRef(newSeed());
+
+  // Bumped whenever a newer fetch starts, so a slow older one can't
+  // overwrite fresher results (or update the screen after it's left)
+  const fetchGeneration = useRef(0);
+
+  // `quiet`: pull-to-refresh shows its own spinner, so skip the loading state
+  const fetchIdeas = useCallback(async ({quiet = false} = {}) => {
+    const generation = ++fetchGeneration.current;
+    if (!quiet) setIsLoading(true);
+    setError(null);
+
+    const {data, error: supabaseError} = await supabase
+      .from("activities")
+      .select(
+        `
+        *,
+        venues ( name, address, coordinates ),
+        users!activities_user_id_fkey ( username )
+      `,
+      )
+      // A fixed order going in, so the same seed always shuffles the same way
+      .order("idea_id", {ascending: true});
+
+    if (generation !== fetchGeneration.current) return;
+
+    if (supabaseError) {
+      console.error("Explore fetch error:", supabaseError);
+      setError("Failed to load date ideas.");
+      setIsLoading(false);
+      return;
+    }
+
+    const formatted = (data || []).map((row: any) => {
+      const parsed = parseCoordinates(row.venues?.coordinates);
+      return {
+        ...row,
+        creator_username: row.users?.username || null,
+        latitude: parsed ? parsed.latitude : null,
+        longitude: parsed ? parsed.longitude : null,
+      };
+    });
+
+    setIdeas(seededShuffle(formatted, shuffleSeed.current));
+    setIsLoading(false);
+    setIsInitialLoad(false);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      let isActive = true;
-
-      const fetchIdeas = async () => {
-        setIsLoading(true);
-        setError(null);
-
-        const {data, error: supabaseError} = await supabase
-          .from("activities")
-          .select(
-            `
-            *,
-            venues ( name, address, coordinates ),
-            users!activities_user_id_fkey ( username )
-          `,
-          )
-          .order("created_at", {ascending: false});
-
-        if (supabaseError) {
-          console.error("Explore fetch error:", supabaseError);
-          setError("Failed to load date ideas.");
-          setIsLoading(false);
-          return;
-        }
-
-        if (isActive) {
-          const formatted = (data || []).map((row: any) => {
-            const parsed = parseCoordinates(row.venues?.coordinates);
-            return {
-              ...row,
-              creator_username: row.users?.username || null,
-              latitude: parsed ? parsed.latitude : null,
-              longitude: parsed ? parsed.longitude : null,
-            };
-          });
-
-          setIdeas(formatted);
-          setIsLoading(false);
-          setIsInitialLoad(false);
-        }
-      };
-
       fetchIdeas();
       return () => {
-        isActive = false;
+        // Leaving the tab: ignore whatever is still in flight
+        fetchGeneration.current++;
       };
-    }, []),
+    }, [fetchIdeas]),
   );
+
+  // Pull-to-refresh: new shuffle, so you get a fresh set of options up top
+  const refresh = useTabRefresh(() => {
+    shuffleSeed.current = newSeed();
+    return fetchIdeas({quiet: true});
+  });
+
+  const toggleViewMode = () => {
+    const nextMode = viewMode === "list" ? "map" : "list";
+    if (nextMode === "map" && !hasPermission) {
+      requestLocation();
+    }
+    if (nextMode === "map") {
+      setSelectedIdea(null);
+    }
+    setViewMode(nextMode);
+  };
 
   const handleSelectPin = useCallback((item: DateIdea) => {
     lastMarkerPress.current = Date.now();
@@ -310,6 +361,13 @@ export default function ExploreScreen() {
     );
   };
 
+  // A fresh list starts at the top, so the header should too
+  const {reset: resetHeader} = header;
+  const showingSkeleton = isLoading && isInitialLoad;
+  useEffect(() => {
+    resetHeader();
+  }, [viewMode, showingSkeleton, resetHeader]);
+
   const renderEmptyState = () => {
     if (isLoading) return null;
     return (
@@ -327,42 +385,91 @@ export default function ExploreScreen() {
     );
   };
 
+  // --- HEADER ---
+  const renderHeader = (floating: boolean) => (
+    <TabHeader
+      header={header}
+      title="Discover"
+      eyebrow={greeting}
+      // Floating over the map or an error there's nothing to scroll, so it
+      // stays in the slim bar
+      floating={floating}
+      collapsed={floating}
+      refreshing={refresh.headerSpinner}
+      right={
+        <>
+          {!error && (
+            <HeaderIconButton
+              icon={viewMode === "list" ? "map-outline" : "list"}
+              label={viewMode === "list" ? "Show map" : "Show list"}
+              onPress={toggleViewMode}
+            />
+          )}
+          <HeaderIconButton
+            icon="add"
+            label="Share an idea"
+            onPress={() => router.push("/create")}
+          />
+          <HeaderIconButton
+            icon="notifications-outline"
+            label="Notifications"
+            badgeColor="#f59e0b"
+          />
+        </>
+      }
+    />
+  );
+
+  // List: the list is the screen's ROOT view (a Fragment adds no view), so
+  // iOS can find it for the tab bar's shrink-on-scroll (see TabHeader.tsx).
+  // The header is the list's first, sticky child.
+  if (!error && viewMode === "list") {
+    return (
+      <>
+        <StatusBar barStyle="light-content" />
+        {isLoading && isInitialLoad ? (
+          <Animated.ScrollView
+            {...header.scrollProps}
+            style={{flex: 1, backgroundColor: "#000"}}
+            contentContainerStyle={{paddingBottom: 96}}
+            showsVerticalScrollIndicator={false}
+          >
+            {renderHeader(false)}
+            <View style={{paddingHorizontal: 20, paddingTop: 8}}>
+              {[1, 2, 3].map((i) => (
+                <SkeletonIdea key={i} />
+              ))}
+            </View>
+          </Animated.ScrollView>
+        ) : (
+          <Animated.FlatList
+            {...header.scrollProps}
+            style={{flex: 1, backgroundColor: "#000"}}
+            ListHeaderComponent={renderHeader(false)}
+            data={ideas}
+            keyExtractor={(item) => `idea-${item.idea_id}`}
+            renderItem={(info) => (
+              <View
+                style={{paddingHorizontal: 20, paddingTop: info.index === 0 ? 8 : 0}}
+              >
+                {renderIdeaItem(info)}
+              </View>
+            )}
+            ListEmptyComponent={renderEmptyState}
+            refreshControl={refresh.control}
+            contentContainerStyle={{paddingBottom: 60}}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </>
+    );
+  }
+
+  // Map (or an error): nothing to scroll, so the header floats on top
   return (
     <View className="flex-1 bg-black">
       <StatusBar barStyle="light-content" />
-
-      {/* --- CUSTOM HEADER --- */}
-      <SafeAreaView edges={["top"]} className="bg-zinc-950/90 z-10">
-        <View className="px-6 pb-4">
-          <View className="flex-row justify-between items-end">
-            <Text className="text-white text-3xl font-bold tracking-tight">
-              Discover
-            </Text>
-            <View className="flex-row gap-3">
-              <Pressable
-                onPress={() => router.push("/create")}
-                className="bg-zinc-900 w-12 h-12 rounded-full items-center justify-center border border-zinc-800 active:bg-zinc-800"
-              >
-                <Ionicons name="add" size={24} color="white" />
-              </Pressable>
-
-              <Pressable className="bg-zinc-900 w-12 h-12 rounded-full items-center justify-center border border-zinc-800 active:bg-zinc-800">
-                <Ionicons
-                  name="notifications-outline"
-                  size={22}
-                  color="white"
-                />
-                <View className="absolute top-2 right-2 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-zinc-900" />
-              </Pressable>
-            </View>
-          </View>
-          <Greeting />
-        </View>
-      </SafeAreaView>
-
-      {/* --- CONTENT AREA --- */}
-      <View className="flex-1 bg-black relative">
-        {error ? (
+      {error ? (
           <View className="flex-1 justify-center items-center p-4">
             <Ionicons
               name="alert-circle"
@@ -372,130 +479,106 @@ export default function ExploreScreen() {
             />
             <Text className="text-red-400 font-bold mb-6">{error}</Text>
             <Pressable
-              onPress={() => {
-                setIsLoading(true);
-                setError(null);
-              }}
+              onPress={() => fetchIdeas()}
               className="bg-red-500/20 px-8 py-3 rounded-full border border-red-500/30"
             >
               <Text className="text-red-300 font-bold">Try Again</Text>
             </Pressable>
           </View>
-        ) : viewMode === "list" ? (
-          isLoading && isInitialLoad ? (
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerClassName="px-5 pt-4 pb-24"
-            >
-              {[1, 2, 3].map((i) => (
-                <SkeletonIdea key={i} />
+      ) : (
+        <View className="flex-1">
+          <MapView
+            style={{flex: 1}}
+            initialRegion={{
+              latitude: userLocation?.latitude ?? 40.2312,
+              longitude: userLocation?.longitude ?? -111.6614,
+              latitudeDelta: 0.15,
+              longitudeDelta: 0.15,
+            }}
+            userInterfaceStyle="dark"
+            showsUserLocation={hasPermission}
+            showsMyLocationButton={hasPermission}
+            onPress={() => {
+              if (Date.now() - lastMarkerPress.current < 250) return;
+              setSelectedIdea(null);
+            }}
+          >
+            {/* 1. Base markers (dim gray border, frozen in GPU memory) */}
+            {ideas
+              .filter(
+                (i) => i.latitude && i.longitude && i.modality === "GO_OUT",
+              )
+              .map((item) => (
+                <PricePin
+                  key={`pin-${item.idea_id}`}
+                  item={item}
+                  onSelect={handleSelectPin}
+                />
               ))}
-            </ScrollView>
-          ) : (
-            <FlatList
-              data={ideas}
-              keyExtractor={(item) => `idea-${item.idea_id}`}
-              renderItem={renderIdeaItem}
-              ListEmptyComponent={renderEmptyState}
-              contentContainerStyle={{
-                paddingHorizontal: 20,
-                paddingTop: 16,
-                paddingBottom: 60,
-              }}
-              showsVerticalScrollIndicator={false}
-            />
-          )
-        ) : (
-          /* MAP VIEW */
-          <View className="flex-1">
-            <MapView
-              style={{flex: 1}}
-              initialRegion={{
-                latitude: userLocation?.latitude ?? 40.2312,
-                longitude: userLocation?.longitude ?? -111.6614,
-                latitudeDelta: 0.15,
-                longitudeDelta: 0.15,
-              }}
-              userInterfaceStyle="dark"
-              showsUserLocation={hasPermission}
-              showsMyLocationButton={hasPermission}
-              onPress={() => {
-                if (Date.now() - lastMarkerPress.current < 250) return;
-                setSelectedIdea(null);
-              }}
-            >
-              {/* 1. Base markers (dim gray border, frozen in GPU memory) */}
-              {ideas
-                .filter(
-                  (i) => i.latitude && i.longitude && i.modality === "GO_OUT",
-                )
-                .map((item) => (
-                  <PricePin
-                    key={`pin-${item.idea_id}`}
-                    item={item}
-                    onSelect={handleSelectPin}
-                  />
-                ))}
 
-              {/* 2. Active overlay pin (pure white border, dark background, elevated zIndex) */}
-              {selectedIdea?.latitude && selectedIdea?.longitude && (
-                <Marker
-                  key={`active-white-border-${selectedIdea.idea_id}`}
-                  coordinate={{
-                    latitude: selectedIdea.latitude,
-                    longitude: selectedIdea.longitude,
-                  }}
-                  anchor={{x: 0.5, y: 0.5}}
-                  zIndex={999}
-                  tracksViewChanges={true}
-                  onPress={() => {
-                    lastMarkerPress.current = Date.now();
-                    setSelectedIdea(null);
+            {/* 2. Active overlay pin (pure white border, dark background, elevated zIndex) */}
+            {selectedIdea?.latitude && selectedIdea?.longitude && (
+              <Marker
+                key={`active-white-border-${selectedIdea.idea_id}`}
+                coordinate={{
+                  latitude: selectedIdea.latitude,
+                  longitude: selectedIdea.longitude,
+                }}
+                anchor={{x: 0.5, y: 0.5}}
+                zIndex={999}
+                tracksViewChanges={true}
+                onPress={() => {
+                  lastMarkerPress.current = Date.now();
+                  setSelectedIdea(null);
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: "#18181b",
+                    borderColor: "#FFFFFF",
+                    borderWidth: 2,
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 9999,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    shadowColor: "#000",
+                    shadowOffset: {width: 0, height: 3},
+                    shadowOpacity: 0.6,
+                    shadowRadius: 5,
+                    elevation: 8,
                   }}
                 >
-                  <View
+                  <Text
                     style={{
-                      backgroundColor: "#18181b",
-                      borderColor: "#FFFFFF",
-                      borderWidth: 2,
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 9999,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      shadowColor: "#000",
-                      shadowOffset: {width: 0, height: 3},
-                      shadowOpacity: 0.6,
-                      shadowRadius: 5,
-                      elevation: 8,
+                      color: "#FFFFFF",
+                      fontSize: 12,
+                      fontWeight: "900",
                     }}
                   >
-                    <Text
-                      style={{
-                        color: "#FFFFFF",
-                        fontSize: 12,
-                        fontWeight: "900",
-                      }}
-                    >
-                      {formatPrice(selectedIdea.est_price_per_person)}
-                    </Text>
-                  </View>
-                </Marker>
-              )}
-            </MapView>
+                    {formatPrice(selectedIdea.est_price_per_person)}
+                  </Text>
+                </View>
+              </Marker>
+            )}
+          </MapView>
 
-            {/* FLOATING AIRBNB-STYLE PREVIEW CARD */}
-            {selectedIdea && (
-              <View className="absolute bottom-24 left-4 right-4 z-40">
-                <Pressable
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(tabs)/explore/detail/[id]",
-                      params: {id: selectedIdea.idea_id.toString()},
-                    })
-                  }
-                  className="bg-zinc-900/95 border border-zinc-700/80 rounded-3xl p-3 flex-row items-center backdrop-blur-xl shadow-2xl shadow-black active:opacity-95"
-                >
+          {/* FLOATING AIRBNB-STYLE PREVIEW CARD */}
+          {selectedIdea && (
+            <View
+              className="absolute left-4 right-4 z-40"
+              style={{bottom: floatingBottom}}
+            >
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/explore/detail/[id]",
+                    params: {id: selectedIdea.idea_id.toString()},
+                  })
+                }
+                className="active:opacity-90"
+              >
+                <GlassSurface style={glassStyles.previewCard}>
                   <Image
                     source={{
                       uri:
@@ -541,50 +624,25 @@ export default function ExploreScreen() {
                       e.stopPropagation();
                       setSelectedIdea(null);
                     }}
-                    className="absolute top-3 right-3 w-7 h-7 rounded-full bg-zinc-800 items-center justify-center border border-zinc-700 active:opacity-70"
+                    hitSlop={8}
+                    accessibilityLabel="Close preview"
+                    className="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/10 items-center justify-center border border-white/15 active:opacity-70"
                   >
-                    <Ionicons name="close" size={16} color="#a1a1aa" />
+                    <Ionicons name="close" size={16} color="#d4d4d8" />
                   </Pressable>
-                </Pressable>
-              </View>
-            )}
+                </GlassSurface>
+              </Pressable>
+            </View>
+          )}
 
-            {isLoading && (
-              <View className="absolute inset-0 bg-black/40 justify-center items-center">
-                <ActivityIndicator size="large" color="#FF9D0A" />
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* --- FLOATING TOGGLE BUTTON --- */}
-        {!error && (
-          <View className="absolute bottom-6 self-center z-50">
-            <Pressable
-              onPress={() => {
-                const nextMode = viewMode === "list" ? "map" : "list";
-                if (nextMode === "map" && !hasPermission) {
-                  requestLocation();
-                }
-                if (nextMode === "map") {
-                  setSelectedIdea(null);
-                }
-                setViewMode(nextMode);
-              }}
-              className="bg-zinc-800/95 backdrop-blur-xl flex-row items-center justify-center px-6 py-3.5 rounded-full border border-zinc-600 shadow-2xl shadow-black active:scale-[0.95]"
-            >
-              <Text className="text-white font-bold text-sm mr-2 tracking-wide">
-                {viewMode === "list" ? "Map" : "List"}
-              </Text>
-              <Ionicons
-                name={viewMode === "list" ? "map" : "list"}
-                size={18}
-                color="white"
-              />
-            </Pressable>
-          </View>
-        )}
-      </View>
+          {isLoading && (
+            <View className="absolute inset-0 bg-black/40 justify-center items-center">
+              <ActivityIndicator size="large" color="#FF9D0A" />
+            </View>
+          )}
+        </View>
+      )}
+      {renderHeader(true)}
     </View>
   );
 }
