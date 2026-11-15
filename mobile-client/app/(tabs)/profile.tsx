@@ -15,6 +15,10 @@ import {budgetLabel, displayName, hasHomeArea} from "@/src/lib/profile";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {groupItineraries} from "@/src/lib/dates";
 import {PastDateCard, UpNextCard} from "@/components/dates/DateCards";
+import {MyIdeaRow, SavedIdeaRow} from "@/components/ideas/IdeaRows";
+import {useSavedStore} from "@/src/store/useSavedStore";
+import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
+import {showIdeaActions} from "@/src/lib/ideaActions";
 
 type Tab = "past" | "bucket" | "ideas";
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -25,7 +29,6 @@ const TABS: {key: Tab; label: string}[] = [
   {key: "ideas", label: "My Ideas"},
 ];
 
-// Bucket List and My Ideas are filled in by Phase 3
 const EMPTY_STATES: Record<Tab, {icon: IconName; title: string; body: string}> =
   {
     past: {
@@ -36,12 +39,12 @@ const EMPTY_STATES: Record<Tab, {icon: IconName; title: string; body: string}> =
     bucket: {
       icon: "bookmark-outline",
       title: "Your bucket list is empty",
-      body: "Ideas you save while exploring will show up here.",
+      body: "Tap the bookmark on any idea in Discover to save it for later.",
     },
     ideas: {
       icon: "bulb-outline",
       title: "No ideas shared yet",
-      body: "Ideas you submit, and where they are in review, will show up here.",
+      body: "Share a date idea and you'll see where it is in review here.",
     },
   };
 
@@ -67,7 +70,20 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState<Tab>("past");
   const header = useTabHeader();
   const reloadDates = useItineraryStore((s) => s.reload);
-  const refresh = useTabRefresh(() => Promise.all([reload(), reloadDates()]));
+  const savedItems = useSavedStore((s) => s.items);
+  const toggleSaved = useSavedStore((s) => s.toggle);
+  const reloadSaved = useSavedStore((s) => s.reload);
+  const myIdeas = useMyIdeasStore((s) => s.ideas);
+  const reloadMyIdeas = useMyIdeasStore((s) => s.reload);
+  const refresh = useTabRefresh(() =>
+    Promise.all([reload(), reloadDates(), reloadSaved(), reloadMyIdeas()]),
+  );
+
+  // Saved ideas you can still see, and ones unpublished or deleted since
+  const savedIdeas = savedItems.flatMap((item) => (item.idea ? [item.idea] : []));
+  const goneIds = savedItems
+    .filter((item) => !item.idea)
+    .map((item) => item.activity_id);
 
   const itineraries = useItineraryStore((s) => s.itineraries);
   const {active, upcoming, past} = useMemo(
@@ -237,10 +253,52 @@ export default function ProfileScreen() {
         </View>
 
         {/* --- TAB CONTENT --- */}
+        {activeTab === "ideas" && (
+          <Pressable
+            onPress={() => router.push("/create")}
+            className="flex-row items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-2xl py-3.5 mb-4 active:opacity-70"
+          >
+            <Ionicons name="add" size={18} color="#d4d4d8" />
+            <Text className="text-zinc-200 font-semibold">Share an idea</Text>
+          </Pressable>
+        )}
+
+        {activeTab === "bucket" && goneIds.length > 0 && (
+          <View className="flex-row items-center bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 mb-4">
+            <Text className="text-zinc-400 text-sm flex-1">
+              {goneIds.length === 1
+                ? "1 saved idea isn't available anymore."
+                : `${goneIds.length} saved ideas aren't available anymore.`}
+            </Text>
+            <Pressable
+              onPress={() => goneIds.forEach((id) => toggleSaved(id).catch(() => {}))}
+              hitSlop={8}
+            >
+              <Text className="text-blue-400 font-semibold text-sm">Clear</Text>
+            </Pressable>
+          </View>
+        )}
+
         {activeTab === "past" && past.length > 0 ? (
           <View className="gap-4">
             {past.map((itinerary) => (
               <PastDateCard key={itinerary.itinerary_id} itinerary={itinerary} />
+            ))}
+          </View>
+        ) : activeTab === "bucket" && savedIdeas.length > 0 ? (
+          <View className="gap-3">
+            {savedIdeas.map((idea) => (
+              <SavedIdeaRow key={idea.idea_id} idea={idea} />
+            ))}
+          </View>
+        ) : activeTab === "ideas" && myIdeas.length > 0 ? (
+          <View className="gap-3">
+            {myIdeas.map((idea) => (
+              <MyIdeaRow
+                key={idea.idea_id}
+                idea={idea}
+                onMore={() => showIdeaActions(idea)}
+              />
             ))}
           </View>
         ) : (
@@ -254,6 +312,14 @@ export default function ProfileScreen() {
             <Text className="text-zinc-500 text-sm text-center mt-1">
               {empty.body}
             </Text>
+            {activeTab === "bucket" && (
+              <Pressable
+                onPress={() => router.push("/(tabs)/explore")}
+                className="bg-zinc-800 rounded-2xl px-5 py-3 mt-5 active:bg-zinc-700"
+              >
+                <Text className="text-white font-bold">Browse Discover</Text>
+              </Pressable>
+            )}
           </View>
         )}
       </View>

@@ -349,6 +349,9 @@ export const queryCandidates = async (
         activity_tags ( tags ( name ) )
       `,
       )
+      // Published ideas, plus your own private ones (meant for your own
+      // plans). Not ideas still in review or turned down.
+      .in("visibility", ["PUBLISHED", "PRIVATE"])
       .eq("modality", prefs.modality)
       .lte("est_price_per_person", targetBudgetPerPerson)
       .lte("est_duration_minutes", maxDuration);

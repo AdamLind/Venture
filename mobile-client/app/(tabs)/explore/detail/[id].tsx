@@ -1,4 +1,4 @@
-import React, {useEffect, useState, useRef} from "react";
+import React, {useEffect, useState} from "react";
 import {
   View,
   Text,
@@ -17,6 +17,10 @@ import MapView, {Marker} from "react-native-maps";
 import {LinearGradient} from "expo-linear-gradient";
 import {supabase} from "@/src/supabase";
 import {useLocationStore} from "@/src/store/useLocationStore";
+import {useProfileStore} from "@/src/store/useProfileStore";
+import SaveButton from "@/components/ideas/SaveButton";
+import {StatusChip} from "@/components/ideas/IdeaRows";
+import {IDEA_STATUS} from "@/src/lib/ideas";
 
 const {width, height} = Dimensions.get("window");
 
@@ -30,9 +34,10 @@ export default function IdeaDetailScreen() {
   const [isMapModalVisible, setIsMapModalVisible] = useState(false);
 
   const {hasPermission, requestLocation} = useLocationStore();
+  const myUserId = useProfileStore((s) => s.userId);
 
   // --- ANIMATION VALUES ---
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const [scrollY] = useState(() => new Animated.Value(0));
 
   // 1. The Math: To perfectly fill the gap, scaling must match the 480px height.
   // If you pull down 480px, the image must exactly double in size (scale: 2)
@@ -145,6 +150,9 @@ export default function IdeaDetailScreen() {
   const coords = idea.venues?.coordinates
     ? parseCoordinates(idea.venues.coordinates)
     : null;
+  // Your own idea that isn't live yet: say where it stands
+  const showStatus =
+    idea.user_id === myUserId && idea.visibility !== "PUBLISHED";
 
   return (
     <View className="flex-1 bg-black">
@@ -224,6 +232,23 @@ export default function IdeaDetailScreen() {
               </Text>
             </Text>
           </View>
+
+          {showStatus && (
+            <View className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 mb-6 gap-2">
+              <StatusChip visibility={idea.visibility} />
+              <Text className="text-zinc-300 text-sm">
+                {IDEA_STATUS[idea.visibility as keyof typeof IDEA_STATUS]?.detail}
+              </Text>
+              {idea.moderation_note ? (
+                <Text className="text-zinc-400 text-sm">
+                  <Text className="text-zinc-200 font-semibold">
+                    {"Reviewer's note: "}
+                  </Text>
+                  {idea.moderation_note}
+                </Text>
+              ) : null}
+            </View>
+          )}
 
           {/* QUICK STATS GRID */}
           <View className="flex-row flex-wrap justify-between bg-zinc-900/80 rounded-3xl p-5 border border-zinc-800 mb-8">
@@ -364,6 +389,11 @@ export default function IdeaDetailScreen() {
       >
         <Ionicons name="chevron-back" size={24} color="white" />
       </Pressable>
+
+      {/* SAVE TO BUCKET LIST (mirrors the back button) */}
+      <View className="absolute top-15 right-4 z-50">
+        <SaveButton ideaId={idea.idea_id} size={44} />
+      </View>
 
       {/* FULL-SCREEN INTERACTIVE MAP MODAL */}
       <Modal

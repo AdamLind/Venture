@@ -17,6 +17,7 @@ import * as ImageManipulator from "expo-image-manipulator";
 import * as Location from "expo-location";
 import Ionicons from "@expo/vector-icons/build/Ionicons";
 import {supabase} from "@/src/supabase";
+import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 
 import MapPickerModal from "@/components/MapPickerModal";
 import ActivityTagsSelector from "@/components/home/ActivityTagsSelector";
@@ -316,7 +317,14 @@ export default function CreateScreen() {
         }
       }
 
-      Alert.alert("Success!", "Your date idea has been submitted.");
+      // Show it in Profile > My Ideas
+      useMyIdeasStore.getState().reload();
+      Alert.alert(
+        visibility === "PRIVATE" ? "Saved" : "Submitted for review",
+        visibility === "PRIVATE"
+          ? "It's in Profile › My Ideas. Only you can see it, and you can use it when you plan."
+          : "You can follow its review in Profile › My Ideas.",
+      );
       router.push("/");
     } catch (error: any) {
       console.error("Upload Error:", error);

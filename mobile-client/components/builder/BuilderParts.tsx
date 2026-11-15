@@ -7,6 +7,9 @@ import {View, Text, Pressable} from "react-native";
 import {Image} from "expo-image";
 import {Ionicons} from "@expo/vector-icons";
 
+import {useSavedStore} from "@/src/store/useSavedStore";
+import {SAVED_COLOR} from "@/components/ideas/SaveButton";
+
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 const FALLBACK_IMAGE =
@@ -310,6 +313,26 @@ function ActivityChips({
   );
 }
 
+/** Title with a bookmark when the idea is in your Bucket List. */
+function IdeaTitle({item}: {item: any}) {
+  const saved = useSavedStore((s) => s.ids.has(item.idea_id));
+  return (
+    <View className="flex-row items-center gap-1.5">
+      {saved && (
+        <Ionicons
+          name="bookmark"
+          size={13}
+          color={SAVED_COLOR}
+          accessibilityLabel="In your bucket list"
+        />
+      )}
+      <Text className="text-white font-bold text-base flex-1" numberOfLines={1}>
+        {item.title}
+      </Text>
+    </View>
+  );
+}
+
 const FIT_REASON: Record<string, string> = {
   NO_FIT_TIME: "Too long for the time left",
   OVER_BUDGET: "Over your remaining budget",
@@ -345,9 +368,7 @@ export function ActivityOptionCard({
         contentFit="cover"
       />
       <View className={`flex-1 ml-3 ${disabled ? "opacity-60" : ""}`}>
-        <Text className="text-white font-bold text-base" numberOfLines={1}>
-          {item.title}
-        </Text>
+        <IdeaTitle item={item} />
         {item.description ? (
           <Text className="text-zinc-400 text-sm mt-0.5 mb-2" numberOfLines={2}>
             {item.description}
@@ -389,9 +410,7 @@ export function PickCard({
         contentFit="cover"
       />
       <View className="p-3 gap-2">
-        <Text className="text-white font-bold text-base" numberOfLines={1}>
-          {item.title}
-        </Text>
+        <IdeaTitle item={item} />
         <ActivityChips item={item} headCount={headCount} goingOut={goingOut} />
       </View>
       <View className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-black/60 items-center justify-center">

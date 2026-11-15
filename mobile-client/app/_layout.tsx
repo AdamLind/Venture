@@ -16,6 +16,8 @@ import {useColorScheme} from "@/hooks/useColorScheme";
 import {AuthProvider, useAuth} from "../src/providers/AuthProvider";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
+import {useSavedStore} from "@/src/store/useSavedStore";
+import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {signOut} from "@/src/lib/signOut";
 
 // --- CREATE YOUR CUSTOM TOAST THEMES ---
@@ -93,6 +95,25 @@ function InitialLayout() {
       loadItineraries(userId);
     }
   }, [userId, onboarded, profileStatus, itineraryUserId, loadItineraries]);
+
+  // Bucket List and My Ideas, loaded alongside the dates
+  const savedUserId = useSavedStore((s) => s.userId);
+  const loadSaved = useSavedStore((s) => s.load);
+  const myIdeasUserId = useMyIdeasStore((s) => s.userId);
+  const loadMyIdeas = useMyIdeasStore((s) => s.load);
+  useEffect(() => {
+    if (!userId || !onboarded || profileStatus !== "ready") return;
+    if (savedUserId !== userId) loadSaved(userId);
+    if (myIdeasUserId !== userId) loadMyIdeas(userId);
+  }, [
+    userId,
+    onboarded,
+    profileStatus,
+    savedUserId,
+    loadSaved,
+    myIdeasUserId,
+    loadMyIdeas,
+  ]);
 
   // The Reactive Auth Routing Logic
   useEffect(() => {
@@ -205,6 +226,9 @@ function InitialLayout() {
 
         {/* SAVED DATE DETAIL */}
         <Stack.Screen name="itinerary/[id]" options={{headerShown: false}} />
+
+        {/* IDEA DETAIL outside Discover (from Bucket List / My Ideas) */}
+        <Stack.Screen name="idea/[id]" options={{headerShown: false}} />
 
         {/* Not Found Screen */}
         <Stack.Screen name="+not-found" />

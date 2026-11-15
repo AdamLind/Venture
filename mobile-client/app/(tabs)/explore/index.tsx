@@ -16,6 +16,7 @@ import MapView, {Marker} from "react-native-maps";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 import {useGreeting} from "@/components/home/Greeting";
 import {newSeed, seededShuffle} from "@/src/lib/random";
+import SaveButton from "@/components/ideas/SaveButton";
 import TabHeader, {
   HeaderIconButton,
   useTabHeader,
@@ -205,6 +206,9 @@ export default function ExploreScreen() {
         users!activities_user_id_fkey ( username )
       `,
       )
+      // Your own unpublished ideas are visible to you too; they belong in
+      // Profile > My Ideas, not Discover
+      .eq("visibility", "PUBLISHED")
       // A fixed order going in, so the same seed always shuffles the same way
       .order("idea_id", {ascending: true});
 
@@ -320,9 +324,9 @@ export default function ExploreScreen() {
             </View>
           </View>
 
-          <Pressable className="absolute top-4 right-4 w-9 h-9 rounded-full bg-[rgba(0,0,0,0.5)] backdrop-blur-md items-center justify-center border border-zinc-600 active:scale-[0.90] transition-transform">
-            <Ionicons name="bookmark-outline" size={18} color="white" />
-          </Pressable>
+          <View className="absolute top-4 right-4">
+            <SaveButton ideaId={item.idea_id} />
+          </View>
 
           <View className="absolute bottom-0 w-full p-5">
             <View className="flex-row justify-between items-end">
