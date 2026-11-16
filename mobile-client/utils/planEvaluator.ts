@@ -46,6 +46,10 @@ export const PENALTY = {
   afterDark: 25,
   activeAfterMeal: 20,
   oddMealTime: 15,
+  // A treat (gelato, a shake) right before a meal: dessert comes after.
+  // A bit more than an odd meal time, so pushing dinner later by putting
+  // dessert first doesn't win
+  treatBeforeMeal: 20,
   // Shorter than the idea's suggested length: a fixed-length idea (a movie,
   // a class) can't really be cut, a flexible one just gets rushed
   shortenedFixed: 40, // hard
@@ -88,6 +92,7 @@ export type PlanIssueKind =
   | "AFTER_DARK"
   | "ACTIVE_AFTER_MEAL"
   | "ODD_MEAL_TIME"
+  | "TREAT_BEFORE_MEAL"
   | "SHORTENED"
   | "BACKTRACK"
   // Weather (src/lib/weatherRules.ts)
@@ -254,6 +259,7 @@ export function evaluatePlan(
   stops.forEach((slot, i) => {
     const activity: any = slot.activity!;
     const prev: any = i > 0 ? stops[i - 1].activity : null;
+    const next: any = i < stops.length - 1 ? stops[i + 1].activity : null;
     const id = idOf(slot);
     const type = activity.activity_type;
     const minutes = minutesBetween(slot.startTime, slot.endTime);
@@ -294,6 +300,18 @@ export function evaluatePlan(
           penalty: PENALTY.oddMealTime,
         });
       }
+    }
+
+    // Treats: dessert after the meal, not right before it
+    if (type === "TREAT" && next?.activity_type === "MEAL") {
+      add({
+        kind: "TREAT_BEFORE_MEAL",
+        severity: "soft",
+        stopId: id,
+        relatedIds: [idOf(stops[i + 1])],
+        message: "Right before a meal",
+        penalty: PENALTY.treatBeforeMeal,
+      });
     }
 
     // Active stops

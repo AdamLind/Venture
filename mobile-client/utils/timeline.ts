@@ -218,6 +218,23 @@ export const deriveSequentialTimeline = (
   return slots;
 };
 
+/**
+ * Miles of driving in a plan (go-out plans; 0 when staying in): from the
+ * start, stop to stop, and home. The same legs deriveSequentialTimeline
+ * draws, so "how much driving does this add" matches the timeline.
+ */
+export const drivingMiles = (placed: PlacedActivity[], prefs: UserPrefs): number => {
+  if (prefs.modality !== "GO_OUT" || placed.length === 0) return 0;
+  let here: LatLng | null = asLatLng(prefs.currentLocation);
+  let miles = 0;
+  for (const p of placed) {
+    const there = stopLocation(p.activity, prefs);
+    miles += legMiles(here, there);
+    if (there) here = there;
+  }
+  return miles + legMiles(here, homeOf(prefs));
+};
+
 // ─── Context Engine (The "Meters") ─────────────────────────────────────────────
 
 export type DayContext = {

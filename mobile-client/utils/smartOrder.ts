@@ -29,6 +29,8 @@ export type SmartOrderResult = {
   improved: boolean;
   /** Problems the new order fixes (from the current order's list) */
   fixed: PlanIssue[];
+  /** Problems the new order has that the current one doesn't (it's still better overall) */
+  introduced: PlanIssue[];
   /** Fewer miles of driving (0 if none) */
   milesSaved: number;
 };
@@ -96,12 +98,14 @@ export function smartOrder(
   const key = (i: PlanIssue) => `${i.kind}:${i.stopId ?? ""}`;
   const after = improved ? bestEval : before;
   const remaining = new Set(after.issues.map(key));
+  const existing = new Set(before.issues.map(key));
   return {
     order: improved ? best : placed,
     before,
     after,
     improved,
     fixed: improved ? before.issues.filter((i) => !remaining.has(key(i))) : [],
+    introduced: improved ? after.issues.filter((i) => !existing.has(key(i))) : [],
     milesSaved: improved ? Math.max(0, before.routeMiles - after.routeMiles) : 0,
   };
 }

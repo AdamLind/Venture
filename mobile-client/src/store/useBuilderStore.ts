@@ -11,9 +11,15 @@ interface BuilderState {
   ) => void;
   setActivities: (activities: any[]) => void;
   clearBuilder: () => void;
+
+  /** "Add to plan" on an idea's full page: the builder adds it on return */
+  pendingAddId: number | null;
+  requestAdd: (ideaId: number) => void;
+  /** The builder takes the request (once) */
+  takePendingAdd: () => number | null;
 }
 
-export const useBuilderStore = create<BuilderState>((set) => ({
+export const useBuilderStore = create<BuilderState>((set, get) => ({
   placed: [],
   activities: [],
 
@@ -25,5 +31,13 @@ export const useBuilderStore = create<BuilderState>((set) => ({
 
   setActivities: (activities) => set({activities}),
 
-  clearBuilder: () => set({placed: [], activities: []}),
+  clearBuilder: () => set({placed: [], activities: [], pendingAddId: null}),
+
+  pendingAddId: null,
+  requestAdd: (ideaId) => set({pendingAddId: ideaId}),
+  takePendingAdd: () => {
+    const id = get().pendingAddId;
+    if (id != null) set({pendingAddId: null});
+    return id;
+  },
 }));

@@ -10,6 +10,7 @@ import {Ionicons} from "@expo/vector-icons";
 
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {SAVED_COLOR} from "@/components/ideas/SaveButton";
+import {spotLabel} from "@/utils/bestPlacement";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -143,11 +144,14 @@ function StopCardView({
   onMoveLater,
   warning,
   onEditLength,
+  onView,
   adjusted = false,
 }: {
   slot: {startTime: number; endTime: number; activity?: any};
   headCount: number;
   onRemove?: () => void;
+  /** Tap the photo to see the idea's full page */
+  onView?: () => void;
   /** Tap the card to change how long the stop lasts */
   onEditLength?: () => void;
   /** You changed its length from the idea's suggestion */
@@ -164,6 +168,7 @@ function StopCardView({
   const moveActions = [
     ...(onMoveEarlier ? [{name: "moveEarlier", label: "Move earlier"}] : []),
     ...(onMoveLater ? [{name: "moveLater", label: "Move later"}] : []),
+    ...(onView ? [{name: "viewIdea", label: "See the full idea"}] : []),
   ];
 
   return (
@@ -184,17 +189,21 @@ function StopCardView({
         onAccessibilityAction={(e) => {
           if (e.nativeEvent.actionName === "moveEarlier") onMoveEarlier?.();
           if (e.nativeEvent.actionName === "moveLater") onMoveLater?.();
+          if (e.nativeEvent.actionName === "viewIdea") onView?.();
         }}
       >
-      <Image
-        source={{uri: activityImage(activity)}}
-        style={{width: 64, height: 64, borderRadius: 14}}
-        contentFit="cover"
-        // Kept in memory: reordering re-attaches the photo, which otherwise
-        // decoded it from disk again
-        cachePolicy="memory-disk"
-        recyclingKey={String(activity?.idea_id)}
-      />
+      <Pressable onPress={onView} disabled={!onView} className="active:opacity-70">
+        <Image
+          source={{uri: activityImage(activity)}}
+          style={{width: 64, height: 64, borderRadius: 14}}
+          contentFit="cover"
+          // Kept in memory: reordering re-attaches the photo, which otherwise
+          // decoded it from disk again
+          cachePolicy="memory-disk"
+          recyclingKey={String(activity?.idea_id)}
+        />
+        {onView && <ViewBadge />}
+      </Pressable>
       <View className="flex-1 ml-3 pr-1">
         <Text className="text-white font-bold text-base" numberOfLines={1}>
           {activity?.title}
@@ -273,6 +282,7 @@ export const StopCard = React.memo(StopCardView, (a: StopCardProps, b: StopCardP
   !a.onMoveEarlier === !b.onMoveEarlier &&
   !a.onMoveLater === !b.onMoveLater &&
   !a.onEditLength === !b.onEditLength &&
+  !a.onView === !b.onView &&
   a.adjusted === b.adjusted,
 );
 
@@ -399,7 +409,10 @@ function Chip({
 }
 
 /** An icon for each kind of plan problem (utils/planEvaluator.ts) */
-const PROBLEM_ICON: Record<string, IconName> = {
+export const PROBLEM_ICON: Record<string, IconName> = {
+  PAST_END: "flag-outline",
+  BACKTRACK: "git-compare-outline",
+  SHORTENED: "timer-outline",
   TOO_COLD: "snow-outline",
   TOO_HOT: "sunny-outline",
   RAIN: "rainy-outline",
@@ -410,6 +423,7 @@ const PROBLEM_ICON: Record<string, IconName> = {
   BACK_TO_BACK_MEALS: "restaurant-outline",
   STILL_FULL: "restaurant-outline",
   ODD_MEAL_TIME: "restaurant-outline",
+  TREAT_BEFORE_MEAL: "ice-cream-outline",
   BACK_TO_BACK_ACTIVE: "fitness-outline",
   WORN_OUT: "fitness-outline",
   ACTIVE_AFTER_MEAL: "fitness-outline",
@@ -440,7 +454,16 @@ function ActivityChips({
         (item.modality === "STAY_IN" ? (
           <Chip icon="home-outline" text="At home" />
         ) : (
-          <Chip icon="navigate-outline" text={`${(item.distance || 0).toFixed(1)} mi`} />
+          <Chip
+            icon="navigate-outline"
+            // Before or between stops: the extra driving it adds; on the
+            // end: how far it is from the last stop
+            text={
+              item.spot
+                ? `+${(item.addedMiles || 0).toFixed(1)} mi`
+                : `${(item.distance || 0).toFixed(1)} mi`
+            }
+          />
         ))}
       {/* The plan evaluator's verdict if you add it here (same as the stop card's) */}
       {item.planProblem && (
@@ -485,11 +508,14 @@ export function ActivityOptionCard({
   headCount,
   goingOut,
   onPress,
+  onView,
 }: {
   item: any;
   headCount: number;
   goingOut: boolean;
   onPress: () => void;
+  /** Tap the photo to see the idea's full page */
+  onView?: () => void;
 }) {
   const disabled = item.fitStatus !== "FITS_NOW";
 
@@ -503,11 +529,29 @@ export function ActivityOptionCard({
           : "bg-zinc-900 border-zinc-800 active:border-zinc-500"
       }`}
     >
-      <Image
-        source={{uri: activityImage(item)}}
-        style={{width: 84, height: 84, borderRadius: 14, opacity: disabled ? 0.4 : 1}}
-        contentFit="cover"
-      />
+      {/* Fills the card's height (taller cards with the extra rows), at
+          least square; inline: expo-image is a third-party view */}
+      <Pressable
+        onPress={onView}
+        disabled={!onView}
+        accessibilityRole="button"
+        accessibilityLabel={`See ${item.title}`}
+        className="self-stretch active:opacity-70"
+      >
+        <Image
+          // Card size: a taller crop of a wide photo needs more pixels than a thumbnail
+          source={{uri: activityImage(item, IMAGE_SIZE.card)}}
+          style={{
+            width: 84,
+            minHeight: 84,
+            flex: 1,
+            borderRadius: 14,
+            opacity: disabled ? 0.4 : 1,
+          }}
+          contentFit="cover"
+        />
+        {onView && <ViewBadge />}
+      </Pressable>
       <View className={`flex-1 ml-3 ${disabled ? "opacity-60" : ""}`}>
         <IdeaTitle item={item} />
         {item.description ? (
@@ -516,6 +560,15 @@ export function ActivityOptionCard({
           </Text>
         ) : (
           <View className="h-2" />
+        )}
+        {/* Where it'll go, unless it's the end (before or between stops) */}
+        {item.spot && !disabled && (
+          <View className="flex-row items-center gap-1 mb-2">
+            <Ionicons name="swap-vertical" size={12} color="#60a5fa" />
+            <Text className="text-blue-400 text-xs font-semibold shrink" numberOfLines={1}>
+              Fits best {spotLabel(item.spot)}
+            </Text>
+          </View>
         )}
         <ActivityChips item={item} headCount={headCount} goingOut={goingOut} />
         {disabled && FIT_REASON[item.fitStatus] && (
@@ -534,11 +587,13 @@ export function PickCard({
   headCount,
   goingOut,
   onPress,
+  onView,
 }: {
   item: any;
   headCount: number;
   goingOut: boolean;
   onPress: () => void;
+  onView?: () => void;
 }) {
   return (
     <Pressable
@@ -557,6 +612,29 @@ export function PickCard({
       <View className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-black/60 items-center justify-center">
         <Ionicons name="add" size={18} color="white" />
       </View>
+      {onView && (
+        <Pressable
+          onPress={onView}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`See ${item.title}`}
+          className="absolute top-2.5 left-2.5 w-8 h-8 rounded-full bg-black/60 items-center justify-center active:opacity-70"
+        >
+          <Ionicons name="expand-outline" size={15} color="white" />
+        </Pressable>
+      )}
     </Pressable>
+  );
+}
+
+/** The corner mark on a photo that opens the idea's full page. */
+function ViewBadge() {
+  return (
+    <View
+      pointerEvents="none"
+      className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-black/60 items-center justify-center"
+    >
+      <Ionicons name="expand-outline" size={11} color="white" />
+    </View>
   );
 }

@@ -10,8 +10,8 @@ import {
   preferenceScore,
   evaluateContextAt,
 } from "@/utils/itineraryEngine";
-import {useLocalSearchParams, router} from "expo-router";
-import {useState, useEffect, useMemo, useRef} from "react";
+import {useFocusEffect, useLocalSearchParams, router} from "expo-router";
+import {useCallback, useState, useEffect, useMemo, useRef} from "react";
 import {
   View,
   Text,
@@ -19,7 +19,6 @@ import {
   Pressable,
   ActivityIndicator,
   LayoutAnimation,
-  Modal,
   type ScrollViewInstance,
   Alert,
 } from "react-native";
@@ -28,6 +27,7 @@ import {Ionicons} from "@expo/vector-icons";
 import {usePrefsStore} from "@/src/store/usePrefsStore";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
 import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
+import {useHiddenStore} from "@/src/store/useHiddenStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {START_NOW_WINDOW_MS, autoTitle, formatWhen} from "@/src/lib/dates";
 import {SafeAreaView, useSafeAreaInsets} from "react-native-safe-area-context";
@@ -41,6 +41,7 @@ import {
   Connector,
   MarkerLabel,
   MarkerNode,
+  PROBLEM_ICON,
   PickCard,
   SmallNode,
   StatTile,
@@ -52,9 +53,11 @@ import {
 } from "@/components/builder/BuilderParts";
 import DraggableStop, {type StopLayouts} from "@/components/builder/DraggableStop";
 import {evaluatePlan, warningsByStop} from "@/utils/planEvaluator";
+import {bestPlacement, spotLabel} from "@/utils/bestPlacement";
 import {smartOrder, smartOrderSummary} from "@/utils/smartOrder";
-import {homeOf, stopMinutes, suggestedMinutes} from "@/utils/timeline";
+import {drivingMiles, homeOf, stopMinutes, suggestedMinutes} from "@/utils/timeline";
 import StopLengthSheet from "@/components/builder/StopLengthSheet";
+import PickerSheet from "@/components/builder/PickerSheet";
 import {type DateWeather, conditionsAt, getDateWeather, weatherLookup} from "@/src/lib/weather";
 import type {WeatherLookup} from "@/src/lib/weatherRules";
 import WeatherStrip from "@/components/builder/WeatherStrip";
@@ -87,6 +90,7 @@ export default function BuilderScreen() {
   // ─── UI State ─────────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const closePicker = useCallback(() => setIsDrawerOpen(false), []);
   const [activeGapDuration, setActiveGapDuration] = useState(
     Math.round(Math.abs(endMs - startMs) / 60_000),
   );
@@ -175,54 +179,67 @@ export default function BuilderScreen() {
   );
 
   // ─── Activity Feed ────────────────────────────────────────────────────────────
+  // (minus ones you just marked "Not interested" on their full page)
+  const hiddenIds = useHiddenStore((s) => s.ids);
   const availableActivities = useMemo(
     () =>
       activities.filter(
-        (a) => !placed.some((p) => p.activity.idea_id === a.idea_id),
+        (a) =>
+          !placed.some((p) => p.activity.idea_id === a.idea_id) && !hiddenIds.has(a.idea_id),
       ),
-    [activities, placed],
+    [activities, placed, hiddenIds],
   );
 
   const rankWeather = useMemo(() => weatherLookup(weather), [weather]);
 
+  // Only while there's a list to show (the picker, or Top picks before the
+  // first stop): each suggestion is tried in every slot of the plan, which
+  // shouldn't run on every swap of a drag.
+  const showingSuggestions = isDrawerOpen || placed.length === 0;
   const sortedActivities = useMemo(() => {
+    if (!showingSuggestions) return [];
+    const baseMiles = drivingMiles(placed, userPrefs);
     return availableActivities
       .map((activity) => {
-        // Time Math
-        const activityDuration = Number(activity.est_duration_minutes) || 0;
-        let travelMins = 0;
-        if (userPrefs.modality === "GO_OUT" && activity.distance > 0) {
-          const remainder = (activity.distance * 3 + 5) % 15;
-          const raw = activity.distance * 3 + 5;
-          travelMins =
-            remainder <= 3 ? raw - remainder : raw + (15 - remainder);
-        }
-
-        const totalRequiredTime = activityDuration + travelMins;
+        // Its best slot in the plan (#59): before, between or after the
+        // stops, by the evaluator's rules (utils/bestPlacement.ts)
+        const placement = bestPlacement(placed, activity, userPrefs, {
+          weatherAt: rankWeather,
+          baseMiles,
+        });
 
         // Budget Math
         const totalCost =
           (Number(activity.est_price_per_person) || 0) * headCount;
 
-        // The Strict Gatekeepers
+        // The Strict Gatekeepers: still done (trip home included) by the end
+        // time, and within budget
         let fitStatus = "FITS_NOW";
-        if (totalRequiredTime > activeGapDuration && !isInfinite) {
+        if (!placement.fits) {
           fitStatus = "NO_FIT_TIME";
         } else if (totalCost > remainingBudget) {
           fitStatus = "OVER_BUDGET";
         }
 
-        // How the plan scores with this added (the same rules as the stop
-        // warnings), plus how well it matches what you asked for
-        const withIt = evaluatePlan([...placed, {activity}], userPrefs, undefined, {
-          weatherAt: rankWeather,
-        });
-        const planProblem = warningsByStop(withIt).get(activity.idea_id) ?? null;
+        // How the plan scores with this in its best slot (the same rules as
+        // the stop warnings), plus how well it matches what you asked for;
+        // distance is the extra driving it adds there
+        const planProblem =
+          warningsByStop(placement.evaluation).get(activity.idea_id) ?? null;
         const rank =
-          withIt.score - evaluation.score +
-          preferenceScore(activity, userPrefs, Number(activity.distance) || 0);
+          placement.evaluation.score - evaluation.score +
+          preferenceScore(activity, userPrefs, placement.addedMiles);
 
-        return {...activity, fitStatus, travelMins, totalCost, planProblem, rank};
+        return {
+          ...activity,
+          fitStatus,
+          totalCost,
+          planProblem,
+          rank,
+          placeAt: placement.index,
+          spot: placement.spot,
+          addedMiles: placement.addedMiles,
+        };
       })
       // What fits first, then the best fits at the top
       .sort((a, b) => {
@@ -230,8 +247,8 @@ export default function BuilderScreen() {
         return b.rank - a.rank;
       });
   }, [
+    showingSuggestions,
     availableActivities,
-    activeGapDuration,
     remainingBudget,
     isInfinite,
     placed,
@@ -309,7 +326,7 @@ export default function BuilderScreen() {
 
   // ─── Handlers ─────────────────────────────────────────────────────────────────
   const handleOpenGap = async (gapSlot: TimeSlot) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    // (no LayoutAnimation here: it would fight the sheet's slide)
     setIsDrawerOpen(true);
 
     const gapDurationMins = Math.round(
@@ -361,19 +378,64 @@ export default function BuilderScreen() {
     }
   };
 
+  const handlePlaceActivityRef = useRef<(activity: any) => void>(() => {});
   const handlePlaceActivity = (activity: any) => {
     if (activity.fitStatus !== "FITS_NOW") return;
     if (process.env.EXPO_OS === "ios")
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setPlaced((prev) => [...prev, {activity}]);
+    // In its best slot (#59); on the end when it wasn't ranked with one
+    const at: number =
+      typeof activity.placeAt === "number" ? activity.placeAt : Number.POSITIVE_INFINITY;
+    setPlaced((prev) => [...prev.slice(0, at), {activity}, ...prev.slice(at)]);
     setIsDrawerOpen(false);
 
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({animated: true});
-    }, 300);
+    if (activity.spot) {
+      Toast.show({
+        type: "success",
+        text1: `Added ${spotLabel(activity.spot)}`,
+        text2: "Hold and drag to move it",
+        position: "bottom",
+        visibilityTime: 2500,
+      });
+    } else {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({animated: true});
+      }, 300);
+    }
   };
+
+  useEffect(() => {
+    handlePlaceActivityRef.current = handlePlaceActivity;
+  });
+
+  // ─── An idea's full page, and back ───────────────────────────────────────────
+  // From the picker (or Top picks) before adding it, or a stop's photo after.
+  // The picker stays open underneath (it's part of this screen); "Add to
+  // plan" on the page adds it on return.
+  const sortedRef = useRef(sortedActivities);
+  useEffect(() => {
+    sortedRef.current = sortedActivities;
+  });
+  const viewIdea = (item: any) => {
+    // A suggestion that fits can be added from its page (a placed stop can't)
+    const canAdd =
+      item.fitStatus === "FITS_NOW" &&
+      !placed.some((p) => p.activity.idea_id === item.idea_id);
+    router.push({
+      pathname: "/idea/[id]",
+      params: {id: String(item.idea_id), from: "builder", ...(canAdd ? {add: "1"} : {})},
+    });
+  };
+  useFocusEffect(
+    useCallback(() => {
+      const addId = useBuilderStore.getState().takePendingAdd();
+      const item = addId != null ? sortedRef.current.find((a) => a.idea_id === addId) : null;
+      // Let the screen settle before the timeline animates
+      if (item) setTimeout(() => handlePlaceActivityRef.current(item), 250);
+    }, []),
+  );
 
   // ─── Reordering (drag, or VoiceOver's Move earlier / later) ─────────────────
   // One long-press drag on the timeline container (rows move when the list
@@ -408,6 +470,14 @@ export default function BuilderScreen() {
   const [frozenSmart, setFrozenSmart] = useState<typeof smart>(null);
   const smartShown = dragging ? frozenSmart : smart;
   const smartSummary = smartShown ? smartOrderSummary(smartShown) : null;
+  // Tap the card to see what the new order changes
+  const [smartOpen, setSmartOpen] = useState(false);
+  const toggleSmart = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSmartOpen((open) => !open);
+  };
+  const stopTitle = (id: number | null) =>
+    id == null ? null : placed.find((p) => p.activity.idea_id === id)?.activity.title ?? null;
 
   const applySmartOrder = () => {
     if (!smart?.improved) return;
@@ -416,6 +486,7 @@ export default function BuilderScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setPlaced(smart.order);
+    setSmartOpen(false);
     Toast.show({
       type: "success",
       text1: "Reordered your plan",
@@ -824,6 +895,7 @@ export default function BuilderScreen() {
                 canMove && index < stopCount - 1 ? () => moveStop(ideaId, index + 1) : undefined
               }
               warning={stopWarnings.get(ideaId)}
+              onView={() => viewIdea(slot.activity)}
               onEditLength={editable ? () => setEditingStopId(ideaId) : undefined}
               adjusted={placed.some((p) => p.activity.idea_id === ideaId && p.durationMinutes != null)}
             />
@@ -860,6 +932,8 @@ export default function BuilderScreen() {
           slot={dragSlot}
           headCount={headCount}
           warning={stopWarnings.get(drag.id)}
+          // (looks like the card it lifted, photo badge included)
+          onView={() => {}}
           adjusted={placed.some((p) => p.activity.idea_id === drag.id && p.durationMinutes != null)}
         />
       </TimelineRow>
@@ -937,20 +1011,88 @@ export default function BuilderScreen() {
             />
 
             {/* Smart reorder: only when a clearly better order exists */}
-            {smartSummary && (
-              <View className="mx-5 mb-3 flex-row items-center gap-3 bg-blue-600/10 border border-blue-500/30 rounded-2xl pl-4 pr-2 py-2">
-                <Ionicons name="sparkles" size={18} color="#60a5fa" />
-                <Text className="flex-1 text-zinc-200 text-sm">{smartSummary}</Text>
-                <Pressable
-                  onPress={applySmartOrder}
-                  accessibilityRole="button"
-                  accessibilityLabel="Use the better order"
-                  className="bg-blue-500 rounded-full px-4 py-2 active:opacity-80"
-                >
-                  <Text className="text-white font-bold text-sm">
-                    {smartShown && smartShown.fixed.length > 0 ? "Fix order" : "Reorder"}
-                  </Text>
-                </Pressable>
+            {smartSummary && smartShown && (
+              <View className="mx-5 mb-3 bg-blue-600/10 border border-blue-500/30 rounded-2xl">
+                <View className="flex-row items-center gap-3 pl-4 pr-2 py-2">
+                  {/* Tap the text to see what changes */}
+                  <Pressable
+                    onPress={toggleSmart}
+                    accessibilityRole="button"
+                    accessibilityState={{expanded: smartOpen}}
+                    accessibilityHint="Shows what the new order fixes"
+                    className="flex-1 flex-row items-center gap-3 active:opacity-70"
+                  >
+                    <Ionicons name="sparkles" size={18} color="#60a5fa" />
+                    <Text className="flex-1 text-zinc-200 text-sm">{smartSummary}</Text>
+                    <Ionicons
+                      name={smartOpen ? "chevron-up" : "chevron-down"}
+                      size={16}
+                      color="#a1a1aa"
+                    />
+                  </Pressable>
+                  <Pressable
+                    onPress={applySmartOrder}
+                    accessibilityRole="button"
+                    accessibilityLabel="Use the better order"
+                    className="bg-blue-500 rounded-full px-4 py-2 active:opacity-80"
+                  >
+                    <Text className="text-white font-bold text-sm">
+                      {smartShown.fixed.length > 0 ? "Fix order" : "Reorder"}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {/* What changes: the fixes, anything new it costs, the order */}
+                {smartOpen && (
+                  <View className="border-t border-blue-500/30 px-4 pt-3 pb-3.5 gap-2">
+                    {smartShown.fixed.map((issue) => {
+                      const title = stopTitle(issue.stopId);
+                      return (
+                        <View key={`fixed-${issue.kind}-${issue.stopId ?? ""}`} className="flex-row items-center gap-2">
+                          <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
+                          <Ionicons
+                            name={PROBLEM_ICON[issue.kind] ?? "alert-circle-outline"}
+                            size={14}
+                            color="#a1a1aa"
+                          />
+                          <Text className="flex-1 text-zinc-300 text-sm">
+                            {title ? <Text className="text-white font-semibold">{title}: </Text> : null}
+                            {issue.message}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                    {smartShown.milesSaved >= 0.5 && (
+                      <View className="flex-row items-center gap-2">
+                        <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
+                        <Ionicons name="car-outline" size={14} color="#a1a1aa" />
+                        <Text className="flex-1 text-zinc-300 text-sm">
+                          {smartShown.milesSaved.toFixed(1)} mi less driving
+                        </Text>
+                      </View>
+                    )}
+                    {smartShown.introduced.map((issue) => {
+                      const title = stopTitle(issue.stopId);
+                      return (
+                        <View key={`new-${issue.kind}-${issue.stopId ?? ""}`} className="flex-row items-center gap-2">
+                          <Ionicons name="alert-circle-outline" size={16} color="#fb923c" />
+                          <Ionicons
+                            name={PROBLEM_ICON[issue.kind] ?? "alert-circle-outline"}
+                            size={14}
+                            color="#a1a1aa"
+                          />
+                          <Text className="flex-1 text-orange-200 text-sm">
+                            New: {title ? `${title}: ` : ""}
+                            {issue.message}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                    <Text className="text-zinc-500 text-xs mt-1">
+                      New order: {smartShown.order.map((p) => p.activity.title).join(" → ")}
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -1026,6 +1168,7 @@ export default function BuilderScreen() {
                       headCount={headCount}
                       goingOut={goingOut}
                       onPress={() => handlePlaceActivity(item)}
+                      onView={() => viewIdea(item)}
                     />
                   ))}
                 </ScrollView>
@@ -1173,27 +1316,16 @@ export default function BuilderScreen() {
       </View>
 
       {/* ── ACTIVITY PICKER ───────────────────────────────────────────────── */}
-      <Modal
+      {/* Part of the screen, not a Modal: an idea's full page slides over it
+          and swiping back finds it still open (components/builder/PickerSheet) */}
+      <PickerSheet
         visible={isDrawerOpen}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setIsDrawerOpen(false)}
-      >
-        <View className="flex-1 justify-end bg-black/60">
-          <Pressable
-            className="absolute inset-0"
-            onPress={() => setIsDrawerOpen(false)}
-            accessibilityLabel="Close"
-          />
-
-          <View
-            className="bg-zinc-950 rounded-t-[32px] border-t border-zinc-800"
-            style={{maxHeight: "85%", paddingBottom: insets.bottom + 8}}
-          >
-            <View className="items-center pt-3">
-              <View className="w-10 h-1.5 rounded-full bg-zinc-700" />
-            </View>
-
+        onClose={closePicker}
+        // The list scrolls inside the sheet (pull down at its top to close);
+        // its end clears the home indicator
+        contentContainerStyle={{paddingHorizontal: 20, paddingBottom: insets.bottom + 16, gap: 10}}
+        // The title row drags the sheet down too (with the grabber)
+        header={
             <View className="flex-row justify-between items-start px-6 pt-4 pb-4">
               <View className="flex-1 pr-4">
                 <Text className="text-white text-2xl font-extrabold tracking-tight">
@@ -1214,11 +1346,8 @@ export default function BuilderScreen() {
                 <Ionicons name="close" size={18} color="#a1a1aa" />
               </Pressable>
             </View>
-
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{paddingHorizontal: 20, paddingBottom: 12, gap: 10}}
-            >
+        }
+      >
               {isFetchingFillers ? (
                 <View className="py-14 items-center justify-center">
                   <ActivityIndicator size="large" color="#3b82f6" />
@@ -1232,6 +1361,7 @@ export default function BuilderScreen() {
                     headCount={headCount}
                     goingOut={goingOut}
                     onPress={() => handlePlaceActivity(item)}
+                    onView={() => viewIdea(item)}
                   />
                 ))
               ) : (
@@ -1246,10 +1376,7 @@ export default function BuilderScreen() {
                   </Text>
                 </View>
               )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      </PickerSheet>
       {/* How long at a stop (tap a stop card) */}
       <StopLengthSheet
         stop={(() => {

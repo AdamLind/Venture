@@ -24,6 +24,7 @@ import SaveButton from "@/components/ideas/SaveButton";
 import GlassSurface from "@/components/ui/GlassSurface";
 import {showIdeaMenu} from "@/src/lib/reportIdea";
 import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
+import {useBuilderStore} from "@/src/store/useBuilderStore";
 import {StatusChip} from "@/components/ideas/IdeaRows";
 import {IDEA_STATUS} from "@/src/lib/ideas";
 import {WEATHER_NEEDS_OPTIONS} from "@/src/lib/weatherRules";
@@ -33,7 +34,13 @@ const {width, height} = Dimensions.get("window");
 
 export default function IdeaDetailScreen() {
   const router = useRouter();
-  const {id} = useLocalSearchParams();
+  // `from=builder`: opened from the date builder to look before (or after)
+  // adding it. Then the bottom button adds it to that plan (`add=1`), or
+  // there's none (already in the plan, or it doesn't fit); never "Plan a
+  // date with this", which would start a different plan.
+  const {id, from, add} = useLocalSearchParams<{id: string; from?: string; add?: string}>();
+  const fromBuilder = from === "builder";
+  const requestAdd = useBuilderStore((s) => s.requestAdd);
 
   const [idea, setIdea] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -510,7 +517,9 @@ export default function IdeaDetailScreen() {
         )}
       </View>
 
-      {/* PLAN A DATE WITH THIS: the page's main action, pinned to the bottom */}
+      {/* PLAN A DATE WITH THIS (or, from the builder, ADD TO PLAN): the
+          page's main action, pinned to the bottom */}
+      {(!fromBuilder || add === "1") && (
       <View
         pointerEvents="box-none"
         style={{position: "absolute", left: 0, right: 0, bottom: 0}}
@@ -522,18 +531,36 @@ export default function IdeaDetailScreen() {
           style={StyleSheet.absoluteFill}
         />
         <View style={{paddingHorizontal: 20, paddingTop: 28, paddingBottom: insets.bottom + 12}}>
-          <Pressable
-            onPress={planWithThis}
-            accessibilityRole="button"
-            accessibilityLabel="Plan a date with this idea"
-            className="bg-white rounded-full flex-row items-center justify-center gap-2 active:opacity-80"
-            style={{height: 56}}
-          >
-            <Ionicons name="calendar" size={20} color="black" />
-            <Text className="text-black font-extrabold text-lg">Plan a date with this</Text>
-          </Pressable>
+          {fromBuilder ? (
+            <Pressable
+              onPress={() => {
+                // The builder adds it (in its best spot) when it's back on screen
+                requestAdd(idea.idea_id);
+                router.back();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Add to your plan"
+              className="bg-white rounded-full flex-row items-center justify-center gap-2 active:opacity-80"
+              style={{height: 56}}
+            >
+              <Ionicons name="add" size={22} color="black" />
+              <Text className="text-black font-extrabold text-lg">Add to plan</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={planWithThis}
+              accessibilityRole="button"
+              accessibilityLabel="Plan a date with this idea"
+              className="bg-white rounded-full flex-row items-center justify-center gap-2 active:opacity-80"
+              style={{height: 56}}
+            >
+              <Ionicons name="calendar" size={20} color="black" />
+              <Text className="text-black font-extrabold text-lg">Plan a date with this</Text>
+            </Pressable>
+          )}
         </View>
       </View>
+      )}
 
       {/* FULL-SCREEN INTERACTIVE MAP MODAL */}
       <Modal
