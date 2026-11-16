@@ -657,7 +657,7 @@ export default function PlanScreen() {
                   display="spinner"
                   minimumDate={new Date()}
                   minuteInterval={15}
-                  onChange={handleDateChange}
+                  onValueChange={handleDateChange}
                   textColor="white"
                 />
               </View>

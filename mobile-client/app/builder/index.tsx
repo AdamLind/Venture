@@ -1138,8 +1138,10 @@ export default function BuilderScreen() {
             <Pressable
               onPress={handleFinalize}
               disabled={isSaving}
-              className={`rounded-[20px] px-6 h-12 items-center justify-center ${
-                isSaving ? "bg-zinc-300" : "bg-white active:opacity-80"
+              // (the pressed style stays in the class while disabled: adding or
+              // removing it after the first render remounts the button)
+              className={`rounded-[20px] px-6 h-12 items-center justify-center active:opacity-80 ${
+                isSaving ? "bg-zinc-300" : "bg-white"
               }`}
             >
               {isSaving ? (
@@ -1152,8 +1154,8 @@ export default function BuilderScreen() {
             <Pressable
               onPress={goToReview}
               disabled={stopCount === 0}
-              className={`rounded-[20px] px-6 h-12 items-center justify-center ${
-                stopCount ? "bg-white active:opacity-80" : "bg-zinc-700"
+              className={`rounded-[20px] px-6 h-12 items-center justify-center active:opacity-80 ${
+                stopCount ? "bg-white" : "bg-zinc-700"
               }`}
             >
               <Text

@@ -2,7 +2,12 @@ const { getDefaultConfig } = require("expo/metro-config");
 const { withNativewind } = require("nativewind/metro");
 
 /** @type {import('expo/metro-config').MetroConfig} */
-const config = withNativewind(getDefaultConfig(__dirname));
+const config = withNativewind(getDefaultConfig(__dirname), {
+  // Tailwind's web resets (and Expo's error overlay CSS) use properties React
+  // Native doesn't have; dropping them is expected, so don't list them on
+  // every build. Set "verbose" to see them when a style doesn't apply.
+  warnings: "none",
+});
 
 // NativeWind's className polyfill redirects every `react-native` import to
 // `react-native-css/components`. That shim (react-native-css 3.1.0-rc.1) is

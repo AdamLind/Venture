@@ -3,7 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "expo start --lan --clear",
+    "start": "expo start --go --lan --clear",
     "reset-project": "node ./scripts/reset-project.js",
     "seed": "node ./scripts/seed",
     "android": "expo start --android",
