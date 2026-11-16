@@ -20,6 +20,7 @@ import {
   type PlacedActivity,
   type Replan,
   deriveReplannedTimeline,
+  homeOf,
   isOpenEnded,
   stopLocation,
 } from "./timeline";
@@ -119,6 +120,8 @@ export function restPrefs(prefs: DatePrefs, point: ReplanPoint): DatePrefs {
       ? new Date(point.startMs + OPEN_ENDED_ROOM_MS).toISOString()
       : prefs.endDate,
     currentLocation: point.location ?? prefs.currentLocation,
+    // Home stays the date's home (homeOf would take a start near it for home)
+    fixedHome: homeOf(prefs),
   };
 }
 

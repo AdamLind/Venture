@@ -82,6 +82,8 @@ export const SAME_PLACE_MILES = 0.1;
  * where the plan starts.
  */
 export const homeOf = (prefs: UserPrefs): LatLng | null => {
+  // A re-planned stretch (#63) keeps the date's home (it starts elsewhere)
+  if (prefs.fixedHome) return prefs.fixedHome;
   const start = asLatLng(prefs.currentLocation);
   const saved = asLatLng(prefs.homeLocation);
   if (start && saved && getDistance(start, saved) <= HOME_RADIUS_MILES) return start;
@@ -249,6 +251,7 @@ export const deriveReplannedTimeline = (
             ...prefs,
             startDate: fromStart.startDate,
             currentLocation: fromStart.location ?? prefs.currentLocation,
+            fixedHome: homeOf(prefs),
           }
         : prefs,
     );
@@ -268,6 +271,7 @@ export const deriveReplannedTimeline = (
             replan.location ??
             (lastBefore ? stopLocation(lastBefore.activity, prefs) : null) ??
             prefs.currentLocation,
+          fixedHome: homeOf(prefs),
         }
       : prefs;
     const partSlots = deriveSequentialTimeline(part, partPrefs);

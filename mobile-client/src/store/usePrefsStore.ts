@@ -9,6 +9,12 @@ export interface UserPrefs {
   currentLocation: {latitude: number; longitude: number} | null;
   /** Saved home (Planning defaults); stay-in stops happen here. Falls back to currentLocation. */
   homeLocation?: {latitude: number; longitude: number} | null;
+  /**
+   * Home as worked out from where the date first started (utils/timeline.ts
+   * homeOf). Set for a re-planned stretch, which starts somewhere else; never
+   * saved.
+   */
+  fixedHome?: {latitude: number; longitude: number} | null;
   travelDistance: number;
   budget: number;
   vibes: string[] | null;
