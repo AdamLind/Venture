@@ -11,6 +11,7 @@ import {Ionicons} from "@expo/vector-icons";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {SAVED_COLOR} from "@/components/ideas/SaveButton";
 import {spotLabel} from "@/utils/bestPlacement";
+import type {TravelLeg} from "@/types/itinerary";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -290,10 +291,12 @@ export const StopCard = React.memo(StopCardView, (a: StopCardProps, b: StopCardP
 export function Connector({
   slot,
 }: {
-  slot: {id: string; title: string; type: string; startTime: number; endTime: number};
+  slot: {id: string; title: string; type: string; startTime: number; endTime: number; travel?: TravelLeg};
 }) {
   const minutes = formatMinutes(slotMinutes(slot));
-  const miles = slot.title.match(/\(([\d.]+) mi\)/)?.[1];
+  const miles = slot.travel
+    ? slot.travel.roadMiles.toFixed(1)
+    : slot.title.match(/\(([\d.]+) mi\)/)?.[1];
 
   let icon: IconName = "car-outline";
   let text = `${minutes} travel${miles ? ` · ${miles} mi` : ""}`;
@@ -305,10 +308,25 @@ export function Connector({
     text = `${minutes} of breathing room`;
   }
 
+  // What's inside the block (#48): the drive, parking, and the time to spare
+  const leg = slot.travel;
+  const spare = leg ? leg.lingerMinutes + leg.bufferMinutes : 0;
+  const inside = leg
+    ? [
+        `${formatMinutes(leg.driveMinutes)} drive${leg.parkingMinutes ? " + parking" : ""}`,
+        spare >= 5 ? `${formatMinutes(spare)} to spare` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
+
   return (
-    <View className="flex-row items-center gap-2" style={{paddingTop: NODE_TOP - 6}}>
-      <Ionicons name={icon} size={14} color="#71717a" />
-      <Text className="text-zinc-500 text-sm font-medium">{text}</Text>
+    <View className="flex-row items-start gap-2" style={{paddingTop: NODE_TOP - 6}}>
+      <Ionicons name={icon} size={14} color="#71717a" style={{marginTop: 3}} />
+      <View className="shrink">
+        <Text className="text-zinc-500 text-sm font-medium">{text}</Text>
+        {inside && <Text className="text-zinc-600 text-xs">{inside}</Text>}
+      </View>
     </View>
   );
 }

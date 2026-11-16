@@ -9,7 +9,7 @@
 // which happen at home. A go-out plan can include them ("go out" means
 // willing to travel), with a leg home before and back out after.
 
-import type {ScoredActivity, TimeSlot} from "@/types/itinerary";
+import type {ScoredActivity, TimeSlot, TravelLeg} from "@/types/itinerary";
 import type {UserPrefs} from "@/src/store/usePrefsStore";
 import {getDistance} from "./geo";
 import type {WeatherLookup} from "@/src/lib/weatherRules";
@@ -107,9 +107,73 @@ export const snapTo15 = (minutes: number): number => {
   return remainder <= 3 ? minutes - remainder : minutes + (15 - remainder);
 };
 
-/** Today's rough drive estimate (#48 replaces it), in minutes. */
-export const travelMinutes = (miles: number): number =>
-  miles > 0 ? snapTo15(miles * 3 + 5) : 0;
+// ─── Travel estimates (#48, no outside service) ────────────────────────────
+//
+// The schedule stays on 15-minute steps: each travel block is a whole
+// number of them, with the real trip inside and the slack around it (#47):
+//
+//   [ linger ][ drive ][ park & walk in ][ arrive buffer ]
+//
+//   - road miles: straight-line × ROAD_FACTOR (roads aren't straight)
+//   - drive time by distance: the first miles are city streets (lights,
+//     turns), longer trips reach faster roads (SPEED_BANDS)
+//   - parking + walking in: always when driving to a place; none pulling
+//     into your own driveway
+//   - block: drive + parking + ARRIVE_MIN, rounded up to 15 minutes; what's
+//     left is split between lingering at the last stop and arriving early
+
+/** Roads wind: a typical road trip is ~30% longer than the straight line */
+export const ROAD_FACTOR = 1.3;
+/** Minutes per road mile, by stretch of the trip (average speeds, stops included) */
+const SPEED_BANDS: {upTo: number; minPerMile: number}[] = [
+  {upTo: 2, minPerMile: 60 / 20}, // city streets
+  {upTo: 10, minPerMile: 60 / 32}, // main roads
+  {upTo: Infinity, minPerMile: 60 / 55}, // highway
+];
+/** Parking and walking in */
+export const PARKING_MINUTES = 5;
+/** Always at least this much spare on arrival */
+const ARRIVE_MIN = 3;
+
+/** Minutes to drive this many road miles. */
+export const driveMinutes = (roadMiles: number): number => {
+  let minutes = 0;
+  let from = 0;
+  for (const band of SPEED_BANDS) {
+    if (roadMiles <= from) break;
+    minutes += (Math.min(roadMiles, band.upTo) - from) * band.minPerMile;
+    from = band.upTo;
+  }
+  return Math.max(1, Math.round(minutes));
+};
+
+/**
+ * The trip for `miles` (straight-line); null for none (0, or next door).
+ * `parking: false` when arriving home.
+ */
+export const travelLeg = (miles: number, {parking = true}: {parking?: boolean} = {}): TravelLeg | null => {
+  if (!(miles > 0)) return null;
+  const roadMiles = miles * ROAD_FACTOR;
+  const drive = driveMinutes(roadMiles);
+  const park = parking ? PARKING_MINUTES : 0;
+  const blockMinutes = Math.max(15, Math.ceil((drive + park + ARRIVE_MIN) / 15) * 15);
+  const spare = blockMinutes - drive - park;
+  // Arrive with ARRIVE_MIN, and split the rest (an odd minute goes to arriving)
+  const lingerMinutes = Math.floor((spare - ARRIVE_MIN) / 2);
+  return {
+    miles,
+    roadMiles,
+    driveMinutes: drive,
+    parkingMinutes: park,
+    blockMinutes,
+    lingerMinutes,
+    bufferMinutes: spare - lingerMinutes,
+  };
+};
+
+/** The schedule block for a trip, in minutes (0 for none). */
+export const travelMinutes = (miles: number, options?: {parking?: boolean}): number =>
+  travelLeg(miles, options)?.blockMinutes ?? 0;
 
 export const makeGap = (start: number, end: number): TimeSlot => {
   const durationMins = Math.round((end - start) / 60_000);
@@ -164,17 +228,19 @@ export const deriveSequentialTimeline = (
 
     // Travel from the previous place (stay-in stops are at home)
     if (goingOut) {
-      const miles = legMiles(here, there);
-      const travelMs = travelMinutes(miles) * 60_000;
-      if (travelMs > 0) {
-        const toHome = activity.modality === "STAY_IN";
+      const toHome = activity.modality === "STAY_IN";
+      // (no parking pulling into your own driveway)
+      const leg = travelLeg(legMiles(here, there), {parking: !toHome});
+      if (leg) {
+        const travelMs = leg.blockMinutes * 60_000;
         slots.push({
           id: `${toHome ? "home" : "travel"}-${activity.idea_id}-${index}`,
-          title: `${toHome ? "Head home" : "Travel & Parking"} (${miles.toFixed(1)} mi)`,
+          title: `${toHome ? "Head home" : "Travel & Parking"} (${leg.roadMiles.toFixed(1)} mi)`,
           startTime: cursor,
           endTime: cursor + travelMs,
           type: "OCCUPIED",
           activity: null,
+          travel: leg,
         });
         cursor += travelMs;
       }
@@ -197,16 +263,17 @@ export const deriveSequentialTimeline = (
 
   // 2. Return Journey (none if the last stop was already at home)
   if (goingOut) {
-    const miles = legMiles(here, home);
-    if (miles > 0) {
-      const travelMs = travelMinutes(miles) * 60_000;
+    const leg = travelLeg(legMiles(here, home), {parking: false});
+    if (leg) {
+      const travelMs = leg.blockMinutes * 60_000;
       slots.push({
         id: "return-journey",
-        title: `Head Home (${miles.toFixed(1)} mi)`,
+        title: `Head Home (${leg.roadMiles.toFixed(1)} mi)`,
         startTime: cursor,
         endTime: cursor + travelMs,
         type: "OCCUPIED",
         activity: null,
+        travel: leg,
       });
       cursor += travelMs;
     }

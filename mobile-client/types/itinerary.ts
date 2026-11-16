@@ -22,6 +22,21 @@ export enum ActivityLocation {
 
 export type SlotType = "AVAILABLE" | "OCCUPIED" | "BUFFER";
 
+/** One trip between places, and the block it takes in the schedule (utils/timeline.ts travelLeg). */
+export type TravelLeg = {
+  /** Straight-line miles */
+  miles: number;
+  roadMiles: number;
+  driveMinutes: number;
+  parkingMinutes: number;
+  /** Its place in the schedule (a whole number of 15-minute steps) */
+  blockMinutes: number;
+  /** Spare before setting off: stay a little longer */
+  lingerMinutes: number;
+  /** Spare on arrival: find the place, settle in */
+  bufferMinutes: number;
+};
+
 export interface TimeSlot {
   id: string;
   title: string;
@@ -29,6 +44,8 @@ export interface TimeSlot {
   endTime: number;
   type: SlotType;
   activity?: ScoredActivity | null; // Associates the scored DB item with the time slot
+  /** Travel slots: the trip inside the block */
+  travel?: TravelLeg;
 }
 
 export type PlanningStep = "ANCHOR" | "SUB_ANCHOR" | "FILLER" | "COMPLETE";
