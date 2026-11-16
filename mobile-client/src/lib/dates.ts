@@ -2,6 +2,7 @@
 // Helpers for saved dates: titles, labels, grouping, and rebuilding timelines.
 
 import type {Itinerary, ItineraryStop} from "@/types/dates";
+import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import type {TimeSlot} from "@/types/itinerary";
 import {deriveSequentialTimeline} from "@/utils/itineraryEngine";
 
@@ -27,10 +28,10 @@ export function liveStops(itinerary: Itinerary): ItineraryStop[] {
   return itinerary.stops.filter((s) => s.activity);
 }
 
-export function coverImage(itinerary: Itinerary): string {
+export function coverImage(itinerary: Itinerary, displayWidth: number = IMAGE_SIZE.full): string {
   for (const stop of itinerary.stops) {
     const url = stop.activity?.image_urls?.[0];
-    if (url) return url;
+    if (url) return sizedImage(url, displayWidth);
   }
   return FALLBACK_IMAGE;
 }

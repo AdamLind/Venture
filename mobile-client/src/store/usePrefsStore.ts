@@ -7,6 +7,8 @@ export interface UserPrefs {
   startDate: string | Date;
   endDate: string | Date;
   currentLocation: {latitude: number; longitude: number} | null;
+  /** Saved home (Planning defaults); stay-in stops happen here. Falls back to currentLocation. */
+  homeLocation?: {latitude: number; longitude: number} | null;
   travelDistance: number;
   budget: number;
   vibes: string[] | null;
@@ -27,6 +29,7 @@ const defaultPrefs: UserPrefs = {
   startDate: new Date(),
   endDate: new Date(Date.now() + 4 * 60 * 60_000), // +4 hours
   currentLocation: null,
+  homeLocation: null,
   travelDistance: 10,
   budget: 50,
   vibes: [],

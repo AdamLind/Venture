@@ -3,13 +3,13 @@
 // stop cards, connectors, the "add a stop" card, stat tiles and activity cards.
 
 import React from "react";
+import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import {View, Text, Pressable} from "react-native";
 import {Image} from "expo-image";
 import {Ionicons} from "@expo/vector-icons";
 
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {SAVED_COLOR} from "@/components/ideas/SaveButton";
-import {bestTimeLabel, isGoodTime} from "@/src/lib/timeOfDay";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -29,8 +29,9 @@ export function formatMinutes(minutes: number): string {
   return r ? `${h}h ${r}m` : `${h}h`;
 }
 
-export function activityImage(activity: any): string {
-  return activity?.image_urls?.[0] || activity?.image_url || FALLBACK_IMAGE;
+/** The idea's photo, sized for `displayWidth` points (default: a thumbnail). */
+export function activityImage(activity: any, displayWidth: number = IMAGE_SIZE.thumb): string {
+  return sizedImage(activity?.image_urls?.[0] || activity?.image_url || FALLBACK_IMAGE, displayWidth);
 }
 
 const slotMinutes = (slot: {startTime: number; endTime: number}) =>
@@ -121,25 +122,25 @@ export function MarkerLabel({label, time}: {label: string; time: string}) {
 // ─── Row content ───────────────────────────────────────────────────────────────
 
 /** A placed activity: photo, timing, venue and price. */
-export function StopCard({
+function StopCardView({
   slot,
   headCount,
   onRemove,
   onMoveEarlier,
   onMoveLater,
+  warning,
 }: {
   slot: {startTime: number; endTime: number; activity?: any};
   headCount: number;
   onRemove?: () => void;
+  /** The plan evaluator's most serious note for this stop */
+  warning?: {message: string; severity: "hard" | "soft"} | null;
   /** Reordering without dragging (VoiceOver / TalkBack actions) */
   onMoveEarlier?: () => void;
   onMoveLater?: () => void;
 }) {
   const activity = slot.activity;
   const price = (Number(activity?.est_price_per_person) || 0) * headCount;
-  // e.g. stargazing dragged to the afternoon
-  const offHours = !isGoodTime(activity?.time_of_day, new Date(slot.startTime));
-  const bestTime = offHours ? bestTimeLabel(activity?.time_of_day) : null;
 
   const moveActions = [
     ...(onMoveEarlier ? [{name: "moveEarlier", label: "Move earlier"}] : []),
@@ -163,6 +164,10 @@ export function StopCard({
         source={{uri: activityImage(activity)}}
         style={{width: 64, height: 64, borderRadius: 14}}
         contentFit="cover"
+        // Kept in memory: reordering re-attaches the photo, which otherwise
+        // decoded it from disk again
+        cachePolicy="memory-disk"
+        recyclingKey={String(activity?.idea_id)}
       />
       <View className="flex-1 ml-3 pr-1">
         <Text className="text-white font-bold text-base" numberOfLines={1}>
@@ -172,18 +177,32 @@ export function StopCard({
           {timeOfDay(slot.startTime)} – {timeOfDay(slot.endTime)} ·{" "}
           {formatMinutes(slotMinutes(slot))}
         </Text>
-        {bestTime ? (
+        {warning ? (
           <View className="flex-row items-center gap-1 mt-0.5">
-            <Ionicons name="partly-sunny-outline" size={11} color="#fb923c" />
-            <Text className="text-orange-400 text-xs font-semibold" numberOfLines={1}>
-              {bestTime}
+            <Ionicons
+              name={warning.severity === "hard" ? "alert-circle" : "alert-circle-outline"}
+              size={12}
+              color={warning.severity === "hard" ? "#f87171" : "#fb923c"}
+            />
+            <Text
+              className={`text-xs font-semibold flex-1 ${warning.severity === "hard" ? "text-red-400" : "text-orange-400"}`}
+              numberOfLines={1}
+            >
+              {warning.message}
             </Text>
           </View>
+        ) : activity?.modality === "STAY_IN" && !activity?.venues?.name ? (
+          <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={1}>
+            At home
+          </Text>
         ) : activity?.venues?.name ? (
           <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={1}>
             {activity.venues.name}
           </Text>
-        ) : null}
+        ) : (
+          // Same height as a venue or warning line (cards never resize mid-drag)
+          <Text className="text-xs mt-0.5"> </Text>
+        )}
       </View>
       </View>
       <View className="items-end gap-2">
@@ -207,6 +226,25 @@ export function StopCard({
   );
 }
 
+type StopCardProps = React.ComponentProps<typeof StopCardView>;
+
+/**
+ * Re-renders only when what the card shows changes. Its callbacks are
+ * recreated on every builder render but always do the same thing for the
+ * same stop, so only whether each one exists matters.
+ */
+export const StopCard = React.memo(StopCardView, (a: StopCardProps, b: StopCardProps) =>
+  a.slot.startTime === b.slot.startTime &&
+  a.slot.endTime === b.slot.endTime &&
+  a.slot.activity === b.slot.activity &&
+  a.headCount === b.headCount &&
+  a.warning?.message === b.warning?.message &&
+  a.warning?.severity === b.warning?.severity &&
+  !a.onRemove === !b.onRemove &&
+  !a.onMoveEarlier === !b.onMoveEarlier &&
+  !a.onMoveLater === !b.onMoveLater,
+);
+
 /** Travel legs, flex time and the trip home, drawn slim between stop cards. */
 export function Connector({
   slot,
@@ -218,7 +256,7 @@ export function Connector({
 
   let icon: IconName = "car-outline";
   let text = `${minutes} travel${miles ? ` · ${miles} mi` : ""}`;
-  if (slot.id === "return-journey") {
+  if (slot.id === "return-journey" || slot.id.startsWith("home-")) {
     icon = "home-outline";
     text = `Head home · ${minutes}${miles ? ` · ${miles} mi` : ""}`;
   } else if (slot.type === "BUFFER") {
@@ -318,6 +356,14 @@ function Chip({icon, text, tone = "default"}: {icon: IconName; text: string; ton
   );
 }
 
+const WEATHER_CHIP_ICON: Record<string, IconName> = {
+  TOO_COLD: "snow-outline",
+  TOO_HOT: "sunny-outline",
+  RAIN: "rainy-outline",
+  WIND: "cloud-outline",
+  NO_SNOW: "snow-outline",
+};
+
 function ActivityChips({
   item,
   headCount,
@@ -339,10 +385,16 @@ function ActivityChips({
         text={formatMinutes(Number(item.est_duration_minutes) || 0)}
         tone={item.fitStatus === "NO_FIT_TIME" ? "danger" : "default"}
       />
-      {goingOut && (
-        <Chip icon="navigate-outline" text={`${(item.distance || 0).toFixed(1)} mi`} />
-      )}
+      {goingOut &&
+        (item.modality === "STAY_IN" ? (
+          <Chip icon="home-outline" text="At home" />
+        ) : (
+          <Chip icon="navigate-outline" text={`${(item.distance || 0).toFixed(1)} mi`} />
+        ))}
       {item.offHoursLabel && <Chip icon="partly-sunny-outline" text={item.offHoursLabel} />}
+      {item.weatherProblem && (
+        <Chip icon={WEATHER_CHIP_ICON[item.weatherProblem.kind] ?? "cloud-outline"} text={item.weatherProblem.message} />
+      )}
     </View>
   );
 }
@@ -439,7 +491,7 @@ export function PickCard({
       className="w-56 bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden active:opacity-80"
     >
       <Image
-        source={{uri: activityImage(item)}}
+        source={{uri: activityImage(item, IMAGE_SIZE.card)}}
         style={{width: "100%", height: 120}}
         contentFit="cover"
       />

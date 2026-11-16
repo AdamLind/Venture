@@ -1,4 +1,5 @@
 import React, {useRef, useState, useEffect, useCallback, useMemo} from "react";
+import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import {
   Pressable,
   View,
@@ -283,10 +284,12 @@ export default function ExploreScreen() {
 
   // --- UI COMPONENTS ---
   const renderIdeaItem = ({item}: {item: DateIdea}) => {
-    const displayImage =
+    const displayImage = sizedImage(
       item.image_urls?.[0] ||
-      item.image_url ||
-      "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=800&auto=format&fit=crop";
+        item.image_url ||
+        "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=800&auto=format&fit=crop",
+      IMAGE_SIZE.full,
+    );
 
     return (
       <Pressable
@@ -591,10 +594,12 @@ export default function ExploreScreen() {
                 <GlassSurface style={glassStyles.previewCard}>
                   <Image
                     source={{
-                      uri:
+                      uri: sizedImage(
                         selectedIdea.image_urls?.[0] ||
-                        selectedIdea.image_url ||
-                        "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=800&auto=format&fit=crop",
+                          selectedIdea.image_url ||
+                          "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=800&auto=format&fit=crop",
+                        84,
+                      ),
                     }}
                     style={{width: 84, height: 84, borderRadius: 18}}
                     contentFit="cover"

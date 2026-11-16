@@ -1,4 +1,5 @@
 import React, {useCallback, useState} from "react";
+import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import {
   View,
   Text,
@@ -25,6 +26,8 @@ import {showIdeaMenu} from "@/src/lib/reportIdea";
 import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {StatusChip} from "@/components/ideas/IdeaRows";
 import {IDEA_STATUS} from "@/src/lib/ideas";
+import {WEATHER_NEEDS_OPTIONS} from "@/src/lib/weatherRules";
+import {normalizeTimeOfDay, TIME_OF_DAY_LABEL} from "@/src/lib/timeOfDay";
 
 const {width, height} = Dimensions.get("window");
 
@@ -172,6 +175,15 @@ export default function IdeaDetailScreen() {
         : idea.visibility === "PRIVATE" && idea.moderation_note
           ? {title: "From the last review", color: "#a1a1aa", canResubmit: false}
           : null;
+  // What weather it needs (null: the default for its environment), and when it's best
+  const weatherLabel =
+    WEATHER_NEEDS_OPTIONS.find(
+      (o) => o.value === (idea.weather_needs ?? (idea.environment === "INDOOR" ? "ANY" : "NICE")),
+    )?.label ?? "Any weather";
+  const timeWindows = normalizeTimeOfDay(idea.time_of_day);
+  const bestTime = timeWindows.length
+    ? timeWindows.map((t) => TIME_OF_DAY_LABEL[t]).join(", ")
+    : "Any time";
   const editIdea = () =>
     router.push({pathname: "/create", params: {ideaId: String(idea.idea_id)}});
   // Off to the Plan tab, with this idea as the date's first stop
@@ -179,7 +191,7 @@ export default function IdeaDetailScreen() {
     setPlanSeed({
       idea_id: idea.idea_id,
       title: idea.title,
-      image: idea.image_urls?.[0] ?? null,
+      image: sizedImage(idea.image_urls?.[0], 56),
       modality: idea.modality,
       est_price_per_person: Number(idea.est_price_per_person) || 0,
       est_duration_minutes: idea.est_duration_minutes ?? null,
@@ -212,7 +224,7 @@ export default function IdeaDetailScreen() {
             }}
           >
             <Image
-              source={{uri: idea.image_urls?.[0]}}
+              source={{uri: sizedImage(idea.image_urls?.[0], IMAGE_SIZE.full) ?? undefined}}
               style={{width: "100%", height: "100%"}}
               contentFit="cover" // Edge-to-edge immersive fit
             />
@@ -331,7 +343,7 @@ export default function IdeaDetailScreen() {
               </Text>
             </View>
 
-            <View className="w-[45%]">
+            <View className="w-[45%] mb-4">
               <View className="flex-row items-center gap-2 mb-1">
                 <Ionicons name="people-outline" size={18} color="#FF9D0A" />
                 <Text className="text-zinc-400 text-xs font-bold">
@@ -343,18 +355,33 @@ export default function IdeaDetailScreen() {
               </Text>
             </View>
 
-            <View className="w-[45%]">
+            <View className="w-[45%] mb-4">
               <View className="flex-row items-center gap-2 mb-1">
-                <Ionicons
-                  name="partly-sunny-outline"
-                  size={18}
-                  color="#FF9D0A"
-                />
+                <Ionicons name="leaf-outline" size={18} color="#FF9D0A" />
                 <Text className="text-zinc-400 text-xs font-bold">SETTING</Text>
               </View>
               <Text className="text-white font-bold text-lg capitalize">
                 {idea.environment.toLowerCase()}
               </Text>
+            </View>
+
+            <View className="w-[45%]">
+              <View className="flex-row items-center gap-2 mb-1">
+                <Ionicons name="partly-sunny-outline" size={18} color="#FF9D0A" />
+                <Text className="text-zinc-400 text-xs font-bold">WEATHER</Text>
+              </View>
+              <Text className="text-white font-bold text-lg">{weatherLabel}</Text>
+              {!idea.weather_needs && (
+                <Text className="text-zinc-500 text-xs">Default for {idea.environment.toLowerCase()}</Text>
+              )}
+            </View>
+
+            <View className="w-[45%]">
+              <View className="flex-row items-center gap-2 mb-1">
+                <Ionicons name="time-outline" size={18} color="#FF9D0A" />
+                <Text className="text-zinc-400 text-xs font-bold">BEST TIME</Text>
+              </View>
+              <Text className="text-white font-bold text-lg">{bestTime}</Text>
             </View>
           </View>
 

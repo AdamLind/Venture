@@ -2,6 +2,7 @@
 // Shared helpers for ideas: list columns, labels, and review statuses.
 
 import type {Ionicons} from "@expo/vector-icons";
+import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import type {IdeaSummary, IdeaVisibility} from "@/types/ideas";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -16,8 +17,11 @@ export const IDEA_SUMMARY_COLUMNS = `
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=800&auto=format&fit=crop";
 
-export function ideaImage(idea: Pick<IdeaSummary, "image_urls">): string {
-  return idea.image_urls?.[0] || FALLBACK_IMAGE;
+export function ideaImage(
+  idea: Pick<IdeaSummary, "image_urls">,
+  displayWidth: number = IMAGE_SIZE.thumb,
+): string {
+  return sizedImage(idea.image_urls?.[0] || FALLBACK_IMAGE, displayWidth);
 }
 
 /** "Free", "$25 pp" */

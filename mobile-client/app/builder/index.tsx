@@ -1,5 +1,6 @@
 // src/app/builder.tsx
 import * as Haptics from "expo-haptics";
+import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import {BuilderActivity, TimeSlot} from "@/types/itinerary";
 import {
   PlacedActivity,
@@ -49,6 +50,11 @@ import {
   formatMinutes,
 } from "@/components/builder/BuilderParts";
 import DraggableStop, {type StopLayouts} from "@/components/builder/DraggableStop";
+import {evaluatePlan, warningsByStop} from "@/utils/planEvaluator";
+import {homeOf} from "@/utils/timeline";
+import {type DateWeather, conditionsAt, getDateWeather, weatherLookup} from "@/src/lib/weather";
+import type {WeatherLookup} from "@/src/lib/weatherRules";
+import WeatherStrip from "@/components/builder/WeatherStrip";
 import Reanimated, {useAnimatedStyle, useSharedValue, withTiming} from "react-native-reanimated";
 import {scheduleOnRN} from "react-native-worklets";
 import {GestureDetector, usePanGesture} from "react-native-gesture-handler";
@@ -89,6 +95,49 @@ export default function BuilderScreen() {
     () => deriveSequentialTimeline(placed, userPrefs),
     [placed, userPrefs],
   );
+  // How good this order is, and what's off about it (utils/planEvaluator.ts)
+  // ─── The date's weather (src/lib/weather.ts) ─────────────────────────────────
+  // Fetched once on open; suggestions wait briefly for it, and the plan
+  // evaluator and the weather card use it once it's here.
+  const weatherPlace = homeOf(userPrefs);
+  const [weather, setWeather] = useState<DateWeather | null | undefined>(undefined);
+  const weatherRequest = useRef<Promise<DateWeather | null> | null>(null);
+  const weatherNow = useRef<DateWeather | null>(null);
+  const requestWeather = () => {
+    if (!weatherRequest.current) {
+      weatherRequest.current = getDateWeather(
+        weatherPlace,
+        new Date(userPrefs.startDate).getTime(),
+        new Date(userPrefs.endDate).getTime(),
+      ).then((result) => {
+        weatherNow.current = result;
+        setWeather(result);
+        return result;
+      });
+    }
+    return weatherRequest.current;
+  };
+  // For suggestions (reads the latest without re-rendering)
+  const weatherAt: WeatherLookup = (ms) => conditionsAt(weatherNow.current, ms);
+  useEffect(() => {
+    requestWeather();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const evaluation = useMemo(
+    () => evaluatePlan(placed, userPrefs, timeline, {weatherAt: weatherLookup(weather)}),
+    [placed, userPrefs, timeline, weather],
+  );
+  const stopWarnings = useMemo(() => warningsByStop(evaluation), [evaluation]);
+  const planNotes = evaluation.issues.filter((issue) => issue.stopId == null);
+  // While a stop is lifted, the banners above the timeline hold still (one
+  // appearing mid-drag would shove the timeline, and the stop, out from
+  // under your finger). They catch up on drop; stop cards stay live.
+  const latestPlanNotes = useRef(planNotes);
+  useEffect(() => {
+    latestPlanNotes.current = planNotes;
+  });
+  const [frozenPlanNotes, setFrozenPlanNotes] = useState<typeof planNotes | null>(null);
 
   // ─── Derived Budget & Time ────────────────────────────────────────────────────
   const totalPlannedHours =
@@ -194,11 +243,14 @@ export default function BuilderScreen() {
   const loadInitialIdeas = async () => {
     try {
       setLoading(true);
+      // Give the weather a moment, so the first suggestions account for it
+      await Promise.race([requestWeather(), new Promise((resolve) => setTimeout(resolve, 2500))]);
       // At the start of the day: 0 exhaustion, 0 satiation (hungry)
       const initialContext = {
         exhaustion: 0,
         satiation: 0,
         atMs: new Date(userPrefs.startDate).getTime(),
+        weatherAt,
       };
 
       const result = await queryCandidates(
@@ -259,7 +311,7 @@ export default function BuilderScreen() {
           remainingBudget,
           origin,
           // The biological state, and when this stop would start
-          {...currentContext, atMs: gapSlot.startTime},
+          {...currentContext, atMs: gapSlot.startTime, weatherAt},
         );
         setActivities(result.data || []);
       } catch (error) {
@@ -271,7 +323,7 @@ export default function BuilderScreen() {
       // If they deleted everything and are back to the start
       try {
         setIsFetchingFillers(true);
-        const initialContext = {exhaustion: 0, satiation: 0, atMs: gapSlot.startTime};
+        const initialContext = {exhaustion: 0, satiation: 0, atMs: gapSlot.startTime, weatherAt};
         const result = await queryCandidates(
           userPrefs,
           999,
@@ -344,6 +396,7 @@ export default function BuilderScreen() {
     const layout = ideaId != null ? stopLayouts.get(ideaId) : undefined;
     if (ideaId == null || !layout) return;
     dragRef.current = {id: ideaId, ...layout};
+    setFrozenPlanNotes(latestPlanNotes.current);
     setDrag(dragRef.current);
     if (process.env.EXPO_OS === "ios")
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -384,11 +437,15 @@ export default function BuilderScreen() {
     if (to !== from) {
       lastSwapAt.current = Date.now();
       moveStop(ideaId, to);
-      if (process.env.EXPO_OS === "ios") Haptics.selectionAsync();
+      // Same kind of haptic as the pickup: a new kind gets set up on first
+      // use (on the main thread), which hitched the first swap
+      if (process.env.EXPO_OS === "ios")
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
 
   const clearDrag = () => {
+    setFrozenPlanNotes(null);
     dragRef.current = null;
     setDrag(null);
   };
@@ -541,13 +598,6 @@ export default function BuilderScreen() {
     ? `${simpleStartTime} onward`
     : `${simpleStartTime} – ${simpleEndTime}`;
   const stopSlots = timeline.filter((slot) => slot.activity);
-  // Reordering can add travel and push the date past its end time
-  const lastBusyEnd = timeline
-    .filter((slot) => slot.type === "OCCUPIED")
-    .reduce((end, slot) => Math.max(end, slot.endTime), 0);
-  const overrunMinutes = isInfinite
-    ? 0
-    : Math.max(0, Math.round((lastBusyEnd - new Date(userPrefs.endDate).getTime()) / 60_000));
   const stopCount = stopSlots.length;
   const stopsLabel = `${stopCount} ${stopCount === 1 ? "stop" : "stops"}`;
   const budgetLeftLabel = `$${Math.max(0, remainingBudget)} left`;
@@ -669,6 +719,7 @@ export default function BuilderScreen() {
               onMoveLater={
                 canMove && index < stopCount - 1 ? () => moveStop(ideaId, index + 1) : undefined
               }
+              warning={stopWarnings.get(ideaId)}
             />
           </TimelineRow>
         </DraggableStop>
@@ -699,7 +750,7 @@ export default function BuilderScreen() {
       ]}
     >
       <TimelineRow node={<StopNode index={stopNumber(dragSlot.id)} />}>
-        <StopCard slot={dragSlot} headCount={headCount} />
+        <StopCard slot={dragSlot} headCount={headCount} warning={stopWarnings.get(drag.id)} />
       </TimelineRow>
     </Reanimated.View>
   );
@@ -712,7 +763,7 @@ export default function BuilderScreen() {
       </TimelineRow>
       {renderSlots(editable)}
       <TimelineRow isLast node={<MarkerNode icon="flag" />}>
-        <MarkerLabel label="Ends" time={isInfinite ? "Whenever" : simpleEndTime} />
+        <MarkerLabel label={goingOut && stopCount > 0 ? "Ends at home" : "Ends"} time={isInfinite ? "Whenever" : simpleEndTime} />
       </TimelineRow>
       {editable && dragGhost}
     </View>
@@ -757,15 +808,37 @@ export default function BuilderScreen() {
               />
             </View>
 
-            {overrunMinutes > 0 && (
-              <View className="mx-5 mb-4 flex-row items-center gap-2.5 bg-orange-500/10 border border-orange-500/30 rounded-2xl px-4 py-3">
-                <Ionicons name="alert-circle-outline" size={18} color="#fb923c" />
+            {/* The day's weather, for context */}
+            <WeatherStrip
+              weather={weather}
+              startMs={new Date(userPrefs.startDate).getTime()}
+              endMs={
+                isInfinite
+                  ? new Date(userPrefs.startDate).getTime() + 12 * 3_600_000
+                  : new Date(userPrefs.endDate).getTime()
+              }
+              place={weatherPlace}
+            />
+
+            {/* Notes about the whole plan (running late, backtracking) */}
+            {(frozenPlanNotes ?? planNotes).map((note) => (
+              <View
+                key={note.kind}
+                className="mx-5 mb-3 flex-row items-center gap-2.5 bg-orange-500/10 border border-orange-500/30 rounded-2xl px-4 py-3"
+              >
+                <Ionicons
+                  name={note.kind === "BACKTRACK" ? "git-compare-outline" : "alert-circle-outline"}
+                  size={18}
+                  color="#fb923c"
+                />
                 <Text className="flex-1 text-orange-200 text-sm">
-                  This order runs {formatMinutes(overrunMinutes)} past {simpleEndTime}.
-                  Move or remove a stop to fit.
+                  {note.message}.{" "}
+                  {note.kind === "BACKTRACK"
+                    ? "Try a different order to cut the driving."
+                    : "Move or remove a stop to fit."}
                 </Text>
               </View>
-            )}
+            ))}
 
             {timelineView(true)}
 
@@ -820,7 +893,7 @@ export default function BuilderScreen() {
             <View className="mx-5 mb-6 rounded-3xl overflow-hidden border border-zinc-800 bg-zinc-900">
               <View style={{height: 170}}>
                 <Image
-                  source={{uri: activityImage(stopSlots[0]?.activity)}}
+                  source={{uri: activityImage(stopSlots[0]?.activity, IMAGE_SIZE.full)}}
                   style={{width: "100%", height: "100%"}}
                   contentFit="cover"
                 />

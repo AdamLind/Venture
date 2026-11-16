@@ -2,6 +2,7 @@
 // A saved date: its stops, plus start / end / rename / delete.
 
 import React, {useState} from "react";
+import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import {
   View,
   Text,
@@ -227,7 +228,7 @@ export default function ItineraryDetailScreen() {
               </View>
               {stop.activity?.image_urls?.[0] ? (
                 <Image
-                  source={{uri: stop.activity.image_urls[0]}}
+                  source={{uri: sizedImage(stop.activity.image_urls[0], 52)}}
                   style={{width: 52, height: 52, borderRadius: 12, marginRight: 12}}
                   contentFit="cover"
                 />

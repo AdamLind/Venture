@@ -11,6 +11,7 @@
 // Stay-in dates (no places to map) show the current stop's photo instead.
 
 import React, {useEffect, useRef, useState} from "react";
+import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import {
   View,
   Text,
@@ -38,6 +39,7 @@ import type {TimeSlot} from "@/types/itinerary";
 import {useActiveDateStore} from "@/src/store/activeDateStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import GlassSurface from "@/components/ui/GlassSurface";
+import {homeOf} from "@/utils/timeline";
 import {
   Connector,
   MarkerLabel,
@@ -129,6 +131,10 @@ export default function ActiveDateScreen() {
   const goingOut = userPrefs?.modality === "GO_OUT";
   const headCount = Number(userPrefs?.headCount) || 1;
   const locations = stops.map((s) => s.activity as any).filter(hasCoords);
+  // Stay-in stops in a go-out date happen at home
+  const homeCoords = userPrefs ? homeOf(userPrefs) : null; // same "home" as the builder
+  const placeOf = (activity: any) =>
+    activity?.modality === "STAY_IN" ? homeCoords : activity;
   const showMap = goingOut && locations.length > 0;
 
   // ─── Map ─────────────────────────────────────────────────────────────────
@@ -284,8 +290,8 @@ export default function ActiveDateScreen() {
       tap();
       markArrived(idOf(focus!));
     };
-    if (goingOut && hasCoords(focus!.activity)) {
-      const a = focus!.activity;
+    if (goingOut && hasCoords(placeOf(focus!.activity))) {
+      const a = placeOf(focus!.activity);
       primary = {
         label: "Get directions",
         icon: "navigate",
@@ -376,7 +382,6 @@ export default function ActiveDateScreen() {
   );
 
   // ─── Timeline ────────────────────────────────────────────────────────────
-  const homeCoords = userPrefs.currentLocation;
   const timelineView = (
     <View className="px-4 pt-2">
       <TimelineRow isFirst node={<MarkerNode icon={goingOut ? "home" : "play"} />}>
@@ -387,7 +392,7 @@ export default function ActiveDateScreen() {
         if (!slot.activity) {
           // Travel leg (or the trip home), with directions while it's ahead
           const destination =
-            slot.id === "return-journey" ? homeCoords : slots[idx + 1]?.activity;
+            slot.id === "return-journey" ? homeCoords : placeOf(slots[idx + 1]?.activity);
           const upcoming = slot.endTime > now;
           return (
             <TimelineRow
@@ -469,7 +474,7 @@ export default function ActiveDateScreen() {
       })}
 
       <TimelineRow isLast node={<MarkerNode icon="flag" />}>
-        <MarkerLabel label="Ends" time={clockTime(slots[slots.length - 1].endTime)} />
+        <MarkerLabel label={goingOut ? "Ends at home" : "Ends"} time={clockTime(slots[slots.length - 1].endTime)} />
       </TimelineRow>
 
       {!allDone && (
@@ -490,7 +495,7 @@ export default function ActiveDateScreen() {
     return (
       <View style={styles.fill}>
         <Image
-          source={{uri: activityImage((visited[visited.length - 1] ?? stops[0]).activity)}}
+          source={{uri: activityImage((visited[visited.length - 1] ?? stops[0]).activity, IMAGE_SIZE.card)}}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
           blurRadius={30}
@@ -653,7 +658,7 @@ export default function ActiveDateScreen() {
       ) : (
         <View style={[StyleSheet.absoluteFill, {height: collapsedTop + 40}]}>
           <Image
-            source={{uri: activityImage(shownActivity)}}
+            source={{uri: activityImage(shownActivity, IMAGE_SIZE.full)}}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
             transition={300}

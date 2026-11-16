@@ -2,6 +2,7 @@
 // Cards for saved dates, shared by the Profile and Activity tabs.
 
 import React from "react";
+import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import {View, Text, Pressable} from "react-native";
 import {Image} from "expo-image";
 import {Ionicons} from "@expo/vector-icons";
@@ -155,7 +156,7 @@ export function LiveDateCard({itinerary}: {itinerary: Itinerary}) {
     >
       <View className="h-40 w-full">
         <Image
-          source={{uri: focus?.activity?.image_urls?.[0] ?? coverImage(itinerary)}}
+          source={{uri: sizedImage(focus?.activity?.image_urls?.[0], IMAGE_SIZE.full) ?? coverImage(itinerary)}}
           style={{width: "100%", height: "100%", opacity: 0.6}}
           contentFit="cover"
         />

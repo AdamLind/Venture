@@ -31,6 +31,14 @@ const WINDOWS: Record<
 
 const ORDER = Object.keys(WINDOWS) as TimeOfDay[];
 
+export const TIME_OF_DAY_LABEL: Record<TimeOfDay, string> = {
+  EARLY_MORNING: "Early morning",
+  MORNING: "Morning",
+  AFTERNOON: "Afternoon",
+  EVENING: "Evening",
+  LATE_NIGHT: "Late night",
+};
+
 /** Known windows, in day order. Empty means "any time". */
 export function normalizeTimeOfDay(values: readonly string[] | null | undefined): TimeOfDay[] {
   const set = new Set(

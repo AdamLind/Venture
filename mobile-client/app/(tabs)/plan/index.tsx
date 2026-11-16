@@ -328,6 +328,7 @@ export default function PlanScreen() {
       startDate: startDate.toISOString(),
       endDate: computedEndDate.toISOString(),
       currentLocation: activeLocation,
+      homeLocation,
       travelDistance: defaults.default_travel_miles,
       budget: finalBudget,
       vibes: selectedTags,

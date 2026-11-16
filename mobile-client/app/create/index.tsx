@@ -1,5 +1,6 @@
 // app/create.tsx
 import React, {useState, useEffect} from "react";
+import {WEATHER_NEEDS_OPTIONS, type WeatherNeeds} from "@/src/lib/weatherRules";
 import {
   View,
   Text,
@@ -70,6 +71,9 @@ export default function CreateScreen() {
     useState<BaseActivity["activity_type"]>("OTHER");
   const [environment, setEnvironment] =
     useState<BaseActivity["environment"]>("MIXED");
+  // null: the default for its environment (src/lib/weatherRules.ts)
+  const [weatherNeeds, setWeatherNeeds] = useState<WeatherNeeds | null>(null);
+  const defaultWeatherNeeds: WeatherNeeds = environment === "INDOOR" ? "ANY" : "NICE";
 
   // Multi-select Time of Day
   const [timeOfDay, setTimeOfDay] = useState<
@@ -148,6 +152,7 @@ export default function CreateScreen() {
       setModality(data.modality);
       setActivityType(data.activity_type);
       setEnvironment(data.environment);
+      setWeatherNeeds((data.weather_needs as WeatherNeeds | null) ?? null);
       setTimeOfDay(data.time_of_day ?? []);
       setMinPeople(String(data.min_people ?? 2));
       setMaxPeople(String(data.max_people ?? 2));
@@ -293,6 +298,7 @@ export default function CreateScreen() {
         modality,
         activity_type: activityType,
         environment,
+        weather_needs: weatherNeeds,
         time_of_day: timeOfDay.length > 0 ? timeOfDay : null,
         est_price_per_person: parseFloat(price) || 0,
         est_duration_minutes: parseInt(duration, 10),
@@ -395,6 +401,7 @@ export default function CreateScreen() {
         modality,
         activity_type: activityType,
         environment,
+        weather_needs: weatherNeeds,
         time_of_day: timeOfDay.length > 0 ? timeOfDay : null,
         est_price_per_person: parseFloat(price) || 0,
         est_duration_minutes: parseInt(duration, 10),
@@ -793,6 +800,37 @@ export default function CreateScreen() {
             </Pressable>
           ))}
         </View>
+
+        {/* WEATHER (what it needs to be enjoyable) */}
+        <Text className="text-zinc-400 text-sm font-bold ml-1 mb-2">WEATHER</Text>
+        <View className="flex-row flex-wrap gap-2 mb-2">
+          {WEATHER_NEEDS_OPTIONS.map((option) => {
+            const shown = weatherNeeds ?? defaultWeatherNeeds;
+            const active = shown === option.value;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => setWeatherNeeds(option.value)}
+                accessibilityRole="button"
+                accessibilityState={{selected: active}}
+                className={`px-4 py-2 rounded-xl border active:opacity-70 ${
+                  active ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
+                }`}
+              >
+                <Text className={`font-bold ${active ? "text-white" : "text-zinc-500"}`}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text className="text-zinc-500 text-xs ml-1 mb-6">
+          {weatherNeeds
+            ? WEATHER_NEEDS_OPTIONS.find((o) => o.value === weatherNeeds)?.hint
+            : `Default for ${environment.toLowerCase()} ideas. ${
+                WEATHER_NEEDS_OPTIONS.find((o) => o.value === defaultWeatherNeeds)?.hint ?? ""
+              }`}
+        </Text>
 
         {/* TIME OF DAY */}
         <Text
