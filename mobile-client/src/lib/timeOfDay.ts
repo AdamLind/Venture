@@ -6,7 +6,8 @@
 //   MORNING        8 AM – noon      (9 AM)
 //   AFTERNOON      noon – 5 PM      (1 PM)
 //   EVENING        5 PM – 9 PM      (6 PM)
-//   LATE_NIGHT     9 PM – 2 AM      (9 PM)
+//   LATE_NIGHT     9 PM – 4 AM      (9 PM)  (stargazing at 2 AM is late
+//                                            night; 4-5 AM is no window)
 //
 // Older ideas say "NIGHT"; it means LATE_NIGHT.
 
@@ -26,7 +27,7 @@ const WINDOWS: Record<
   MORNING: {from: 8, to: 12, startAt: 9, phrase: "in the morning"},
   AFTERNOON: {from: 12, to: 17, startAt: 13, phrase: "in the afternoon"},
   EVENING: {from: 17, to: 21, startAt: 18, phrase: "in the evening"},
-  LATE_NIGHT: {from: 21, to: 26, startAt: 21, phrase: "late at night"},
+  LATE_NIGHT: {from: 21, to: 28, startAt: 21, phrase: "late at night"},
 };
 
 const ORDER = Object.keys(WINDOWS) as TimeOfDay[];

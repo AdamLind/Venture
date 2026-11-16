@@ -22,7 +22,6 @@ import {
   Alert,
   StyleSheet,
   useWindowDimensions,
-  type ScrollViewInstance,
 } from "react-native";
 import MapView, {Marker, Polyline} from "react-native-maps";
 import {Image} from "expo-image";
@@ -31,8 +30,15 @@ import * as Haptics from "expo-haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {router} from "expo-router";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
-import {GestureDetector, usePanGesture} from "react-native-gesture-handler";
-import Reanimated, {useAnimatedStyle, useSharedValue, withSpring} from "react-native-reanimated";
+import {GestureDetector, useNativeGesture, usePanGesture} from "react-native-gesture-handler";
+import Reanimated, {
+  scrollTo,
+  useAnimatedRef,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import {scheduleOnRN} from "react-native-worklets";
 
 import type {TimeSlot} from "@/types/itinerary";
@@ -40,6 +46,7 @@ import {useActiveDateStore} from "@/src/store/activeDateStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import GlassSurface from "@/components/ui/GlassSurface";
 import {homeOf} from "@/utils/timeline";
+import RestEditor from "@/components/live/RestEditor";
 import {
   Connector,
   MarkerLabel,
@@ -54,6 +61,8 @@ const BLUE = "#3b82f6";
 // Settles quickly without bouncing past the snap point
 const SHEET_SPRING = {damping: 30, stiffness: 300, mass: 0.9, overshootClamping: true};
 const GREEN = "#22c55e";
+/** "The list hasn't reached its top yet" (a pull there scrolls, not the sheet) */
+const NOT_AT_TOP = -1e9;
 
 const clockTime = (ms: number) =>
   new Date(ms).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
@@ -127,6 +136,9 @@ export default function ActiveDateScreen() {
   const allDone = stops.length > 0 && !focus;
   const arrived = focus ? isArrived(focus) : false;
   const notStarted = !!focus && focusIndex === 0 && !arrived && now < dateStart;
+  // Stops still ahead (not started): two or more can be reordered (#63)
+  const aheadCount = stops.filter((s) => !isDone(s) && !isArrived(s)).length;
+  const canReorder = itineraryId != null && aheadCount >= 2;
 
   const goingOut = userPrefs?.modality === "GO_OUT";
   const headCount = Number(userPrefs?.headCount) || 1;
@@ -136,6 +148,10 @@ export default function ActiveDateScreen() {
   const placeOf = (activity: any) =>
     activity?.modality === "STAY_IN" ? homeCoords : activity;
   const showMap = goingOut && locations.length > 0;
+
+  const tap = () => {
+    if (process.env.EXPO_OS === "ios") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
 
   // ─── Map ─────────────────────────────────────────────────────────────────
   const mapRef = useRef<MapView>(null);
@@ -164,18 +180,58 @@ export default function ActiveDateScreen() {
       animated: true,
     });
 
-  // ─── The sheet: drag the top part between half and full height ──────────
-  // Runs on the UI thread, so it stays smooth while the screen re-renders
+  // ─── The sheet: half or full height ───────────────────────────────────────
+  // Drag it anywhere: the top part (grabber + Now card) always moves it; the
+  // plan below moves it too when it's half open (the plan doesn't scroll
+  // then), and when it's open and scrolled to the top, pulling down lowers
+  // it (like iOS sheets). Runs on the UI thread, so it stays smooth while
+  // the screen re-renders.
   const range = collapsedTop - sheetTop;
-  const sheetY = useSharedValue(range);
+  const sheetY = useSharedValue(range); // 0 = open
   const dragStart = useSharedValue(0);
+  const scrollY = useSharedValue(0);
+  const topAt = useSharedValue(NOT_AT_TOP);
+  // This drag on the plan has moved the sheet (not just scrolled the plan)
+  const movedSheet = useSharedValue(false);
   const [expanded, setExpanded] = useState(false);
-  const listRef = useRef<ScrollViewInstance>(null);
+  const listRef = useAnimatedRef<Reanimated.ScrollView>();
+
+  // Reorder the rest of the date, right here (#63): when you tapped it
+  const [editingSince, setEditingSince] = useState<number | null>(null);
+  const editing = editingSince != null;
+
+  // Where each row sits in the plan ("stop-12", and "leg-12" for the travel
+  // into stop 12), to keep what matters now at the top: on the way to a
+  // stop, its travel; once you're there, the stop
+  const [rowYs] = useState(() => new Map<string, number>());
+  const [planY, setPlanY] = useState(0);
+  // For the space at the end of the plan (see the list's paddingBottom)
+  const [listHeight, setListHeight] = useState(0);
+  const [planHeight, setPlanHeight] = useState(0);
+  const [lastStopY, setLastStopY] = useState(0);
+  const lastStopKey = stops.length ? `stop-${idOf(stops[stops.length - 1])}` : null;
+  const focusHasLeg =
+    focusId != null &&
+    slots.some((slot, i) => !slot.activity && slots[i + 1]?.activity?.idea_id === focusId);
+  const focusKey =
+    focusId == null ? null : arrived || !focusHasLeg ? `stop-${focusId}` : `leg-${focusId}`;
+  const scrollToRow = (key: string | null, animated: boolean) => {
+    const y = key == null ? undefined : rowYs.get(key);
+    if (y == null) return;
+    listRef.current?.scrollTo({y: Math.max(0, planY + y - 8), animated});
+  };
 
   const onSnapped = (toExpanded: boolean) => {
     setExpanded(toExpanded);
-    // Collapsed shows the top of the plan
-    if (!toExpanded) listRef.current?.scrollTo({y: 0, animated: false});
+    if (!toExpanded) {
+      // Lowering the sheet while reordering cancels it
+      if (editingSince != null) stopEditing();
+      // Half open shows what matters now
+      else scrollToRow(focusKey, false);
+    } else if (!expanded && editingSince == null) {
+      // Opening it shows the whole plan, from the top
+      listRef.current?.scrollTo({y: 0, animated: true});
+    }
   };
 
   const snapSheet = (toExpanded: boolean) => {
@@ -183,7 +239,18 @@ export default function ActiveDateScreen() {
     onSnapped(toExpanded);
   };
 
-  const sheetPan = usePanGesture({
+  // Let go: snap open or half, by where it is and how fast it was moving
+  const settle = (velocityY: number) => {
+    "worklet";
+    const flungUp = velocityY < -500;
+    const flungDown = velocityY > 500;
+    const toExpanded = flungUp || (!flungDown && sheetY.get() < range / 2);
+    sheetY.set(withSpring(toExpanded ? 0 : range, SHEET_SPRING));
+    scheduleOnRN(onSnapped, toExpanded);
+  };
+
+  // The top part: a plain drag
+  const headerPan = usePanGesture({
     activeOffsetY: [-8, 8],
     onActivate: () => {
       "worklet";
@@ -195,13 +262,107 @@ export default function ActiveDateScreen() {
     },
     onDeactivate: (e) => {
       "worklet";
-      const flungUp = e.velocityY < -500;
-      const flungDown = e.velocityY > 500;
-      const toExpanded = flungUp || (!flungDown && sheetY.get() < range / 2);
-      sheetY.set(withSpring(toExpanded ? 0 : range, SHEET_SPRING));
-      scheduleOnRN(onSnapped, toExpanded);
+      settle(e.velocityY);
     },
   });
+
+  // The plan: moves the sheet when it's half open, or once it's scrolled to
+  // the top; otherwise it's just scrolling
+  const listScroll = useNativeGesture({});
+  const listPan = usePanGesture({
+    activeOffsetY: [-8, 8],
+    simultaneousWith: listScroll,
+    onActivate: (e) => {
+      "worklet";
+      dragStart.set(sheetY.get());
+      movedSheet.set(false);
+      const halfOpen = sheetY.get() > 0.5;
+      topAt.set(halfOpen || scrollY.get() <= 0.5 ? e.translationY : NOT_AT_TOP);
+    },
+    onUpdate: (e) => {
+      "worklet";
+      const open = dragStart.get() <= 0.5;
+      // Open and scrolled into the plan: it's just scrolling (the sheet waits
+      // for the plan to come back to its top, even mid-swipe)
+      if (open && !movedSheet.get() && scrollY.get() > 0.5) {
+        topAt.set(NOT_AT_TOP);
+        return;
+      }
+      if (topAt.get() === NOT_AT_TOP) topAt.set(e.translationY);
+      const y = Math.max(0, Math.min(range, dragStart.get() + e.translationY - topAt.get()));
+      if (Math.abs(y - dragStart.get()) > 0.5) movedSheet.set(true);
+      sheetY.set(y);
+      // Pulled down from open: the plan holds still at its top meanwhile
+      if (open && y > 0) scrollTo(listRef, 0, 0, false);
+    },
+    onDeactivate: (e) => {
+      "worklet";
+      topAt.set(NOT_AT_TOP);
+      // Only if it moved the sheet (a plain scroll leaves it be)
+      if (movedSheet.get()) settle(e.velocityY);
+      movedSheet.set(false);
+    },
+  });
+  const onListScroll = useAnimatedScrollHandler((e) => {
+    scrollY.set(e.contentOffset.y);
+  });
+  // Keep the stop that matters now at the top of the plan as the date goes
+  // on ("Done · next stop" moves it along)
+  const scrolledFor = useRef<string | null>(null);
+  // Keeps following that row while the plan re-measures (rows can shift
+  // just after a tap), until you scroll the plan yourself
+  const following = useRef(true);
+  useEffect(() => {
+    if (editing) return; // (the editor shows only the rest; no rows to chase)
+    following.current = true;
+    if (focusKey != null && rowYs.has(focusKey)) {
+      scrolledFor.current = focusKey;
+      scrollToRow(focusKey, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusKey]);
+  // Just enough room at the end of the plan for the last stop to scroll up
+  // to the top (8 points below it, like the others)
+  const endSpace = Math.max(insets.bottom + 32, Math.ceil(listHeight - (planHeight - lastStopY) - 8));
+  // When that room grows, a scroll that fell short can finish
+  useEffect(() => {
+    if (following.current && !editing) scrollToRow(focusKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endSpace]);
+
+  const onRowLayout = (key: string, y: number) => {
+    const moved = rowYs.get(key) !== y;
+    rowYs.set(key, y);
+    if (key === lastStopKey) setLastStopY(y);
+    if (key !== focusKey) return;
+    if (scrolledFor.current !== focusKey) {
+      // The first time, once its row has been laid out
+      scrolledFor.current = focusKey;
+      scrollToRow(focusKey, false);
+    } else if (moved && following.current) {
+      scrollToRow(focusKey, true);
+    }
+  };
+
+  const startEditing = () => {
+    tap();
+    // The screen's clock (ticks every few seconds; the rest of the date
+    // starts on the next 5 minutes anyway)
+    setEditingSince(now);
+    // The editor stays at its top: don't chase the current stop meanwhile
+    following.current = false;
+    snapSheet(true);
+    // The editor starts at the top (Fix order first)
+    listRef.current?.scrollTo({y: 0, animated: false});
+  };
+  // Cancelled, saved, or the sheet lowered: back to the plan, at the stop
+  // that matters now (its row lays out again and scrolls there)
+  const stopEditing = () => {
+    scrolledFor.current = null;
+    following.current = true;
+    setEditingSince(null);
+  };
+
   const sheetStyle = useAnimatedStyle(() => ({transform: [{translateY: sheetY.get()}]}));
 
   // ─── Leaving ─────────────────────────────────────────────────────────────
@@ -226,9 +387,6 @@ export default function ActiveDateScreen() {
     }
   };
 
-  const tap = () => {
-    if (process.env.EXPO_OS === "ios") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
 
   if (!timeline || !userPrefs || stops.length === 0) {
     return (
@@ -342,7 +500,8 @@ export default function ActiveDateScreen() {
           >
             {eyebrow}
           </Text>
-          <Text className="text-white font-extrabold text-xl" numberOfLines={2}>
+          {/* One line, so the card (and the plan under it) never changes height */}
+          <Text className="text-white font-extrabold text-xl" numberOfLines={1}>
             {allDone ? "Nice date!" : shownActivity.title}
           </Text>
           <Text className="text-zinc-400 text-sm mt-0.5" numberOfLines={1}>
@@ -351,13 +510,18 @@ export default function ActiveDateScreen() {
         </View>
       </Pressable>
 
-      {progress !== null && (
-        <View className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+      {/* Its space is always kept (empty until you're at a stop), so tapping
+          "I'm here" doesn't push the plan down */}
+      <View
+        className={`h-1.5 rounded-full overflow-hidden ${progress !== null ? "bg-zinc-800" : ""}`}
+        importantForAccessibility="no-hide-descendants"
+      >
+        {progress !== null && (
           <View
             style={{width: `${Math.round(progress * 100)}%`, height: "100%", backgroundColor: BLUE}}
           />
-        </View>
-      )}
+        )}
+      </View>
 
       <View className="flex-row gap-2.5">
         <Pressable
@@ -382,21 +546,47 @@ export default function ActiveDateScreen() {
   );
 
   // ─── Timeline ────────────────────────────────────────────────────────────
+  // While reordering, the plan shows only the editor (the stops still ahead)
+
   const timelineView = (
     <View className="px-4 pt-2">
-      <TimelineRow isFirst node={<MarkerNode icon={goingOut ? "home" : "play"} />}>
-        <MarkerLabel label={goingOut ? "Leave" : "Start"} time={clockTime(dateStart)} />
-      </TimelineRow>
+      {/* Always here (the button comes and goes), so the rows below never shift */}
+      {!editing && (
+        <View className="flex-row items-center justify-between px-1 mb-3 min-h-6">
+          <Text className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Your plan</Text>
+          {canReorder && (
+          <Pressable
+            onPress={startEditing}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Reorder the rest of your date"
+            className="flex-row items-center gap-1.5 active:opacity-70"
+          >
+            <Ionicons name="swap-vertical" size={14} color="#60a5fa" />
+            <Text className="text-blue-400 text-sm font-semibold">Reorder the rest</Text>
+          </Pressable>
+          )}
+        </View>
+      )}
+      {!editing && (
+        <TimelineRow isFirst node={<MarkerNode icon={goingOut ? "home" : "play"} />}>
+          <MarkerLabel label={goingOut ? "Leave" : "Start"} time={clockTime(dateStart)} />
+        </TimelineRow>
+      )}
 
-      {slots.map((slot, idx) => {
+      {(editing ? [] : slots).map((slot, idx) => {
         if (!slot.activity) {
           // Travel leg (or the trip home), with directions while it's ahead
           const destination =
             slot.id === "return-journey" ? homeCoords : placeOf(slots[idx + 1]?.activity);
           const upcoming = slot.endTime > now;
+          const leadsTo = slots[idx + 1]?.activity?.idea_id;
           return (
-            <TimelineRow
+            <View
               key={slot.id ?? idx}
+              onLayout={(e) => leadsTo != null && onRowLayout(`leg-${leadsTo}`, e.nativeEvent.layout.y)}
+            >
+            <TimelineRow
               node={
                 <View style={{paddingVertical: 4}}>
                   <View className="w-2.5 h-2.5 rounded-full bg-zinc-700 border-2 border-black" />
@@ -418,6 +608,7 @@ export default function ActiveDateScreen() {
                 )}
               </View>
             </TimelineRow>
+            </View>
           );
         }
 
@@ -425,8 +616,8 @@ export default function ActiveDateScreen() {
         const current = focus === slot && arrived;
         const number = stops.indexOf(slot) + 1;
         return (
+          <View key={`stop-${idOf(slot)}`} onLayout={(e) => onRowLayout(`stop-${idOf(slot)}`, e.nativeEvent.layout.y)}>
           <TimelineRow
-            key={`stop-${idOf(slot)}`}
             node={
               done ? (
                 <View
@@ -470,14 +661,20 @@ export default function ActiveDateScreen() {
               )}
             </Pressable>
           </TimelineRow>
+          </View>
         );
       })}
 
-      <TimelineRow isLast node={<MarkerNode icon="flag" />}>
-        <MarkerLabel label={goingOut ? "Ends at home" : "Ends"} time={clockTime(slots[slots.length - 1].endTime)} />
-      </TimelineRow>
+      {editing ? (
+        // The rest, as draggable stop cards (Cancel / Save inside)
+        <RestEditor openedAt={editingSince!} onClose={stopEditing} />
+      ) : (
+        <TimelineRow isLast node={<MarkerNode icon="flag" />}>
+          <MarkerLabel label={goingOut ? "Ends at home" : "Ends"} time={clockTime(slots[slots.length - 1].endTime)} />
+        </TimelineRow>
+      )}
 
-      {!allDone && (
+      {!allDone && !editing && (
         <Pressable
           onPress={() => setWrapping(true)}
           className="self-center mt-4 px-5 py-2.5 rounded-full active:bg-zinc-900"
@@ -699,7 +896,7 @@ export default function ActiveDateScreen() {
       <Reanimated.View
         style={[styles.sheet, {top: sheetTop, height: screenHeight - sheetTop}, sheetStyle]}
       >
-        <GestureDetector gesture={sheetPan}>
+        <GestureDetector gesture={headerPan}>
           <View>
             <Pressable
               onPress={() => snapSheet(!expanded)}
@@ -715,14 +912,46 @@ export default function ActiveDateScreen() {
 
         <View className="h-px bg-zinc-800 mx-5" />
 
-        <ScrollView
-          ref={listRef}
-          scrollEnabled={expanded}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{paddingTop: 12, paddingBottom: insets.bottom + 32}}
-        >
-          {timelineView}
-        </ScrollView>
+        {/* The plan: scrolls when the sheet's open (pull down at its top to
+            lower it); half open, dragging it raises the sheet */}
+        <GestureDetector gesture={listPan}>
+          <View style={{flex: 1}}>
+            <GestureDetector gesture={listScroll}>
+              <Reanimated.ScrollView
+                ref={listRef}
+                onScroll={onListScroll}
+                scrollEventThrottle={16}
+                // You took over: stop keeping the current stop at the top
+                // (until it changes)
+                onScrollBeginDrag={() => {
+                  following.current = false;
+                }}
+                scrollEnabled={expanded}
+                // No rubber band at the top: pulling there lowers the sheet
+                bounces={false}
+                overScrollMode="never"
+                showsVerticalScrollIndicator={false}
+                onLayout={(e) => setListHeight(e.nativeEvent.layout.height)}
+                // Just enough room at the end for the last stop to scroll up
+                // to the top (8 points below it, like the others); without
+                // it, the later stops could never reach the top
+                contentContainerStyle={{
+                  paddingTop: 12,
+                  paddingBottom: endSpace,
+                }}
+              >
+                <View
+                  onLayout={(e) => {
+                    setPlanY(e.nativeEvent.layout.y);
+                    setPlanHeight(e.nativeEvent.layout.height);
+                  }}
+                >
+                  {timelineView}
+                </View>
+              </Reanimated.ScrollView>
+            </GestureDetector>
+          </View>
+        </GestureDetector>
       </Reanimated.View>
     </View>
   );

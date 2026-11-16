@@ -5,7 +5,9 @@
 import {create} from "zustand";
 import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
-import {AUTO_COMPLETE_AFTER_MS, buildTimeline} from "@/src/lib/dates";
+import {AUTO_COMPLETE_AFTER_MS, buildTimeline, placedStops} from "@/src/lib/dates";
+import {applyReplan, type DatePrefs, type ReplanPoint} from "@/utils/replan";
+import type {PlacedActivity} from "@/utils/timeline";
 import {parseCoordinates} from "@/utils/itineraryEngine";
 import {useActiveDateStore} from "@/src/store/activeDateStore";
 import type {
@@ -32,6 +34,13 @@ interface ItineraryState {
   startDate: (itineraryId: number) => Promise<void>;
   /** Marks a date COMPLETED and closes the live view if it's showing. */
   completeDate: (itineraryId: number) => Promise<void>;
+  /**
+   * The rest of a live date in a new order (#63): saves the new stop order
+   * and times, and updates the live view. `rest` is the stops after
+   * `point.kept`, reordered (the same PlacedActivity objects as
+   * placedStops()). Throws a readable Error.
+   */
+  replanDate: (itineraryId: number, point: ReplanPoint, rest: PlacedActivity[]) => Promise<void>;
   rename: (itineraryId: number, title: string) => Promise<void>;
   remove: (itineraryId: number) => Promise<void>;
   clear: () => void;
@@ -201,6 +210,53 @@ export const useItineraryStore = create<ItineraryState>((set, get) => {
       await setStatus([itineraryId], "COMPLETED");
       const live = useActiveDateStore.getState();
       if (live.itineraryId === itineraryId) live.endActiveDate();
+    },
+
+    replanDate: async (itineraryId, point, rest) => {
+      const itinerary = get().itineraries.find((i) => i.itinerary_id === itineraryId);
+      if (!itinerary?.prefs_snapshot) throw new Error("This date can't be changed.");
+      const prefs = itinerary.prefs_snapshot as DatePrefs;
+      const stops = placedStops(itinerary);
+      // By idea (applyReplan may copy a stop to trim it)
+      const stopIdOf = new Map(stops.map((s) => [s.placed.activity, s.stopId]));
+
+      const {placed, replans, timeline} = applyReplan(
+        stops.map((s) => s.placed),
+        prefs,
+        point,
+        rest,
+      );
+      // The new times, stop by stop (timeline order = placed order)
+      const slots = timeline.filter((slot) => slot.activity);
+      const visible = placed.map((p, i) => ({
+        stop_id: stopIdOf.get(p.activity)!,
+        starts_at: new Date(slots[i].startTime).toISOString(),
+        ends_at: new Date(slots[i].endTime).toISOString(),
+      }));
+      if (visible.some((s) => s.stop_id == null)) {
+        throw new Error("This date changed since you opened it. Reopen it and try again.");
+      }
+      // Stops you can't see (an idea that was removed) stay at the end, as they were
+      const hidden = itinerary.stops
+        .filter((s) => !s.activity)
+        .map((s) => ({stop_id: s.stop_id, starts_at: s.starts_at, ends_at: s.ends_at}));
+      const endsAt = timeline
+        .filter((slot) => slot.type === "OCCUPIED")
+        .reduce((end, slot) => Math.max(end, slot.endTime), 0);
+
+      const {error} = await supabase.rpc("replan_itinerary", {
+        p_itinerary_id: itineraryId,
+        p_stops: [...visible, ...hidden],
+        p_replans: replans,
+        p_ends_at: new Date(endsAt).toISOString(),
+      });
+      if (error) throw new Error(friendlyError(error));
+
+      // Show it right away; the reload brings everyone's copy in line
+      const snapshot: DatePrefs = {...prefs, replans};
+      const live = useActiveDateStore.getState();
+      if (live.itineraryId === itineraryId) live.replaceTimeline(timeline, snapshot);
+      await get().reload();
     },
 
     rename: async (itineraryId, title) => {

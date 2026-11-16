@@ -20,6 +20,11 @@ const EXACT_STOPS = 5;
 const MIN_GAIN = 3;
 /** Safety limit on improvement passes for long plans. */
 const MAX_PASSES = 12;
+/**
+ * A new order that makes the day run longer (more travel) pays this much
+ * per 15 minutes later it ends, so it has to fix enough to be worth it.
+ */
+const LATER_PER_15_MIN = 3;
 
 export type SmartOrderResult = {
   order: PlacedActivity[];
@@ -33,7 +38,17 @@ export type SmartOrderResult = {
   introduced: PlanIssue[];
   /** Fewer miles of driving (0 if none) */
   milesSaved: number;
+  /** How much later (+) or sooner (-) the day ends with the new order, in minutes */
+  endShiftMinutes: number;
+  /** When the day ends with the new order (trip home included) */
+  endsAt: number;
 };
+
+/** When a plan's last busy slot ends (trip home included). */
+const endOf = (e: PlanEvaluation) =>
+  e.timeline
+    .filter((slot) => slot.type === "OCCUPIED")
+    .reduce((end, slot) => Math.max(end, slot.endTime), 0);
 
 const idOf = (p: PlacedActivity) => p.activity.idea_id as number;
 const sameOrder = (a: PlacedActivity[], b: PlacedActivity[]) =>
@@ -58,6 +73,10 @@ export function smartOrder(
   const evaluate = (order: PlacedActivity[]) =>
     evaluatePlan(order, prefs, undefined, {weatherAt: options.weatherAt});
   const before = evaluate(placed);
+  const beforeEnd = endOf(before);
+  // The score, minus a little for each 15 minutes later the day ends
+  const worth = (e: PlanEvaluation) =>
+    e.score - LATER_PER_15_MIN * Math.max(0, Math.ceil((endOf(e) - beforeEnd) / (15 * 60_000)));
 
   let best = placed;
   let bestEval = before;
@@ -66,8 +85,8 @@ export function smartOrder(
     // Ties go to fewer hard problems, then less driving
     const hard = (x: PlanEvaluation) => x.issues.filter((i) => i.severity === "hard").length;
     if (
-      e.score > bestEval.score ||
-      (e.score === bestEval.score &&
+      worth(e) > worth(bestEval) ||
+      (worth(e) === worth(bestEval) &&
         (hard(e) < hard(bestEval) || (hard(e) === hard(bestEval) && e.routeMiles < bestEval.routeMiles - 0.05)))
     ) {
       best = order;
@@ -94,7 +113,7 @@ export function smartOrder(
     }
   }
 
-  const improved = !sameOrder(best, placed) && bestEval.score >= before.score + MIN_GAIN;
+  const improved = !sameOrder(best, placed) && worth(bestEval) >= before.score + MIN_GAIN;
   const key = (i: PlanIssue) => `${i.kind}:${i.stopId ?? ""}`;
   const after = improved ? bestEval : before;
   const remaining = new Set(after.issues.map(key));
@@ -107,6 +126,8 @@ export function smartOrder(
     fixed: improved ? before.issues.filter((i) => !remaining.has(key(i))) : [],
     introduced: improved ? after.issues.filter((i) => !existing.has(key(i))) : [],
     milesSaved: improved ? Math.max(0, before.routeMiles - after.routeMiles) : 0,
+    endShiftMinutes: improved ? Math.round((endOf(after) - beforeEnd) / 60_000) : 0,
+    endsAt: endOf(after),
   };
 }
 

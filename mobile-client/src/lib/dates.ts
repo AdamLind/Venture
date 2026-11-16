@@ -4,7 +4,8 @@
 import type {Itinerary, ItineraryStop} from "@/types/dates";
 import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import type {TimeSlot} from "@/types/itinerary";
-import {deriveSequentialTimeline} from "@/utils/itineraryEngine";
+import {deriveReplannedTimeline, type PlacedActivity} from "@/utils/timeline";
+import type {DatePrefs} from "@/utils/replan";
 
 /** Finished dates are auto-completed this long after their scheduled end. */
 export const AUTO_COMPLETE_AFTER_MS = 2 * 60 * 60 * 1000;
@@ -133,15 +134,27 @@ export function stopProgress(itinerary: Itinerary, now = Date.now()) {
  */
 export function buildTimeline(itinerary: Itinerary): TimeSlot[] | null {
   if (!itinerary.prefs_snapshot) return null;
-  // Each stop keeps the length it was saved with (you may have changed it);
-  // older stops without times use the idea's suggestion
-  const placed = liveStops(itinerary).map((s) => ({
-    activity: s.activity!,
-    durationMinutes:
-      s.starts_at && s.ends_at
-        ? Math.round((new Date(s.ends_at).getTime() - new Date(s.starts_at).getTime()) / 60_000)
-        : undefined,
-  }));
+  const placed = placedStops(itinerary).map((p) => p.placed);
   if (placed.length === 0) return null;
-  return deriveSequentialTimeline(placed, itinerary.prefs_snapshot);
+  // Re-planned mid-date (#63): each stretch from where it was re-planned
+  const prefs = itinerary.prefs_snapshot as DatePrefs;
+  return deriveReplannedTimeline(placed, prefs, prefs.replans);
+}
+
+/**
+ * A date's visible stops, ready for the timeline, with their saved stop
+ * ids. Each stop keeps the length it was saved with (you may have changed
+ * it); older stops without times use the idea's suggestion.
+ */
+export function placedStops(itinerary: Itinerary): {stopId: number; placed: PlacedActivity}[] {
+  return liveStops(itinerary).map((s) => ({
+    stopId: s.stop_id,
+    placed: {
+      activity: s.activity!,
+      durationMinutes:
+        s.starts_at && s.ends_at
+          ? Math.round((new Date(s.ends_at).getTime() - new Date(s.starts_at).getTime()) / 60_000)
+          : undefined,
+    },
+  }));
 }

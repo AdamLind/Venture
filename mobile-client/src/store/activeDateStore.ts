@@ -17,6 +17,8 @@ interface ActiveDateState {
   doneIds: number[];
 
   startActiveDate: (timeline: any[], prefs: any, itineraryId: number) => void;
+  /** The rest of the date was re-planned (#63): new timeline, same progress */
+  replaceTimeline: (timeline: any[], prefs: any) => void;
   markArrived: (ideaId: number) => void;
   markDone: (ideaId: number) => void;
   endActiveDate: () => void;
@@ -31,6 +33,8 @@ export const useActiveDateStore = create<ActiveDateState>((set, get) => ({
 
   startActiveDate: (timeline, userPrefs, itineraryId) =>
     set({timeline, userPrefs, itineraryId, arrivedIds: [], doneIds: []}),
+
+  replaceTimeline: (timeline, userPrefs) => set({timeline, userPrefs}),
 
   markArrived: (ideaId) => {
     if (!get().arrivedIds.includes(ideaId))

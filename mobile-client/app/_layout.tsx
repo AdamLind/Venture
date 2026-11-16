@@ -12,6 +12,7 @@ import {GestureHandlerRootView} from "react-native-gesture-handler";
 import "../global.css";
 import Toast, {ToastConfig} from "react-native-toast-message";
 import {View, Text, ActivityIndicator, Pressable} from "react-native";
+import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 import {useColorScheme} from "@/hooks/useColorScheme";
 import {AuthProvider, useAuth} from "../src/providers/AuthProvider";
@@ -60,7 +61,15 @@ const toastConfig: ToastConfig = {
 
 // --- THE TRAFFIC COP ---
 // We moved your original layout into this component so it has access to the useAuth hook
+/**
+ * How far bottom toasts sit above the screen's bottom edge: clear of the
+ * bottom bars (the tab bar, the builder's action bar, an idea's "Plan a date
+ * with this"), which all end about this high above the safe area.
+ */
+const TOAST_ABOVE_BARS = 84;
+
 function InitialLayout() {
+  const insets = useSafeAreaInsets();
   const {session, initialized} = useAuth();
   const segments = useSegments();
   const router = useRouter();
@@ -292,7 +301,8 @@ function InitialLayout() {
       )}
 
       <StatusBar style="light" />
-      <Toast config={toastConfig} />
+      {/* Bottom toasts ("Tap to undo") sit above the bottom bars, not on them */}
+      <Toast config={toastConfig} bottomOffset={insets.bottom + TOAST_ABOVE_BARS} />
     </ThemeProvider>
   );
 }

@@ -219,6 +219,70 @@ export const deriveSequentialTimeline = (
 };
 
 /**
+ * A live date re-planned from a point (reordering the rest of it, #63): the
+ * first `kept` stops stay as they were; the rest start at `startDate` from
+ * `location` (where you were; null = the last kept stop's place).
+ */
+export type Replan = {kept: number; startDate: string; location: LatLng | null};
+
+/**
+ * The timeline of a date that's been re-planned: each stretch of stops is
+ * laid out from its own start (the plan's, then each re-plan's), and only
+ * the last stretch heads home. With no re-plans, the same as
+ * deriveSequentialTimeline.
+ */
+export const deriveReplannedTimeline = (
+  placed: PlacedActivity[],
+  prefs: UserPrefs,
+  replans: Replan[] | null | undefined,
+): TimeSlot[] => {
+  const points = (replans ?? [])
+    .filter((r) => r.kept > 0 && r.kept < placed.length)
+    .sort((a, b) => a.kept - b.kept);
+  if (points.length === 0) {
+    // A re-plan before the first stop just moves the start
+    const fromStart = (replans ?? []).find((r) => r.kept === 0);
+    return deriveSequentialTimeline(
+      placed,
+      fromStart
+        ? {
+            ...prefs,
+            startDate: fromStart.startDate,
+            currentLocation: fromStart.location ?? prefs.currentLocation,
+          }
+        : prefs,
+    );
+  }
+
+  const slots: TimeSlot[] = [];
+  const bounds = [0, ...points.map((r) => r.kept), placed.length];
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const part = placed.slice(bounds[i], bounds[i + 1]);
+    const replan = i === 0 ? null : points[i - 1];
+    const lastBefore = placed[bounds[i] - 1];
+    const partPrefs: UserPrefs = replan
+      ? {
+          ...prefs,
+          startDate: replan.startDate,
+          currentLocation:
+            replan.location ??
+            (lastBefore ? stopLocation(lastBefore.activity, prefs) : null) ??
+            prefs.currentLocation,
+        }
+      : prefs;
+    const partSlots = deriveSequentialTimeline(part, partPrefs);
+    if (i < bounds.length - 2) {
+      // Not the last stretch: up to its last stop (no trip home, no free time)
+      const lastStop = partSlots.map((slot) => !!slot.activity).lastIndexOf(true);
+      slots.push(...partSlots.slice(0, lastStop + 1));
+    } else {
+      slots.push(...partSlots);
+    }
+  }
+  return slots;
+};
+
+/**
  * Miles of driving in a plan (go-out plans; 0 when staying in): from the
  * start, stop to stop, and home. The same legs deriveSequentialTimeline
  * draws, so "how much driving does this add" matches the timeline.

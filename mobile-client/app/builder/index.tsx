@@ -41,7 +41,6 @@ import {
   Connector,
   MarkerLabel,
   MarkerNode,
-  PROBLEM_ICON,
   PickCard,
   SmallNode,
   StatTile,
@@ -51,19 +50,29 @@ import {
   activityImage,
   formatMinutes,
 } from "@/components/builder/BuilderParts";
-import DraggableStop, {type StopLayouts} from "@/components/builder/DraggableStop";
+import DraggableStop from "@/components/builder/DraggableStop";
+import {useReorderDrag} from "@/components/builder/useReorderDrag";
 import {evaluatePlan, warningsByStop} from "@/utils/planEvaluator";
 import {bestPlacement, spotLabel} from "@/utils/bestPlacement";
-import {smartOrder, smartOrderSummary} from "@/utils/smartOrder";
-import {drivingMiles, homeOf, stopMinutes, suggestedMinutes} from "@/utils/timeline";
+import {smartOrder} from "@/utils/smartOrder";
+import {
+  drivingMiles,
+  homeOf,
+  isOpenEnded,
+  stopMinutes,
+  suggestedMinutes,
+} from "@/utils/timeline";
+
+/** How far out an open-ended date's timeline runs (it never fills up) */
+const OPEN_ENDED_ROOM_MS = 48 * 3_600_000;
 import StopLengthSheet from "@/components/builder/StopLengthSheet";
+import SmartOrderCard from "@/components/builder/SmartOrderCard";
 import PickerSheet from "@/components/builder/PickerSheet";
 import {type DateWeather, conditionsAt, getDateWeather, weatherLookup} from "@/src/lib/weather";
 import type {WeatherLookup} from "@/src/lib/weatherRules";
 import WeatherStrip from "@/components/builder/WeatherStrip";
-import Reanimated, {useAnimatedStyle, useSharedValue, withTiming} from "react-native-reanimated";
-import {scheduleOnRN} from "react-native-worklets";
-import {GestureDetector, usePanGesture} from "react-native-gesture-handler";
+import Reanimated from "react-native-reanimated";
+import {GestureDetector} from "react-native-gesture-handler";
 
 export default function BuilderScreen() {
   const scrollViewRef = useRef<ScrollViewInstance>(null);
@@ -98,9 +107,21 @@ export default function BuilderScreen() {
   const [reviewingItinerary, setReviewingItinerary] = useState<boolean>(false);
 
   // ─── Derived Timeline (The Canvas) ────────────────────────────────────────────
+  // Open-ended dates ("no end time", really a 12-hour window) are laid out
+  // against a far-off end, so there's always room for another stop and
+  // suggestions aren't limited to what's left of the 12 hours. Time-based
+  // warnings (worn out, best in the evening) still say when a day runs long.
+  const layoutPrefs = useMemo(() => {
+    if (!isOpenEnded(userPrefs)) return userPrefs;
+    const farEnd = new Date(userPrefs.startDate).getTime() + OPEN_ENDED_ROOM_MS;
+    return {
+      ...userPrefs,
+      endDate: new Date(Math.max(farEnd, new Date(userPrefs.endDate).getTime())).toISOString(),
+    };
+  }, [userPrefs]);
   const timeline = useMemo(
-    () => deriveSequentialTimeline(placed, userPrefs),
-    [placed, userPrefs],
+    () => deriveSequentialTimeline(placed, layoutPrefs),
+    [placed, layoutPrefs],
   );
   // How good this order is, and what's off about it (utils/planEvaluator.ts)
   // ─── The date's weather (src/lib/weather.ts) ─────────────────────────────────
@@ -443,17 +464,27 @@ export default function BuilderScreen() {
   // floating copy of the stop follows the finger on the UI thread (dragY);
   // the row stays behind as a faint placeholder, and `placed` reorders as
   // the copy crosses its neighbours, so times update live.
-  // See components/builder/DraggableStop.tsx.
-  const [stopLayouts] = useState<StopLayouts>(() => new Map());
-  type Drag = {id: number; x: number; y: number; width: number; height: number};
-  const [drag, setDrag] = useState<Drag | null>(null);
-  // The gesture's callbacks are created once, so they read this, not state
-  const dragRef = useRef<Drag | null>(null);
-  const lastSwapAt = useRef(0);
-  const dragY = useSharedValue(0);
-  const ghostStyle = useAnimatedStyle(() => ({
-    transform: [{translateY: dragY.get()}, {scale: 1.02}],
-  }));
+  // See components/builder/useReorderDrag.ts and DraggableStop.tsx.
+  const {
+    pan: reorderPan,
+    drag,
+    layouts: stopLayouts,
+    ghostStyle,
+  } = useReorderDrag({
+    // Read fresh from the store (the drag outlives renders)
+    order: () => useBuilderStore.getState().placed.map((p) => p.activity.idea_id as number),
+    enabled: placed.length > 1 && !reviewingItinerary,
+    onMove: (id, to) => moveStop(id, to),
+    // Banners and the smart card hold still while a stop is lifted
+    onLift: () => {
+      setFrozenPlanNotes(latestPlanNotes.current);
+      setFrozenSmart(latestSmart.current);
+    },
+    onDrop: () => {
+      setFrozenPlanNotes(null);
+      setFrozenSmart(null);
+    },
+  });
 
   // ─── Smart reorder (utils/smartOrder.ts) ─────────────────────────────────────
   // Re-checked whenever the plan changes (it's cheap); paused while a stop is
@@ -469,13 +500,6 @@ export default function BuilderScreen() {
   });
   const [frozenSmart, setFrozenSmart] = useState<typeof smart>(null);
   const smartShown = dragging ? frozenSmart : smart;
-  const smartSummary = smartShown ? smartOrderSummary(smartShown) : null;
-  // Tap the card to see what the new order changes
-  const [smartOpen, setSmartOpen] = useState(false);
-  const toggleSmart = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setSmartOpen((open) => !open);
-  };
   const stopTitle = (id: number | null) =>
     id == null ? null : placed.find((p) => p.activity.idea_id === id)?.activity.title ?? null;
 
@@ -486,7 +510,6 @@ export default function BuilderScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setPlaced(smart.order);
-    setSmartOpen(false);
     Toast.show({
       type: "success",
       text1: "Reordered your plan",
@@ -511,106 +534,6 @@ export default function BuilderScreen() {
       return next;
     });
   };
-
-  // Long press landed at `y` (timeline coordinates): lift the stop there, if any
-  const handleDragStart = (y: number) => {
-    const order = useBuilderStore.getState().placed.map((p) => p.activity.idea_id);
-    const ideaId = order.find((id) => {
-      const layout = stopLayouts.get(id);
-      return layout && y >= layout.y && y <= layout.y + layout.height;
-    });
-    const layout = ideaId != null ? stopLayouts.get(ideaId) : undefined;
-    if (ideaId == null || !layout) return;
-    dragRef.current = {id: ideaId, ...layout};
-    setFrozenPlanNotes(latestPlanNotes.current);
-    setFrozenSmart(latestSmart.current);
-    setDrag(dragRef.current);
-    if (process.env.EXPO_OS === "ios")
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  };
-
-  // The copy's middle crossed a neighbour's middle: move the stop there
-  const handleDragMove = (translationY: number) => {
-    const current = dragRef.current;
-    if (!current) return;
-    const ideaId = current.id;
-    // Let the rows re-measure after a swap before deciding again
-    if (Date.now() - lastSwapAt.current < 100) return;
-    // Swap once the copy's leading edge reaches a neighbour's middle (not
-    // its own middle: that meant dragging almost all the way past). Edge vs
-    // middle also leaves a dead zone after a swap, so it can't flip back.
-    const top = current.y + translationY;
-    const bottom = top + current.height;
-    const order = useBuilderStore.getState().placed.map((p) => p.activity.idea_id);
-    const from = order.indexOf(ideaId);
-    if (from === -1) return;
-    const middle = (id: number) => {
-      const layout = stopLayouts.get(id);
-      return layout ? layout.y + layout.height / 2 : null;
-    };
-    let to = from;
-    for (let i = from + 1; i < order.length; i++) {
-      const m = middle(order[i]);
-      if (m === null || bottom < m) break;
-      to = i;
-    }
-    if (to === from) {
-      for (let i = from - 1; i >= 0; i--) {
-        const m = middle(order[i]);
-        if (m === null || top > m) break;
-        to = i;
-      }
-    }
-    if (to !== from) {
-      lastSwapAt.current = Date.now();
-      moveStop(ideaId, to);
-      // Same kind of haptic as the pickup: a new kind gets set up on first
-      // use (on the main thread), which hitched the first swap
-      if (process.env.EXPO_OS === "ios")
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-  };
-
-  const clearDrag = () => {
-    setFrozenPlanNotes(null);
-    setFrozenSmart(null);
-    dragRef.current = null;
-    setDrag(null);
-  };
-
-  // Settle the copy onto the stop's new row, then drop it
-  const handleDragEnd = () => {
-    const current = dragRef.current;
-    const layout = current ? stopLayouts.get(current.id) : undefined;
-    if (!current || !layout) {
-      clearDrag();
-      return;
-    }
-    dragY.set(withTiming(layout.y - current.y, {duration: 160}, () => {
-      "worklet";
-      scheduleOnRN(clearDrag);
-    }));
-  };
-
-  const reorderPan = usePanGesture({
-    enabled: placed.length > 1 && !reviewingItinerary,
-    // Hold first, so a normal swipe still scrolls and taps still work
-    activateAfterLongPress: 250,
-    onActivate: (e) => {
-      "worklet";
-      dragY.set(0);
-      scheduleOnRN(handleDragStart, e.y);
-    },
-    onUpdate: (e) => {
-      "worklet";
-      dragY.set(e.translationY);
-      scheduleOnRN(handleDragMove, e.translationY);
-    },
-    onDeactivate: () => {
-      "worklet";
-      scheduleOnRN(handleDragEnd);
-    },
-  });
 
   // ─── How long at each stop (tap a stop) ───────────────────────────────────────
   const [editingStopId, setEditingStopId] = useState<number | null>(null);
@@ -754,7 +677,10 @@ export default function BuilderScreen() {
     minute: "2-digit",
   });
 
-  // "Fit plan": move the end time to when the plan finishes (next 15 minutes)
+  // "Extend to 10:30 PM": move the date's end time to when the plan finishes
+  // (next 15 minutes); the stops don't change
+  const extendedEnd = new Date(Math.ceil(lastBusyEnd / (15 * 60_000)) * 15 * 60_000);
+  const extendedEndLabel = extendedEnd.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
   const fitEndToPlan = () => {
     const previousEnd = userPrefs.endDate;
     const quarter = 15 * 60_000;
@@ -1011,90 +937,7 @@ export default function BuilderScreen() {
             />
 
             {/* Smart reorder: only when a clearly better order exists */}
-            {smartSummary && smartShown && (
-              <View className="mx-5 mb-3 bg-blue-600/10 border border-blue-500/30 rounded-2xl">
-                <View className="flex-row items-center gap-3 pl-4 pr-2 py-2">
-                  {/* Tap the text to see what changes */}
-                  <Pressable
-                    onPress={toggleSmart}
-                    accessibilityRole="button"
-                    accessibilityState={{expanded: smartOpen}}
-                    accessibilityHint="Shows what the new order fixes"
-                    className="flex-1 flex-row items-center gap-3 active:opacity-70"
-                  >
-                    <Ionicons name="sparkles" size={18} color="#60a5fa" />
-                    <Text className="flex-1 text-zinc-200 text-sm">{smartSummary}</Text>
-                    <Ionicons
-                      name={smartOpen ? "chevron-up" : "chevron-down"}
-                      size={16}
-                      color="#a1a1aa"
-                    />
-                  </Pressable>
-                  <Pressable
-                    onPress={applySmartOrder}
-                    accessibilityRole="button"
-                    accessibilityLabel="Use the better order"
-                    className="bg-blue-500 rounded-full px-4 py-2 active:opacity-80"
-                  >
-                    <Text className="text-white font-bold text-sm">
-                      {smartShown.fixed.length > 0 ? "Fix order" : "Reorder"}
-                    </Text>
-                  </Pressable>
-                </View>
-
-                {/* What changes: the fixes, anything new it costs, the order */}
-                {smartOpen && (
-                  <View className="border-t border-blue-500/30 px-4 pt-3 pb-3.5 gap-2">
-                    {smartShown.fixed.map((issue) => {
-                      const title = stopTitle(issue.stopId);
-                      return (
-                        <View key={`fixed-${issue.kind}-${issue.stopId ?? ""}`} className="flex-row items-center gap-2">
-                          <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
-                          <Ionicons
-                            name={PROBLEM_ICON[issue.kind] ?? "alert-circle-outline"}
-                            size={14}
-                            color="#a1a1aa"
-                          />
-                          <Text className="flex-1 text-zinc-300 text-sm">
-                            {title ? <Text className="text-white font-semibold">{title}: </Text> : null}
-                            {issue.message}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                    {smartShown.milesSaved >= 0.5 && (
-                      <View className="flex-row items-center gap-2">
-                        <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
-                        <Ionicons name="car-outline" size={14} color="#a1a1aa" />
-                        <Text className="flex-1 text-zinc-300 text-sm">
-                          {smartShown.milesSaved.toFixed(1)} mi less driving
-                        </Text>
-                      </View>
-                    )}
-                    {smartShown.introduced.map((issue) => {
-                      const title = stopTitle(issue.stopId);
-                      return (
-                        <View key={`new-${issue.kind}-${issue.stopId ?? ""}`} className="flex-row items-center gap-2">
-                          <Ionicons name="alert-circle-outline" size={16} color="#fb923c" />
-                          <Ionicons
-                            name={PROBLEM_ICON[issue.kind] ?? "alert-circle-outline"}
-                            size={14}
-                            color="#a1a1aa"
-                          />
-                          <Text className="flex-1 text-orange-200 text-sm">
-                            New: {title ? `${title}: ` : ""}
-                            {issue.message}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                    <Text className="text-zinc-500 text-xs mt-1">
-                      New order: {smartShown.order.map((p) => p.activity.title).join(" → ")}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            )}
+            <SmartOrderCard result={smartShown} onApply={applySmartOrder} titleOf={stopTitle} />
 
             {/* Notes about the whole plan (running late, backtracking) */}
             {(frozenPlanNotes ?? planNotes).map((note) => (
@@ -1112,17 +955,18 @@ export default function BuilderScreen() {
                   {note.kind === "BACKTRACK"
                     ? "Try a different order to cut the driving."
                     : note.kind === "PAST_END"
-                      ? "Extend the date, or trim a stop."
+                      ? "Make the date end later, or trim a stop."
                       : "Move or remove a stop to fit."}
                 </Text>
                 {note.kind === "PAST_END" && (
                   <Pressable
                     onPress={fitEndToPlan}
                     accessibilityRole="button"
-                    accessibilityLabel="Extend the end time to fit the plan"
+                    accessibilityLabel={`Make the date end at ${extendedEndLabel}`}
+                    accessibilityHint="Your stops stay as they are"
                     className="border border-orange-500/30 rounded-full px-3 py-1.5 active:opacity-70"
                   >
-                    <Text className="text-orange-200 font-bold text-sm">Fit plan</Text>
+                    <Text className="text-orange-200 font-bold text-sm">Extend to {extendedEndLabel}</Text>
                   </Pressable>
                 )}
               </View>
