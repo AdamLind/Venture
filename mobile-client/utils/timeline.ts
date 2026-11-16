@@ -17,7 +17,17 @@ import type {WeatherLookup} from "@/src/lib/weatherRules";
 export type PlacedActivity = {
   // The order of the array dictates the time.
   activity: ScoredActivity;
+  /** How long you plan to spend, if you changed it (else the idea's estimate) */
+  durationMinutes?: number;
 };
+
+/** The idea's suggested length, on the 15-minute grid. */
+export const suggestedMinutes = (activity: any): number =>
+  snapTo15(Number(activity?.est_duration_minutes) || 60);
+
+/** How long a placed stop lasts: your length if you set one, else the suggestion. */
+export const stopMinutes = (p: PlacedActivity): number =>
+  p.durationMinutes != null ? p.durationMinutes : suggestedMinutes(p.activity);
 
 export type LatLng = {latitude: number; longitude: number};
 
@@ -61,8 +71,8 @@ const legMiles = (a: any, b: any): number => {
 
 /** Starting this close to the saved home area means you're starting from home. */
 export const HOME_RADIUS_MILES = 2;
-/** Legs shorter than this aren't travel (next door, or already there). */
-export const SAME_PLACE_MILES = 0.25;
+/** Legs shorter than this aren't travel: the same block or plaza (~500 ft), or already there. Short hops beyond it get real walking times with #50. */
+export const SAME_PLACE_MILES = 0.1;
 
 /**
  * Home, for stay-in stops and the trip back. The saved home is only an area
@@ -168,8 +178,7 @@ export const deriveSequentialTimeline = (
       }
     }
 
-    const durationMs =
-      snapTo15(Number(activity.est_duration_minutes) || 60) * 60_000;
+    const durationMs = stopMinutes(p) * 60_000;
 
     slots.push({
       id: `act-${activity.idea_id}-${index}`,

@@ -133,7 +133,15 @@ export function stopProgress(itinerary: Itinerary, now = Date.now()) {
  */
 export function buildTimeline(itinerary: Itinerary): TimeSlot[] | null {
   if (!itinerary.prefs_snapshot) return null;
-  const placed = liveStops(itinerary).map((s) => ({activity: s.activity!}));
+  // Each stop keeps the length it was saved with (you may have changed it);
+  // older stops without times use the idea's suggestion
+  const placed = liveStops(itinerary).map((s) => ({
+    activity: s.activity!,
+    durationMinutes:
+      s.starts_at && s.ends_at
+        ? Math.round((new Date(s.ends_at).getTime() - new Date(s.starts_at).getTime()) / 60_000)
+        : undefined,
+  }));
   if (placed.length === 0) return null;
   return deriveSequentialTimeline(placed, itinerary.prefs_snapshot);
 }

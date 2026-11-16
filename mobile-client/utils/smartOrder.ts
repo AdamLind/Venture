@@ -1,0 +1,120 @@
+// utils/smartOrder.ts
+// Smart reorder (#56): put a plan's stops in the best order the plan
+// evaluator can find, and say what that fixes.
+//
+//   Up to EXACT_STOPS stops: try every order (at most 120) and keep the best.
+//   More: start from the current order and keep moving single stops to
+//   other positions while that raises the score (a "local search"); fast,
+//   and almost always at or near the best order.
+//
+// Only offers a new order when it's clearly better (MIN_GAIN), so the plan
+// doesn't shuffle over a rounding difference. Pure: no database or stores.
+
+import type {UserPrefs} from "@/src/store/usePrefsStore";
+import type {WeatherLookup} from "@/src/lib/weatherRules";
+import type {PlacedActivity} from "./timeline";
+import {type PlanEvaluation, type PlanIssue, evaluatePlan} from "./planEvaluator";
+
+const EXACT_STOPS = 5;
+/** A new order must beat the current one by this many points. */
+const MIN_GAIN = 3;
+/** Safety limit on improvement passes for long plans. */
+const MAX_PASSES = 12;
+
+export type SmartOrderResult = {
+  order: PlacedActivity[];
+  before: PlanEvaluation;
+  after: PlanEvaluation;
+  /** The new order is clearly better than the current one */
+  improved: boolean;
+  /** Problems the new order fixes (from the current order's list) */
+  fixed: PlanIssue[];
+  /** Fewer miles of driving (0 if none) */
+  milesSaved: number;
+};
+
+const idOf = (p: PlacedActivity) => p.activity.idea_id as number;
+const sameOrder = (a: PlacedActivity[], b: PlacedActivity[]) =>
+  a.length === b.length && a.every((p, i) => idOf(p) === idOf(b[i]));
+
+function permutations<T>(items: T[]): T[][] {
+  if (items.length <= 1) return [items];
+  const out: T[][] = [];
+  items.forEach((item, i) => {
+    const rest = [...items.slice(0, i), ...items.slice(i + 1)];
+    for (const perm of permutations(rest)) out.push([item, ...perm]);
+  });
+  return out;
+}
+
+/** The best order found for `placed` (and whether it beats the current one). */
+export function smartOrder(
+  placed: PlacedActivity[],
+  prefs: UserPrefs,
+  options: {weatherAt?: WeatherLookup | null} = {},
+): SmartOrderResult {
+  const evaluate = (order: PlacedActivity[]) =>
+    evaluatePlan(order, prefs, undefined, {weatherAt: options.weatherAt});
+  const before = evaluate(placed);
+
+  let best = placed;
+  let bestEval = before;
+  const consider = (order: PlacedActivity[]) => {
+    const e = evaluate(order);
+    // Ties go to fewer hard problems, then less driving
+    const hard = (x: PlanEvaluation) => x.issues.filter((i) => i.severity === "hard").length;
+    if (
+      e.score > bestEval.score ||
+      (e.score === bestEval.score &&
+        (hard(e) < hard(bestEval) || (hard(e) === hard(bestEval) && e.routeMiles < bestEval.routeMiles - 0.05)))
+    ) {
+      best = order;
+      bestEval = e;
+    }
+  };
+
+  if (placed.length >= 2 && placed.length <= EXACT_STOPS) {
+    for (const order of permutations(placed)) if (!sameOrder(order, placed)) consider(order);
+  } else if (placed.length > EXACT_STOPS) {
+    // Local search: move one stop anywhere else, keep any move that helps
+    for (let pass = 0; pass < MAX_PASSES; pass++) {
+      const start = best;
+      for (let from = 0; from < start.length; from++) {
+        for (let to = 0; to < start.length; to++) {
+          if (from === to) continue;
+          const order = [...start];
+          const [moved] = order.splice(from, 1);
+          order.splice(to, 0, moved);
+          consider(order);
+        }
+      }
+      if (best === start) break; // no move helped
+    }
+  }
+
+  const improved = !sameOrder(best, placed) && bestEval.score >= before.score + MIN_GAIN;
+  const key = (i: PlanIssue) => `${i.kind}:${i.stopId ?? ""}`;
+  const after = improved ? bestEval : before;
+  const remaining = new Set(after.issues.map(key));
+  return {
+    order: improved ? best : placed,
+    before,
+    after,
+    improved,
+    fixed: improved ? before.issues.filter((i) => !remaining.has(key(i))) : [],
+    milesSaved: improved ? Math.max(0, before.routeMiles - after.routeMiles) : 0,
+  };
+}
+
+/** "Fixes 2 problems and saves 4.1 mi of driving" (or null if nothing to say). */
+export function smartOrderSummary(result: SmartOrderResult): string | null {
+  if (!result.improved) return null;
+  const parts: string[] = [];
+  // Net: a new order can fix some problems and create others
+  const n = result.before.issues.length - result.after.issues.length;
+  if (n > 0) parts.push(`fixes ${n} ${n === 1 ? "problem" : "problems"}`);
+  if (result.milesSaved >= 0.5) parts.push(`saves ${result.milesSaved.toFixed(1)} mi of driving`);
+  if (parts.length === 0) parts.push("fits your day better");
+  const text = parts.join(" and ");
+  return `A better order ${text}`;
+}

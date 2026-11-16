@@ -23,6 +23,7 @@ import {
   type LatLng,
   type PlacedActivity,
   deriveSequentialTimeline,
+  suggestedMinutes,
   evaluateContextAt,
   formatTime,
   homeOf,
@@ -38,13 +39,17 @@ import {type WeatherLookup, weatherProblems} from "@/src/lib/weatherRules";
 export const PENALTY = {
   backToBackMeals: 60, // hard
   backToBackActive: 50, // hard
-  pastEndPer15Min: 10, // hard, per 15 minutes (or part) past the end
+  pastEndPer15Min: 10, // per 15 minutes (or part) past the end; soft: a nudge, you can extend the date
   stillFull: 30,
   offHours: 30,
   wornOut: 25,
   afterDark: 25,
   activeAfterMeal: 20,
   oddMealTime: 15,
+  // Shorter than the idea's suggested length: a fixed-length idea (a movie,
+  // a class) can't really be cut, a flexible one just gets rushed
+  shortenedFixed: 40, // hard
+  shortenedFlexible: 15,
   // Avoidable travel: miles beyond the shortest route through the same stops.
   // Capped below the hard rules, so saving miles never justifies, say, two
   // dinners in a row.
@@ -83,6 +88,7 @@ export type PlanIssueKind =
   | "AFTER_DARK"
   | "ACTIVE_AFTER_MEAL"
   | "ODD_MEAL_TIME"
+  | "SHORTENED"
   | "BACKTRACK"
   // Weather (src/lib/weatherRules.ts)
   | "TOO_COLD"
@@ -126,7 +132,23 @@ const routeLength = (points: LatLng[]) => {
  * up to LIMITS.exactRouteStops; beyond that, nearest stop first, then keep
  * any swap that shortens it.
  */
+// The shortest route doesn't depend on the order you pass the stops in, and
+// smart reorder evaluates the same set thousands of times: remember it.
+const routeCache = new Map<string, number>();
+const ROUTE_CACHE_SIZE = 64;
+const pointKey = (p: LatLng) => `${p.latitude.toFixed(5)},${p.longitude.toFixed(5)}`;
+
 export function shortestRouteMiles(start: LatLng, stops: LatLng[], end: LatLng): number {
+  const key = `${pointKey(start)}|${pointKey(end)}|${stops.map(pointKey).sort().join(";")}`;
+  const cached = routeCache.get(key);
+  if (cached !== undefined) return cached;
+  const miles = computeShortestRoute(start, stops, end);
+  if (routeCache.size >= ROUTE_CACHE_SIZE) routeCache.delete(routeCache.keys().next().value!);
+  routeCache.set(key, miles);
+  return miles;
+}
+
+function computeShortestRoute(start: LatLng, stops: LatLng[], end: LatLng): number {
   const n = stops.length;
   if (n === 0) return safeGetDistance(start, end);
 
@@ -338,6 +360,21 @@ export function evaluatePlan(
       }
     }
 
+    // Shorter than suggested (you can lengthen freely)
+    const suggested = suggestedMinutes(activity);
+    if (minutes < suggested) {
+      const fixed = activity.is_duration_variable === false;
+      add({
+        kind: "SHORTENED",
+        severity: fixed ? "hard" : "soft",
+        stopId: id,
+        message: fixed
+          ? `Usually takes ${formatMinutes(suggested)}`
+          : `Shorter than suggested (${formatMinutes(suggested)})`,
+        penalty: fixed ? PENALTY.shortenedFixed : PENALTY.shortenedFlexible,
+      });
+    }
+
     // Weather: too cold / hot, rain, wind, no snow (for what the idea needs)
     for (const problem of weatherProblems(activity, slot.startTime, slot.endTime, options.weatherAt)) {
       add({...problem, stopId: id});
@@ -353,7 +390,7 @@ export function evaluatePlan(
     if (over > 0) {
       add({
         kind: "PAST_END",
-        severity: "hard",
+        severity: "soft",
         stopId: null,
         message: `Runs ${formatMinutes(over)} past ${formatTime(new Date(prefs.endDate).getTime())}`,
         penalty: Math.ceil(over / 15) * PENALTY.pastEndPer15Min,

@@ -7,6 +7,7 @@ import {
   deriveSequentialTimeline,
   queryCandidates,
   fetchActivityForPlan,
+  preferenceScore,
   evaluateContextAt,
 } from "@/utils/itineraryEngine";
 import {useLocalSearchParams, router} from "expo-router";
@@ -51,7 +52,9 @@ import {
 } from "@/components/builder/BuilderParts";
 import DraggableStop, {type StopLayouts} from "@/components/builder/DraggableStop";
 import {evaluatePlan, warningsByStop} from "@/utils/planEvaluator";
-import {homeOf} from "@/utils/timeline";
+import {smartOrder, smartOrderSummary} from "@/utils/smartOrder";
+import {homeOf, stopMinutes, suggestedMinutes} from "@/utils/timeline";
+import StopLengthSheet from "@/components/builder/StopLengthSheet";
 import {type DateWeather, conditionsAt, getDateWeather, weatherLookup} from "@/src/lib/weather";
 import type {WeatherLookup} from "@/src/lib/weatherRules";
 import WeatherStrip from "@/components/builder/WeatherStrip";
@@ -61,7 +64,7 @@ import {GestureDetector, usePanGesture} from "react-native-gesture-handler";
 
 export default function BuilderScreen() {
   const scrollViewRef = useRef<ScrollViewInstance>(null);
-  const {prefs: userPrefs, resetPrefs} = usePrefsStore();
+  const {prefs: userPrefs, resetPrefs, setPrefs} = usePrefsStore();
   const clearBuilder = useBuilderStore((state) => state.clearBuilder);
   const headCount = userPrefs.headCount;
 
@@ -180,6 +183,8 @@ export default function BuilderScreen() {
     [activities, placed],
   );
 
+  const rankWeather = useMemo(() => weatherLookup(weather), [weather]);
+
   const sortedActivities = useMemo(() => {
     return availableActivities
       .map((activity) => {
@@ -207,18 +212,32 @@ export default function BuilderScreen() {
           fitStatus = "OVER_BUDGET";
         }
 
-        return {...activity, fitStatus, travelMins, totalCost};
+        // How the plan scores with this added (the same rules as the stop
+        // warnings), plus how well it matches what you asked for
+        const withIt = evaluatePlan([...placed, {activity}], userPrefs, undefined, {
+          weatherAt: rankWeather,
+        });
+        const planProblem = warningsByStop(withIt).get(activity.idea_id) ?? null;
+        const rank =
+          withIt.score - evaluation.score +
+          preferenceScore(activity, userPrefs, Number(activity.distance) || 0);
+
+        return {...activity, fitStatus, travelMins, totalCost, planProblem, rank};
       })
+      // What fits first, then the best fits at the top
       .sort((a, b) => {
-        if (a.fitStatus === b.fitStatus) return 0;
-        return a.fitStatus === "FITS_NOW" ? -1 : 1;
+        if (a.fitStatus !== b.fitStatus) return a.fitStatus === "FITS_NOW" ? -1 : 1;
+        return b.rank - a.rank;
       });
   }, [
     availableActivities,
     activeGapDuration,
-    userPrefs.modality,
     remainingBudget,
     isInfinite,
+    placed,
+    userPrefs,
+    evaluation.score,
+    rankWeather,
   ]);
 
   // ─── Loading ideas ────────────────────────────────────────────────────────────
@@ -374,6 +393,42 @@ export default function BuilderScreen() {
     transform: [{translateY: dragY.get()}, {scale: 1.02}],
   }));
 
+  // ─── Smart reorder (utils/smartOrder.ts) ─────────────────────────────────────
+  // Re-checked whenever the plan changes (it's cheap); paused while a stop is
+  // lifted, when the card holds still like the banners.
+  const dragging = drag !== null;
+  const smart = useMemo(
+    () => (dragging ? null : smartOrder(placed, userPrefs, {weatherAt: rankWeather})),
+    [placed, userPrefs, rankWeather, dragging],
+  );
+  const latestSmart = useRef(smart);
+  useEffect(() => {
+    if (smart) latestSmart.current = smart;
+  });
+  const [frozenSmart, setFrozenSmart] = useState<typeof smart>(null);
+  const smartShown = dragging ? frozenSmart : smart;
+  const smartSummary = smartShown ? smartOrderSummary(smartShown) : null;
+
+  const applySmartOrder = () => {
+    if (!smart?.improved) return;
+    const previous = placed;
+    if (process.env.EXPO_OS === "ios")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setPlaced(smart.order);
+    Toast.show({
+      type: "success",
+      text1: "Reordered your plan",
+      text2: "Tap to undo",
+      position: "bottom",
+      onPress: () => {
+        Toast.hide();
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setPlaced(previous);
+      },
+    });
+  };
+
   const moveStop = (ideaId: number, toIndex: number) => {
     setPlaced((prev) => {
       const from = prev.findIndex((p) => p.activity.idea_id === ideaId);
@@ -397,6 +452,7 @@ export default function BuilderScreen() {
     if (ideaId == null || !layout) return;
     dragRef.current = {id: ideaId, ...layout};
     setFrozenPlanNotes(latestPlanNotes.current);
+    setFrozenSmart(latestSmart.current);
     setDrag(dragRef.current);
     if (process.env.EXPO_OS === "ios")
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -446,6 +502,7 @@ export default function BuilderScreen() {
 
   const clearDrag = () => {
     setFrozenPlanNotes(null);
+    setFrozenSmart(null);
     dragRef.current = null;
     setDrag(null);
   };
@@ -483,6 +540,24 @@ export default function BuilderScreen() {
       scheduleOnRN(handleDragEnd);
     },
   });
+
+  // ─── How long at each stop (tap a stop) ───────────────────────────────────────
+  const [editingStopId, setEditingStopId] = useState<number | null>(null);
+  const setStopLength = (ideaId: number, minutes: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setPlaced((prev) =>
+      prev.map((p) =>
+        p.activity.idea_id === ideaId
+          ? {
+              ...p,
+              // Back at the suggestion counts as not changed
+              durationMinutes: minutes === suggestedMinutes(p.activity) ? undefined : minutes,
+            }
+          : p,
+      ),
+    );
+    setEditingStopId(null);
+  };
 
   const handleRemoveActivity = (ideaId: number | string) => {
     if (process.env.EXPO_OS === "ios")
@@ -598,6 +673,35 @@ export default function BuilderScreen() {
     ? `${simpleStartTime} onward`
     : `${simpleStartTime} – ${simpleEndTime}`;
   const stopSlots = timeline.filter((slot) => slot.activity);
+  // When the plan really finishes (trip home included), and whether that's late
+  const lastBusyEnd = timeline
+    .filter((slot) => slot.type === "OCCUPIED")
+    .reduce((end, slot) => Math.max(end, slot.endTime), 0);
+  const runsLate = !isInfinite && lastBusyEnd > new Date(userPrefs.endDate).getTime();
+  const realEndTime = new Date(lastBusyEnd).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  // "Fit plan": move the end time to when the plan finishes (next 15 minutes)
+  const fitEndToPlan = () => {
+    const previousEnd = userPrefs.endDate;
+    const quarter = 15 * 60_000;
+    const newEnd = new Date(Math.ceil(lastBusyEnd / quarter) * quarter);
+    if (process.env.EXPO_OS === "ios")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPrefs({endDate: newEnd.toISOString()});
+    Toast.show({
+      type: "success",
+      text1: `Your date now ends at ${newEnd.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`,
+      text2: "Tap to undo",
+      position: "bottom",
+      onPress: () => {
+        Toast.hide();
+        setPrefs({endDate: previousEnd});
+      },
+    });
+  };
   const stopCount = stopSlots.length;
   const stopsLabel = `${stopCount} ${stopCount === 1 ? "stop" : "stops"}`;
   const budgetLeftLabel = `$${Math.max(0, remainingBudget)} left`;
@@ -720,6 +824,8 @@ export default function BuilderScreen() {
                 canMove && index < stopCount - 1 ? () => moveStop(ideaId, index + 1) : undefined
               }
               warning={stopWarnings.get(ideaId)}
+              onEditLength={editable ? () => setEditingStopId(ideaId) : undefined}
+              adjusted={placed.some((p) => p.activity.idea_id === ideaId && p.durationMinutes != null)}
             />
           </TimelineRow>
         </DraggableStop>
@@ -750,7 +856,12 @@ export default function BuilderScreen() {
       ]}
     >
       <TimelineRow node={<StopNode index={stopNumber(dragSlot.id)} />}>
-        <StopCard slot={dragSlot} headCount={headCount} warning={stopWarnings.get(drag.id)} />
+        <StopCard
+          slot={dragSlot}
+          headCount={headCount}
+          warning={stopWarnings.get(drag.id)}
+          adjusted={placed.some((p) => p.activity.idea_id === drag.id && p.durationMinutes != null)}
+        />
       </TimelineRow>
     </Reanimated.View>
   );
@@ -763,7 +874,12 @@ export default function BuilderScreen() {
       </TimelineRow>
       {renderSlots(editable)}
       <TimelineRow isLast node={<MarkerNode icon="flag" />}>
-        <MarkerLabel label={goingOut && stopCount > 0 ? "Ends at home" : "Ends"} time={isInfinite ? "Whenever" : simpleEndTime} />
+        <MarkerLabel
+          label={goingOut && stopCount > 0 ? "Ends at home" : "Ends"}
+          time={isInfinite ? "Whenever" : runsLate ? realEndTime : simpleEndTime}
+          late={runsLate}
+          note={runsLate ? `planned ${simpleEndTime}` : undefined}
+        />
       </TimelineRow>
       {editable && dragGhost}
     </View>
@@ -820,6 +936,24 @@ export default function BuilderScreen() {
               place={weatherPlace}
             />
 
+            {/* Smart reorder: only when a clearly better order exists */}
+            {smartSummary && (
+              <View className="mx-5 mb-3 flex-row items-center gap-3 bg-blue-600/10 border border-blue-500/30 rounded-2xl pl-4 pr-2 py-2">
+                <Ionicons name="sparkles" size={18} color="#60a5fa" />
+                <Text className="flex-1 text-zinc-200 text-sm">{smartSummary}</Text>
+                <Pressable
+                  onPress={applySmartOrder}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use the better order"
+                  className="bg-blue-500 rounded-full px-4 py-2 active:opacity-80"
+                >
+                  <Text className="text-white font-bold text-sm">
+                    {smartShown && smartShown.fixed.length > 0 ? "Fix order" : "Reorder"}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
             {/* Notes about the whole plan (running late, backtracking) */}
             {(frozenPlanNotes ?? planNotes).map((note) => (
               <View
@@ -835,8 +969,20 @@ export default function BuilderScreen() {
                   {note.message}.{" "}
                   {note.kind === "BACKTRACK"
                     ? "Try a different order to cut the driving."
-                    : "Move or remove a stop to fit."}
+                    : note.kind === "PAST_END"
+                      ? "Extend the date, or trim a stop."
+                      : "Move or remove a stop to fit."}
                 </Text>
+                {note.kind === "PAST_END" && (
+                  <Pressable
+                    onPress={fitEndToPlan}
+                    accessibilityRole="button"
+                    accessibilityLabel="Extend the end time to fit the plan"
+                    className="border border-orange-500/30 rounded-full px-3 py-1.5 active:opacity-70"
+                  >
+                    <Text className="text-orange-200 font-bold text-sm">Fit plan</Text>
+                  </Pressable>
+                )}
               </View>
             ))}
 
@@ -1104,6 +1250,35 @@ export default function BuilderScreen() {
           </View>
         </View>
       </Modal>
+      {/* How long at a stop (tap a stop card) */}
+      <StopLengthSheet
+        stop={(() => {
+          const p = placed.find((x) => x.activity.idea_id === editingStopId);
+          const slot = timeline.find((x) => x.activity?.idea_id === editingStopId);
+          return p && slot
+            ? {
+                title: p.activity.title,
+                startMs: slot.startTime,
+                minutes: stopMinutes(p),
+                suggested: suggestedMinutes(p.activity),
+                fixed: (p.activity as any).is_duration_variable === false,
+                // Free time before the end (the whole day shifts with this stop)
+                roomMinutes: isInfinite
+                  ? null
+                  : Math.round(
+                      (new Date(userPrefs.endDate).getTime() -
+                        timeline
+                          .filter((x) => x.type === "OCCUPIED")
+                          .reduce((end, x) => Math.max(end, x.endTime), 0)) /
+                        60_000,
+                    ),
+                endLabel: simpleEndTime,
+              }
+            : null;
+        })()}
+        onDone={(minutes) => editingStopId != null && setStopLength(editingStopId, minutes)}
+        onClose={() => setEditingStopId(null)}
+      />
     </SafeAreaView>
   );
 }

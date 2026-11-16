@@ -24,29 +24,37 @@ import {useNotificationStore} from "@/src/store/useNotificationStore";
 import {signOut} from "@/src/lib/signOut";
 
 // --- CREATE YOUR CUSTOM TOAST THEMES ---
+// Custom toasts draw their own box, so they have to pass taps through
+// themselves (`onPress`): "Tap to undo" toasts rely on it.
 const toastConfig: ToastConfig = {
   // Override the default 'error' toast
-  error: ({text1, text2}) => (
-    <View className="w-[90%] bg-zinc-900 border border-red-900/50 rounded-2xl p-4 shadow-2xl flex-row items-center">
+  error: ({text1, text2, onPress}) => (
+    <Pressable
+      onPress={onPress}
+      className="w-[90%] bg-zinc-900 border border-red-900/50 rounded-2xl p-4 shadow-2xl flex-row items-center active:opacity-80"
+    >
       <View className="flex-1">
         <Text className="text-red-400 font-bold text-base mb-0.5">{text1}</Text>
         {text2 && (
           <Text className="text-zinc-400 text-sm font-medium">{text2}</Text>
         )}
       </View>
-    </View>
+    </Pressable>
   ),
 
   // Override the default 'success' toast
-  success: ({text1, text2}) => (
-    <View className="w-[90%] bg-zinc-900 border border-zinc-700 rounded-2xl p-4 shadow-2xl flex-row items-center">
+  success: ({text1, text2, onPress}) => (
+    <Pressable
+      onPress={onPress}
+      className="w-[90%] bg-zinc-900 border border-zinc-700 rounded-2xl p-4 shadow-2xl flex-row items-center active:opacity-80"
+    >
       <View className="flex-1">
         <Text className="text-white font-bold text-base mb-0.5">{text1}</Text>
         {text2 && (
           <Text className="text-zinc-400 text-sm font-medium">{text2}</Text>
         )}
       </View>
-    </View>
+    </Pressable>
   ),
 };
 

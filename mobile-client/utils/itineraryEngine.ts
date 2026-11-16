@@ -29,6 +29,25 @@ export type UI_Trigger = "PROMPT_DINNER" | "PROMPT_LUNCH" | null;
 
 // ─── Unified Scoring ───────────────────────────────────────────────────────────
 
+/**
+ * How well an idea matches what you asked for, apart from how it fits the
+ * plan (the plan evaluator judges that): vibes, budget and distance. The
+ * builder ranks suggestions by this plus the evaluator's verdict.
+ */
+export const preferenceScore = (item: any, prefs: UserPrefs, miles: number): number => {
+  let score = 0;
+  if (prefs.vibes && prefs.vibes.length > 0) {
+    score += prefs.vibes.filter((v) => item.tags?.includes(v)).length * 15;
+  }
+  const budgetPerPerson = (Number(prefs.budget) || 0) / (Number(prefs.headCount) || 1);
+  score -= Math.abs((Number(item.est_price_per_person) || 0) - budgetPerPerson) * 1.5;
+  if (prefs.modality === "GO_OUT") {
+    score -= miles * 1.2; // long drives (home counts too)
+    if (item.modality === "STAY_IN") score -= STAY_IN_ON_GO_OUT_PENALTY;
+  }
+  return score;
+};
+
 export const deriveInitialContext = (prefs: UserPrefs): DayContext => {
   let satiation = 50;
   let exhaustion = 0;
@@ -71,10 +90,15 @@ export const scoreActivities = ({
 }): ScoredActivity[] => {
   if (!activities?.length) return [];
 
+  // Where you're coming from: the plan's start, or the last stop's place
+  const from =
+    origin && "idea_id" in origin ? stopLocation(origin, prefs) : origin;
+
   return activities
     .map((item) => {
-      // Stay-in ideas happen at home
-      const distance = safeGetDistance(origin, stopLocation(item, prefs));
+      // Both ends where they really happen: stay-in ideas (including a
+      // stay-in last stop as the origin) are at home, not "nowhere"
+      const distance = safeGetDistance(from, stopLocation(item, prefs));
       let score = 50; // Base score
 
       // --- 1. BIOLOGICAL CONTEXT SCORING ---
@@ -102,13 +126,8 @@ export const scoreActivities = ({
         if (context.exhaustion > 60) score += 25;
       }
 
-      // --- 2. VIBES/TAGS MATCHING ---
-      if (prefs.vibes && prefs.vibes.length > 0) {
-        const matchCount = prefs.vibes.filter((v) =>
-          item.tags?.includes(v),
-        ).length;
-        score += matchCount * 15;
-      }
+      // --- 2. WHAT YOU PREFER: vibes, budget, distance (shared with the builder) ---
+      score += preferenceScore(item, prefs, distance);
 
       // --- 3. TIME OF DAY ---
       // Outside its best time (stargazing at noon) it sinks, but stays pickable
@@ -128,17 +147,6 @@ export const scoreActivities = ({
           : [];
       score -= weather.reduce((sum, problem) => sum + problem.penalty, 0);
 
-      // --- 4. LOGISTICAL PENALTIES ---
-      const budgetPerPerson =
-        (Number(prefs.budget) || 0) / (Number(prefs.headCount) || 1);
-      score -=
-        Math.abs((Number(item.est_price_per_person) || 0) - budgetPerPerson) *
-        1.5;
-
-      if (prefs.modality === "GO_OUT") {
-        score -= distance * 1.2; // Penalize long drives (home counts too)
-        if (item.modality === "STAY_IN") score -= STAY_IN_ON_GO_OUT_PENALTY;
-      }
 
       return {
         ...item,

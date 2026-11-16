@@ -108,13 +108,26 @@ export function MarkerNode({icon}: {icon: IconName}) {
   );
 }
 
-export function MarkerLabel({label, time}: {label: string; time: string}) {
+export function MarkerLabel({
+  label,
+  time,
+  late = false,
+  note,
+}: {
+  label: string;
+  time: string;
+  /** Running past the planned time: the time shows in orange */
+  late?: boolean;
+  /** e.g. "planned 10:00 PM" */
+  note?: string;
+}) {
   return (
     <View className="flex-row items-baseline gap-2" style={{paddingTop: NODE_TOP - 2}}>
       <Text className="text-zinc-500 text-xs font-bold uppercase tracking-widest">
         {label}
       </Text>
-      <Text className="text-white font-bold text-base">{time}</Text>
+      <Text className={`font-bold text-base ${late ? "text-orange-400" : "text-white"}`}>{time}</Text>
+      {note ? <Text className="text-zinc-500 text-xs">{note}</Text> : null}
     </View>
   );
 }
@@ -129,10 +142,16 @@ function StopCardView({
   onMoveEarlier,
   onMoveLater,
   warning,
+  onEditLength,
+  adjusted = false,
 }: {
   slot: {startTime: number; endTime: number; activity?: any};
   headCount: number;
   onRemove?: () => void;
+  /** Tap the card to change how long the stop lasts */
+  onEditLength?: () => void;
+  /** You changed its length from the idea's suggestion */
+  adjusted?: boolean;
   /** The plan evaluator's most serious note for this stop */
   warning?: {message: string; severity: "hard" | "soft"} | null;
   /** Reordering without dragging (VoiceOver / TalkBack actions) */
@@ -149,11 +168,18 @@ function StopCardView({
 
   return (
     <View className="bg-zinc-900 border border-zinc-800 rounded-2xl p-2.5 flex-row items-center">
-      <View
-        className="flex-1 flex-row items-center"
+      <Pressable
+        onPress={onEditLength}
+        disabled={!onEditLength}
+        className="flex-1 flex-row items-center active:opacity-70"
         accessible
+        accessibilityRole={onEditLength ? "button" : undefined}
         accessibilityLabel={`${activity?.title ?? "Stop"}, ${timeOfDay(slot.startTime)} to ${timeOfDay(slot.endTime)}`}
-        accessibilityHint={moveActions.length ? "Hold and drag to reorder" : undefined}
+        accessibilityHint={
+          [onEditLength ? "Tap to change how long" : null, moveActions.length ? "hold and drag to reorder" : null]
+            .filter(Boolean)
+            .join(", ") || undefined
+        }
         accessibilityActions={moveActions}
         onAccessibilityAction={(e) => {
           if (e.nativeEvent.actionName === "moveEarlier") onMoveEarlier?.();
@@ -173,10 +199,13 @@ function StopCardView({
         <Text className="text-white font-bold text-base" numberOfLines={1}>
           {activity?.title}
         </Text>
-        <Text className="text-zinc-400 text-sm mt-0.5" numberOfLines={1}>
-          {timeOfDay(slot.startTime)} – {timeOfDay(slot.endTime)} ·{" "}
-          {formatMinutes(slotMinutes(slot))}
-        </Text>
+        <View className="flex-row items-center gap-1 mt-0.5">
+          <Text className="text-zinc-400 text-sm shrink" numberOfLines={1}>
+            {timeOfDay(slot.startTime)} – {timeOfDay(slot.endTime)} ·{" "}
+            {formatMinutes(slotMinutes(slot))}
+          </Text>
+          {adjusted && <Ionicons name="pencil" size={11} color="#a1a1aa" />}
+        </View>
         {warning ? (
           <View className="flex-row items-center gap-1 mt-0.5">
             <Ionicons
@@ -204,7 +233,7 @@ function StopCardView({
           <Text className="text-xs mt-0.5"> </Text>
         )}
       </View>
-      </View>
+      </Pressable>
       <View className="items-end gap-2">
         <View className="bg-zinc-800 px-2 py-1 rounded-lg">
           <Text className="text-zinc-200 text-xs font-bold">
@@ -242,7 +271,9 @@ export const StopCard = React.memo(StopCardView, (a: StopCardProps, b: StopCardP
   a.warning?.severity === b.warning?.severity &&
   !a.onRemove === !b.onRemove &&
   !a.onMoveEarlier === !b.onMoveEarlier &&
-  !a.onMoveLater === !b.onMoveLater,
+  !a.onMoveLater === !b.onMoveLater &&
+  !a.onEditLength === !b.onEditLength &&
+  a.adjusted === b.adjusted,
 );
 
 /** Travel legs, flex time and the trip home, drawn slim between stop cards. */
@@ -342,26 +373,46 @@ export function StatTile({
   );
 }
 
-function Chip({icon, text, tone = "default"}: {icon: IconName; text: string; tone?: "default" | "danger"}) {
-  const danger = tone === "danger";
+// Full class names (NativeWind only styles classes it finds written out)
+const CHIP_TONES = {
+  default: {box: "bg-zinc-800", icon: "#a1a1aa", text: "text-zinc-300"},
+  warn: {box: "bg-orange-500/10", icon: "#fb923c", text: "text-orange-400"},
+  danger: {box: "bg-red-500/15", icon: "#f87171", text: "text-red-300"},
+};
+
+function Chip({
+  icon,
+  text,
+  tone = "default",
+}: {
+  icon: IconName;
+  text: string;
+  tone?: keyof typeof CHIP_TONES;
+}) {
+  const t = CHIP_TONES[tone];
   return (
-    <View
-      className={`flex-row items-center gap-1 px-2 py-1 rounded-lg ${danger ? "bg-red-500/15" : "bg-zinc-800"}`}
-    >
-      <Ionicons name={icon} size={11} color={danger ? "#f87171" : "#a1a1aa"} />
-      <Text className={`text-xs font-semibold ${danger ? "text-red-300" : "text-zinc-300"}`}>
-        {text}
-      </Text>
+    <View className={`flex-row items-center gap-1 px-2 py-1 rounded-lg ${t.box}`}>
+      <Ionicons name={icon} size={11} color={t.icon} />
+      <Text className={`text-xs font-semibold ${t.text}`}>{text}</Text>
     </View>
   );
 }
 
-const WEATHER_CHIP_ICON: Record<string, IconName> = {
+/** An icon for each kind of plan problem (utils/planEvaluator.ts) */
+const PROBLEM_ICON: Record<string, IconName> = {
   TOO_COLD: "snow-outline",
   TOO_HOT: "sunny-outline",
   RAIN: "rainy-outline",
   WIND: "cloud-outline",
   NO_SNOW: "snow-outline",
+  OFF_HOURS: "partly-sunny-outline",
+  AFTER_DARK: "moon-outline",
+  BACK_TO_BACK_MEALS: "restaurant-outline",
+  STILL_FULL: "restaurant-outline",
+  ODD_MEAL_TIME: "restaurant-outline",
+  BACK_TO_BACK_ACTIVE: "fitness-outline",
+  WORN_OUT: "fitness-outline",
+  ACTIVE_AFTER_MEAL: "fitness-outline",
 };
 
 function ActivityChips({
@@ -391,9 +442,13 @@ function ActivityChips({
         ) : (
           <Chip icon="navigate-outline" text={`${(item.distance || 0).toFixed(1)} mi`} />
         ))}
-      {item.offHoursLabel && <Chip icon="partly-sunny-outline" text={item.offHoursLabel} />}
-      {item.weatherProblem && (
-        <Chip icon={WEATHER_CHIP_ICON[item.weatherProblem.kind] ?? "cloud-outline"} text={item.weatherProblem.message} />
+      {/* The plan evaluator's verdict if you add it here (same as the stop card's) */}
+      {item.planProblem && (
+        <Chip
+          icon={PROBLEM_ICON[item.planProblem.kind] ?? "alert-circle-outline"}
+          text={item.planProblem.message}
+          tone={item.planProblem.severity === "hard" ? "danger" : "warn"}
+        />
       )}
     </View>
   );
