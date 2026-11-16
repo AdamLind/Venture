@@ -131,15 +131,28 @@ export function smartOrder(
   };
 }
 
-/** "Fixes 2 problems and saves 4.1 mi of driving" (or null if nothing to say). */
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * "A better order fixes 2 problems and saves 4.1 mi of driving", or null if
+ * nothing to say. Counts what it fixes (a new order can also bring up a
+ * smaller note, which the card lists under "New"), so fixing a closed
+ * bakery isn't hidden by a minor note it adds.
+ */
 export function smartOrderSummary(result: SmartOrderResult): string | null {
   if (!result.improved) return null;
   const parts: string[] = [];
-  // Net: a new order can fix some problems and create others
-  const n = result.before.issues.length - result.after.issues.length;
-  if (n > 0) parts.push(`fixes ${n} ${n === 1 ? "problem" : "problems"}`);
+  const fixed = result.fixed.length;
+  const added = result.introduced.length;
+  if (fixed > 0) parts.push(`fixes ${plural(fixed, "problem")}`);
   if (result.milesSaved >= 0.5) parts.push(`saves ${result.milesSaved.toFixed(1)} mi of driving`);
-  if (parts.length === 0) parts.push("fits your day better");
-  const text = parts.join(" and ");
-  return `A better order ${text}`;
+  if (parts.length === 0 && result.endShiftMinutes <= -15) {
+    const m = -result.endShiftMinutes;
+    const length = m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m / 60}h`;
+    parts.push(`ends ${length} sooner`);
+  }
+  // Nothing to count: it still scores better (e.g. a closer fit to each idea's best time)
+  if (parts.length === 0) return "Try a smoother order for your day";
+  const tradeOff = fixed > 0 && added > 0 ? ` (${plural(added, "new note")})` : "";
+  return `A better order ${parts.join(" and ")}${tradeOff}`;
 }

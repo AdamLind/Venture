@@ -235,18 +235,25 @@ export default function BuilderScreen() {
 
         // The Strict Gatekeepers: still done (trip home included) by the end
         // time, and within budget
-        let fitStatus = "FITS_NOW";
-        if (!placement.fits) {
-          fitStatus = "NO_FIT_TIME";
-        } else if (totalCost > remainingBudget) {
-          fitStatus = "OVER_BUDGET";
-        }
-
         // How the plan scores with this in its best slot (the same rules as
         // the stop warnings), plus how well it matches what you asked for;
         // distance is the extra driving it adds there
         const planProblem =
           warningsByStop(placement.evaluation).get(activity.idea_id) ?? null;
+
+        let fitStatus = "FITS_NOW";
+        if (!placement.fits) {
+          fitStatus = "NO_FIT_TIME";
+        } else if (totalCost > remainingBudget) {
+          fitStatus = "OVER_BUDGET";
+        } else if (
+          // Closed even in its best slot (#7)
+          placement.evaluation.issues.some(
+            (issue) => issue.kind === "CLOSED" && issue.stopId === activity.idea_id,
+          )
+        ) {
+          fitStatus = "CLOSED";
+        }
         const rank =
           placement.evaluation.score - evaluation.score +
           preferenceScore(activity, userPrefs, placement.addedMiles);

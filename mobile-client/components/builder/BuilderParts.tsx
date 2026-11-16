@@ -431,6 +431,8 @@ export const PROBLEM_ICON: Record<string, IconName> = {
   PAST_END: "flag-outline",
   BACKTRACK: "git-compare-outline",
   SHORTENED: "timer-outline",
+  CLOSED: "lock-closed-outline",
+  PART_CLOSED: "time-outline",
   TOO_COLD: "snow-outline",
   TOO_HOT: "sunny-outline",
   RAIN: "rainy-outline",
@@ -518,6 +520,7 @@ function IdeaTitle({item}: {item: any}) {
 const FIT_REASON: Record<string, string> = {
   NO_FIT_TIME: "Too long for the time left",
   OVER_BUDGET: "Over your remaining budget",
+  CLOSED: "Closed then",
 };
 
 /** A suggestion in the activity picker. */

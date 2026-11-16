@@ -174,7 +174,7 @@ export const fetchActivityForPlan = async (
     .select(
       `
       *,
-      venues ( name, address, coordinates ),
+      venues ( name, address, coordinates, opening_hours ),
       activity_tags ( tags ( name ) )
     `,
     )
@@ -222,7 +222,7 @@ export const queryCandidates = async (
       .select(
         `
         *, 
-        venues ( name, address, coordinates ),
+        venues ( name, address, coordinates, opening_hours ),
         activity_tags ( tags ( name ) )
       `,
       )

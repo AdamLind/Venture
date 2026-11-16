@@ -32,6 +32,7 @@ import {
   stopLocation,
 } from "./timeline";
 import {sunsetAt} from "./sunset";
+import {checkHours, hoursMessage} from "./openingHours";
 import {type WeatherLookup, weatherProblems} from "@/src/lib/weatherRules";
 
 // ─── Tuning ────────────────────────────────────────────────────────────────────
@@ -59,6 +60,10 @@ export const PENALTY = {
   // dinners in a row.
   backtrackPerMile: 4,
   backtrackMax: 40,
+  // Opening hours (#7): closed for the stop (or for most of it) is hard;
+  // opening a little late or closing a little early is a nudge
+  closed: 80, // hard
+  partClosed: 25,
 };
 
 export const LIMITS = {
@@ -95,6 +100,9 @@ export type PlanIssueKind =
   | "TREAT_BEFORE_MEAL"
   | "SHORTENED"
   | "BACKTRACK"
+  // Opening hours (utils/openingHours.ts)
+  | "CLOSED"
+  | "PART_CLOSED"
   // Weather (src/lib/weatherRules.ts)
   | "TOO_COLD"
   | "TOO_HOT"
@@ -359,6 +367,23 @@ export function evaluatePlan(
         message: bestTimeLabel(activity.time_of_day) ?? "Not its best time",
         penalty: PENALTY.offHours,
       });
+    }
+
+    // Opening hours: the venue's, when we know them (stay-in ideas are at home)
+    if (activity.modality !== "STAY_IN") {
+      const check = checkHours(activity.venues?.opening_hours, slot.startTime, slot.endTime);
+      const message = hoursMessage(check, slot.startTime);
+      if (message && check.status !== "unknown" && check.status !== "open") {
+        // Open for under half the stop counts as closed
+        const mostlyClosed = check.status === "closed" || check.openShare < 0.5;
+        add({
+          kind: mostlyClosed ? "CLOSED" : "PART_CLOSED",
+          severity: mostlyClosed ? "hard" : "soft",
+          stopId: id,
+          message,
+          penalty: mostlyClosed ? PENALTY.closed : PENALTY.partClosed,
+        });
+      }
     }
 
     // Outside after dark (not for ideas meant for the evening or night)

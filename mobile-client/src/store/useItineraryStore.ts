@@ -50,7 +50,7 @@ const SELECT = `
   itinerary_id, title, starts_at, ends_at, status, prefs_snapshot, created_at,
   itinerary_activities (
     stop_id, sort_order, starts_at, ends_at,
-    activities ( *, venues ( name, address, coordinates ) )
+    activities ( *, venues ( name, address, coordinates, opening_hours ) )
   )
 `;
 

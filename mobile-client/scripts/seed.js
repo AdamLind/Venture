@@ -61,6 +61,8 @@ async function seed() {
   // ---------------------------------------------------------------------------
   // 1. INSERT VENUES
   // ---------------------------------------------------------------------------
+  // opening_hours: made-up test hours in OpenStreetMap format (#4); outdoor
+  // spots with no hours are left unknown. Real venues replace these (#71)
   const venueSeeds = [
     {
       name: "Provo Canyon Stargazing Spot",
@@ -71,26 +73,31 @@ async function seed() {
       name: "Sundance Mountain Resort",
       address: "8841 Alpine Loop Scenic Byway, Sundance, UT 84604",
       coordinates: "POINT(-111.5888 40.3644)",
+      opening_hours: "Mo-Su 09:00-21:00",
     },
     {
       name: "Downtown Gelato & Promenade",
       address: "43 N University Ave, Provo, UT 84601",
       coordinates: "POINT(-111.6588 40.2333)",
+      opening_hours: "Mo-Th 12:00-22:00; Fr-Sa 12:00-23:00; Su off",
     },
     {
       name: "The Quarry Climbing Gym",
       address: "2494 N University Pkwy, Provo, UT 84604",
       coordinates: "POINT(-111.6515 40.2642)",
+      opening_hours: "Mo-Fr 10:00-22:00; Sa 09:00-20:00; Su off",
     },
     {
       name: "Pioneer Park Farmers Market",
       address: "500 W Center St, Provo, UT 84601",
       coordinates: "POINT(-111.6675 40.2335)",
+      opening_hours: "Sa 09:00-14:00",
     },
     {
       name: "University Ave Taco Trucks",
       address: "700 S University Ave, Provo, UT 84601",
       coordinates: "POINT(-111.6588 40.2238)",
+      opening_hours: "Mo-Sa 11:00-14:00,17:00-23:00; Su off",
     },
     {
       name: "Jolley's Ranch Disc Golf Course",
@@ -101,16 +108,19 @@ async function seed() {
       name: "Classic Fun Center Mini Golf",
       address: "250 S State St, Orem, UT 84058",
       coordinates: "POINT(-111.6960 40.2930)",
+      opening_hours: "Mo-Th 11:00-21:00; Fr-Sa 11:00-23:00; Su off",
     },
     {
       name: "Rock Canyon Park",
       address: "2620 N 1200 E, Provo, UT 84604",
       coordinates: "POINT(-111.6360 40.2680)",
+      opening_hours: "Mo-Su 06:00-22:00",
     },
     {
       name: "Artisan Bakery & Cafe",
       address: "29 E Center St, Provo, UT 84601",
       coordinates: "POINT(-111.6580 40.2334)",
+      opening_hours: "Mo-Sa 07:00-15:00; Su off",
     },
   ];
 
