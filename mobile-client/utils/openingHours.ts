@@ -217,6 +217,68 @@ const clock = (ms: number) =>
   new Date(ms).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
 const sameDay = (a: number, b: number) => new Date(a).toDateString() === new Date(b).toDateString();
 
+/** Within this of closing counts as "closes soon" */
+const SOON_MS = 60 * 60_000;
+
+export type OpenNow = {
+  open: boolean;
+  /** Open, but closing within the hour */
+  soon: boolean;
+  /** "Open now · closes 9:00 PM", "Closed · opens tomorrow 10:00 AM" */
+  label: string;
+};
+
+/** Whether the place is open at `nowMs`, for the idea page (null: hours unknown). */
+export function openNow(hours: string | null | undefined, nowMs: number): OpenNow | null {
+  const week = parseOpeningHours(hours);
+  if (!week) return null;
+  const spans = openSpans(week, nowMs, nowMs, 7);
+  const covering = spans.find(([a, b]) => a <= nowMs && nowMs < b);
+  if (covering) {
+    // Open all week (24/7, or every day all day)
+    if (covering[1] - nowMs > 6 * DAY_MS) return {open: true, soon: false, label: "Open 24 hours"};
+    const soon = covering[1] - nowMs <= SOON_MS;
+    return {
+      open: true,
+      soon,
+      label: soon ? `Closes soon · ${clock(covering[1])}` : `Open now · closes ${clock(covering[1])}`,
+    };
+  }
+  const next = spans.find(([a]) => a > nowMs);
+  if (!next) return {open: false, soon: false, label: "Closed"};
+  const tomorrow = sameDay(next[0], nowMs + DAY_MS);
+  const when = sameDay(next[0], nowMs)
+    ? clock(next[0])
+    : tomorrow
+      ? `tomorrow ${clock(next[0])}`
+      : `${new Date(next[0]).toLocaleDateString([], {weekday: "short"})} ${clock(next[0])}`;
+  return {open: false, soon: false, label: `Closed · opens ${when}`};
+}
+
+/** "7:00 AM – 3:00 PM" for minutes after midnight (an end past midnight wraps) */
+const span = ([s, e]: [number, number]) => {
+  if (s === 0 && e >= 24 * 60) return "Open 24 hours";
+  const at = (m: number) =>
+    new Date(2000, 0, 1, 0, m % (24 * 60)).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+  return `${at(s)} – ${at(e)}`;
+};
+
+/** The week's hours, Monday first, for the idea page (null: hours unknown). */
+export function weekLines(
+  hours: string | null | undefined,
+  nowMs: number,
+): {day: string; text: string; today: boolean}[] | null {
+  const week = parseOpeningHours(hours);
+  if (!week) return null;
+  const today = new Date(nowMs).getDay();
+  return [1, 2, 3, 4, 5, 6, 0].map((d) => ({
+    // A known Sunday (Jan 2 2000) + d, so the name is in the phone's language
+    day: new Date(2000, 0, 2 + d).toLocaleDateString([], {weekday: "short"}),
+    text: week[d].length ? [...week[d]].sort((a, b) => a[0] - b[0]).map(span).join(", ") : "Closed",
+    today: d === today,
+  }));
+}
+
 /** "Closed then · opens 5:00 PM", "Closes at 9:00 PM", "Opens at 10:00 AM" (null: fine or unknown) */
 export function hoursMessage(check: HoursCheck, startMs: number): string | null {
   switch (check.status) {

@@ -9,6 +9,10 @@
 // The clock moves the date along on its own (a stop is "done" once its time
 // is up), and "I'm here" / "Done" let you run ahead of the schedule.
 // Stay-in dates (no places to map) show the current stop's photo instead.
+//
+// A stop that will be closed when you get there (opening hours, #9) says so
+// on the Now card, with a way to reorder the rest or skip it; later stops
+// show the same note in the plan.
 
 import React, {useEffect, useRef, useState} from "react";
 import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
@@ -40,12 +44,18 @@ import Reanimated, {
   withSpring,
 } from "react-native-reanimated";
 import {scheduleOnRN} from "react-native-worklets";
+import * as Location from "expo-location";
+import Toast from "react-native-toast-message";
 
 import type {TimeSlot} from "@/types/itinerary";
-import {useActiveDateStore} from "@/src/store/activeDateStore";
+import {useActiveDateStore, useLiveTimeline} from "@/src/store/activeDateStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import GlassSurface from "@/components/ui/GlassSurface";
 import {homeOf} from "@/utils/timeline";
+import {checkHours, hoursMessage} from "@/utils/openingHours";
+import {replanPoint, type DatePrefs} from "@/utils/replan";
+import {aheadOf} from "@/utils/liveTimeline";
+import {placedStops} from "@/src/lib/dates";
 import RestEditor from "@/components/live/RestEditor";
 import {
   Connector,
@@ -102,7 +112,8 @@ export default function ActiveDateScreen() {
   const insets = useSafeAreaInsets();
   const {height: screenHeight} = useWindowDimensions();
 
-  const timeline = useActiveDateStore((s) => s.timeline);
+  // As it's really going: moved by your "I'm here" / "Done" taps
+  const timeline = useLiveTimeline();
   const userPrefs = useActiveDateStore((s) => s.userPrefs);
   const itineraryId = useActiveDateStore((s) => s.itineraryId);
   const arrivedIds = useActiveDateStore((s) => s.arrivedIds);
@@ -111,9 +122,16 @@ export default function ActiveDateScreen() {
   const markDone = useActiveDateStore((s) => s.markDone);
   const endActiveDate = useActiveDateStore((s) => s.endActiveDate);
   const completeDate = useItineraryStore((s) => s.completeDate);
+  const skipStop = useItineraryStore((s) => s.skipStop);
+  const replanDate = useItineraryStore((s) => s.replanDate);
+  const itinerary = useItineraryStore((s) =>
+    s.itineraries.find((i) => i.itinerary_id === itineraryId),
+  );
 
   const [wrapping, setWrapping] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  // Saving "move the rest up"
+  const [movingUp, setMovingUp] = useState(false);
 
   // ─── Where the date stands ───────────────────────────────────────────────
   const slots: TimeSlot[] = (timeline ?? []).filter((s: TimeSlot) => s.type !== "AVAILABLE");
@@ -408,6 +426,107 @@ export default function ActiveDateScreen() {
     .reduce((sum, s) => sum + (Number(s.activity?.est_price_per_person) || 0) * headCount, 0);
   const isLast = focusIndex === stops.length - 1;
 
+  // ─── Opening hours (#9) ──────────────────────────────────────────────────
+  // A stop still ahead is checked from when you'd really get there (now, if
+  // you're running late); the one you're at, for its own times
+  const hoursNoteFor = (slot: TimeSlot): string | null => {
+    const activity: any = slot.activity;
+    if (!activity || activity.modality === "STAY_IN" || isDone(slot)) return null;
+    const length = slot.endTime - slot.startTime;
+    const start = isArrived(slot) ? slot.startTime : Math.max(now, slot.startTime);
+    const check = checkHours(activity.venues?.opening_hours, start, start + length);
+    return check.status === "closed" || check.status === "partly" ? hoursMessage(check, start) : null;
+  };
+  const focusNote = focus && !allDone ? hoursNoteFor(focus) : null;
+
+  // Where the rest of the date would start from right now (utils/replan.ts):
+  // after the stop you're at, or from where you are (if we can tell
+  // quickly; else from the last stop)
+  const currentPoint = async () => {
+    let here: {latitude: number; longitude: number} | null = null;
+    try {
+      const {status} = await Location.getForegroundPermissionsAsync();
+      if (status === "granted") {
+        const pos = await Location.getLastKnownPositionAsync({maxAge: 5 * 60_000});
+        if (pos) here = {latitude: pos.coords.latitude, longitude: pos.coords.longitude};
+      }
+    } catch {}
+    return replanPoint({stops, prefs: userPrefs as DatePrefs, now, doneIds, arrivedIds, here});
+  };
+
+  const skipFocus = async () => {
+    if (!focus || itineraryId == null) return;
+    try {
+      const point = await currentPoint();
+      await skipStop(itineraryId, point, idOf(focus));
+      if (process.env.EXPO_OS === "ios") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Toast.show({type: "success", text1: `Skipped ${focus.activity!.title}`, position: "bottom"});
+    } catch (e) {
+      Alert.alert("Couldn't skip it", e instanceof Error ? e.message : "Please try again.");
+    }
+  };
+
+  // What to do about it: reorder (if there's more than one stop ahead) or
+  // skip it (not once you're there, and not the date's only stop)
+  const hoursOptions = () => {
+    if (!focus || !focusNote) return;
+    tap();
+    const title = focus.activity!.title;
+    const buttons: Parameters<typeof Alert.alert>[2] = [];
+    if (canReorder) buttons.push({text: "Reorder the rest", onPress: startEditing});
+    if (!arrived && stops.length > 1 && itineraryId != null) {
+      buttons.push({
+        text: "Skip this stop",
+        style: "destructive",
+        onPress: () =>
+          Alert.alert(`Skip ${title}?`, "It comes off your date, and the rest moves up to fill the time.", [
+            {text: "Keep it", style: "cancel"},
+            {text: "Skip it", style: "destructive", onPress: skipFocus},
+          ]),
+      });
+    }
+    buttons.push({text: buttons.length ? "Keep it" : "OK", style: "cancel"});
+    Alert.alert(title, `${focusNote}. Hours can change, so check before you go.`, buttons);
+  };
+
+  // ─── Ahead of the plan ───────────────────────────────────────────────────
+  // Arrived very early, or done early: the next stop you haven't reached
+  // could start sooner. Offer to move the rest of the date up (saved, like
+  // a reorder in the same order); later stops never move earlier by
+  // themselves (utils/liveTimeline.ts)
+  const ahead =
+    !allDone && !notStarted && itineraryId != null
+      ? aheadOf(slots, now, (s) => !isDone(s) && !isArrived(s))
+      : null;
+  const moveRestUp = async () => {
+    if (!itinerary || itineraryId == null) return;
+    setMovingUp(true);
+    try {
+      const point = await currentPoint();
+      const rest = placedStops(itinerary).map((s) => s.placed).slice(point.kept);
+      await replanDate(itineraryId, point, rest);
+      if (process.env.EXPO_OS === "ios") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Toast.show({type: "success", text1: "Moved the rest of your date up", position: "bottom"});
+    } catch (e) {
+      Alert.alert("Couldn't move it up", e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setMovingUp(false);
+    }
+  };
+  const aheadOptions = () => {
+    if (!ahead || movingUp) return;
+    tap();
+    const by = formatMinutes(ahead.minutes);
+    Alert.alert(
+      `You're ${by} ahead`,
+      `Move the rest of your date up? ${ahead.stop.activity!.title} and everything after it start sooner. You can keep the plan as it is, too.`,
+      [
+        {text: "Keep the plan", style: "cancel"},
+        {text: "Move it up", onPress: moveRestUp},
+      ],
+    );
+  };
+
   let eyebrow: string;
   let eyebrowColor = "#a1a1aa";
   let detail: string;
@@ -430,12 +549,18 @@ export default function ActiveDateScreen() {
     eyebrow = `Now · ${stopLabel}`;
     eyebrowColor = BLUE;
     const left = focus!.endTime - now;
-    detail =
-      left > 0
-        ? `Ends in ${formatMinutes(left / 60_000)} · ${clockTime(focus!.endTime)}`
-        : `Running ${formatMinutes(-left / 60_000)} over`;
-    const length = focus!.endTime - focus!.startTime;
-    progress = length > 0 ? Math.min(1, Math.max(0, (now - focus!.startTime) / length)) : null;
+    if (focus!.startTime > now) {
+      // There early for something with a set start time (a movie, a
+      // reservation; once stops can be locked, #57)
+      detail = `You're early · starts at ${clockTime(focus!.startTime)}`;
+    } else {
+      detail =
+        left > 0
+          ? `Ends in ${formatMinutes(left / 60_000)} · ${clockTime(focus!.endTime)}`
+          : `Running ${formatMinutes(-left / 60_000)} over`;
+      const length = focus!.endTime - focus!.startTime;
+      progress = length > 0 ? Math.min(1, Math.max(0, (now - focus!.startTime) / length)) : null;
+    }
   }
 
   // One main button that follows the moment
@@ -504,9 +629,40 @@ export default function ActiveDateScreen() {
           <Text className="text-white font-extrabold text-xl" numberOfLines={1}>
             {allDone ? "Nice date!" : shownActivity.title}
           </Text>
-          <Text className="text-zinc-400 text-sm mt-0.5" numberOfLines={1}>
-            {detail}
-          </Text>
+          {!focusNote && ahead ? (
+            // Ahead of the plan: tap to move the rest up
+            <Pressable
+              onPress={aheadOptions}
+              disabled={movingUp}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`You're ${formatMinutes(ahead.minutes)} ahead. Move the rest up`}
+              className="flex-row items-center gap-1 mt-0.5 active:opacity-70"
+            >
+              <Ionicons name="play-forward" size={13} color="#4ade80" />
+              <Text className="text-green-400 text-sm font-semibold shrink" numberOfLines={1}>
+                {movingUp ? "Moving the rest up…" : `You're ${formatMinutes(ahead.minutes)} ahead · Move the rest up`}
+              </Text>
+            </Pressable>
+          ) : focusNote ? (
+            // Closed when you'd get there (#9): tap for what to do
+            <Pressable
+              onPress={hoursOptions}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`${focusNote}. Options`}
+              className="flex-row items-center gap-1 mt-0.5 active:opacity-70"
+            >
+              <Ionicons name="alert-circle" size={14} color="#fb923c" />
+              <Text className="text-orange-400 text-sm font-semibold shrink" numberOfLines={1}>
+                {focusNote} · Options
+              </Text>
+            </Pressable>
+          ) : (
+            <Text className="text-zinc-400 text-sm mt-0.5" numberOfLines={1}>
+              {detail}
+            </Text>
+          )}
         </View>
       </Pressable>
 
@@ -653,6 +809,18 @@ export default function ActiveDateScreen() {
                   {clockTime(slot.startTime)} – {clockTime(slot.endTime)}
                   {(slot.activity as any).venues?.name ? ` · ${(slot.activity as any).venues.name}` : ""}
                 </Text>
+                {(() => {
+                  // Closed when you'd get there (#9)
+                  const note = hoursNoteFor(slot);
+                  return note ? (
+                    <View className="flex-row items-center gap-1 mt-0.5">
+                      <Ionicons name="alert-circle-outline" size={12} color="#fb923c" />
+                      <Text className="text-orange-400 text-xs font-semibold shrink" numberOfLines={1}>
+                        {note}
+                      </Text>
+                    </View>
+                  ) : null;
+                })()}
               </View>
               {current && (
                 <View className="bg-blue-500 px-2 py-0.5 rounded-full ml-2">

@@ -29,6 +29,7 @@ import {StatusChip} from "@/components/ideas/IdeaRows";
 import {IDEA_STATUS} from "@/src/lib/ideas";
 import {WEATHER_NEEDS_OPTIONS} from "@/src/lib/weatherRules";
 import {normalizeTimeOfDay, TIME_OF_DAY_LABEL} from "@/src/lib/timeOfDay";
+import PlaceHours from "@/components/ideas/PlaceHours";
 
 const {width, height} = Dimensions.get("window");
 
@@ -82,7 +83,7 @@ export default function IdeaDetailScreen() {
           .select(
             `
             *,
-            venues ( name, address, coordinates ),
+            venues ( name, address, coordinates, opening_hours, hours_checked_at ),
             users!activities_user_id_fkey ( username ),
             activity_tags (
               tags ( name )
@@ -323,6 +324,16 @@ export default function IdeaDetailScreen() {
 
           {/* QUICK STATS GRID */}
           <View className="flex-row flex-wrap justify-between bg-zinc-900/80 rounded-3xl p-5 border border-zinc-800 mb-8">
+            {/* Opening hours first (#8): whether it's open is one of the
+                first things to know. Nothing when the hours aren't known */}
+            {idea.modality === "GO_OUT" && idea.venues && (
+              <PlaceHours
+                hours={idea.venues.opening_hours}
+                checkedAt={idea.venues.hours_checked_at}
+                url={idea.url}
+                className="w-full mb-4 pb-4 border-b border-zinc-800"
+              />
+            )}
             <View className="w-[45%] mb-4">
               <View className="flex-row items-center gap-2 mb-1">
                 <Ionicons name="cash-outline" size={18} color="#FF9D0A" />

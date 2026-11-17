@@ -237,8 +237,12 @@ export const queryCandidates = async (
       // Going out means willing to travel, so stay-in ideas (at home) count
       // too; staying in means staying in
       .in("modality", prefs.modality === "GO_OUT" ? ["GO_OUT", "STAY_IN"] : ["STAY_IN"])
-      .lte("est_price_per_person", targetBudgetPerPerson)
-      .lte("est_duration_minutes", maxDuration);
+      // Loose caps only: an idea that's a bit too long or over budget still
+      // comes back, so the builder can show it greyed with its reason ("Too
+      // long for the time left", "Over your remaining budget") instead of it
+      // silently missing. Far-off ones stay out so the list doesn't balloon
+      .lte("est_price_per_person", Math.max(targetBudgetPerPerson * 2, targetBudgetPerPerson + 25))
+      .lte("est_duration_minutes", Math.max(maxDuration * 2, maxDuration + 120));
 
     if (error) throw error;
 

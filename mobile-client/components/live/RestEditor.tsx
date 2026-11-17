@@ -15,7 +15,7 @@ import Toast from "react-native-toast-message";
 import Reanimated from "react-native-reanimated";
 import {GestureDetector} from "react-native-gesture-handler";
 
-import {useActiveDateStore} from "@/src/store/activeDateStore";
+import {useActiveDateStore, useLiveTimeline} from "@/src/store/activeDateStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {placedStops} from "@/src/lib/dates";
 import {
@@ -78,7 +78,8 @@ export default function RestEditor({
   onClose: () => void;
 }) {
   const itineraryId = useActiveDateStore((s) => s.itineraryId);
-  const timeline = useActiveDateStore((s) => s.timeline);
+  // As it's really going (the rest starts after the stop you're at really ends)
+  const timeline = useLiveTimeline();
   const livePrefs = useActiveDateStore((s) => s.userPrefs) as DatePrefs | null;
   const doneIds = useActiveDateStore((s) => s.doneIds);
   const arrivedIds = useActiveDateStore((s) => s.arrivedIds);

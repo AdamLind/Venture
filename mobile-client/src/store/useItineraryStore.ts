@@ -41,6 +41,13 @@ interface ItineraryState {
    * placedStops()). Throws a readable Error.
    */
   replanDate: (itineraryId: number, point: ReplanPoint, rest: PlacedActivity[]) => Promise<void>;
+  /**
+   * Skip a stop that's still ahead on a live date (#9: it's closed, or you'd
+   * rather not): removes it, and the rest of the date is laid out again from
+   * `point` (utils/replan.ts). `ideaId` is the stop's idea. Throws a
+   * readable Error.
+   */
+  skipStop: (itineraryId: number, point: ReplanPoint, ideaId: number) => Promise<void>;
   rename: (itineraryId: number, title: string) => Promise<void>;
   remove: (itineraryId: number) => Promise<void>;
   clear: () => void;
@@ -253,6 +260,53 @@ export const useItineraryStore = create<ItineraryState>((set, get) => {
       if (error) throw new Error(friendlyError(error));
 
       // Show it right away; the reload brings everyone's copy in line
+      const snapshot: DatePrefs = {...prefs, replans};
+      const live = useActiveDateStore.getState();
+      if (live.itineraryId === itineraryId) live.replaceTimeline(timeline, snapshot);
+      await get().reload();
+    },
+
+    skipStop: async (itineraryId, point, ideaId) => {
+      const itinerary = get().itineraries.find((i) => i.itinerary_id === itineraryId);
+      if (!itinerary?.prefs_snapshot) throw new Error("This date can't be changed.");
+      const prefs = itinerary.prefs_snapshot as DatePrefs;
+      const stops = placedStops(itinerary);
+      const skipped = stops.find((s) => s.placed.activity.idea_id === ideaId);
+      // Only a stop that's still ahead (the ones before stay as they were)
+      if (!skipped || stops.indexOf(skipped) < point.kept) {
+        throw new Error("This date changed since you opened it. Reopen it and try again.");
+      }
+      if (stops.length === 1) throw new Error("That's the last stop. End the date instead.");
+      const stopIdOf = new Map(stops.map((s) => [s.placed.activity, s.stopId]));
+      const all = stops.map((s) => s.placed);
+      const rest = all.slice(point.kept).filter((p) => p !== skipped.placed);
+
+      const {placed, replans, timeline} = applyReplan(all, prefs, point, rest);
+      const slots = timeline.filter((slot) => slot.activity);
+      const visible = placed.map((p, i) => ({
+        stop_id: stopIdOf.get(p.activity)!,
+        starts_at: new Date(slots[i].startTime).toISOString(),
+        ends_at: new Date(slots[i].endTime).toISOString(),
+      }));
+      if (visible.some((s) => s.stop_id == null)) {
+        throw new Error("This date changed since you opened it. Reopen it and try again.");
+      }
+      const hidden = itinerary.stops
+        .filter((s) => !s.activity)
+        .map((s) => ({stop_id: s.stop_id, starts_at: s.starts_at, ends_at: s.ends_at}));
+      const endsAt = timeline
+        .filter((slot) => slot.type === "OCCUPIED")
+        .reduce((end, slot) => Math.max(end, slot.endTime), 0);
+
+      const {error} = await supabase.rpc("skip_stop", {
+        p_itinerary_id: itineraryId,
+        p_stop_id: skipped.stopId,
+        p_stops: [...visible, ...hidden],
+        p_replans: replans,
+        p_ends_at: new Date(endsAt).toISOString(),
+      });
+      if (error) throw new Error(friendlyError(error));
+
       const snapshot: DatePrefs = {...prefs, replans};
       const live = useActiveDateStore.getState();
       if (live.itineraryId === itineraryId) live.replaceTimeline(timeline, snapshot);
