@@ -31,6 +31,9 @@ import {useLocationStore} from "@/src/store/useLocationStore";
 import GlassSurface from "@/components/ui/GlassSurface";
 import Avatar from "@/components/profile/Avatar";
 import type {PublicProfile} from "@/types/profile";
+import {useProfileStore} from "@/src/store/useProfileStore";
+import {IDEA_STATUS} from "@/src/lib/ideas";
+import type {IdeaVisibility} from "@/types/ideas";
 
 // Shape for the map's floating preview card (GlassSurface takes style, not className)
 const glassStyles = StyleSheet.create({
@@ -46,6 +49,8 @@ const glassStyles = StyleSheet.create({
 interface DateIdea {
   idea_id: number;
   title: string;
+  /** Your own ideas show here at any stage but "not approved" */
+  visibility: IdeaVisibility;
   modality: "STAY_IN" | "GO_OUT";
   est_price_per_person: string | number;
   creator_username: string | null;
@@ -94,7 +99,7 @@ interface PricePinProps {
 }
 
 const PricePin = React.memo(
-  ({item, onSelect}: PricePinProps) => {
+  function PricePin({item, onSelect}: PricePinProps) {
     const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
     useEffect(() => {
@@ -219,9 +224,18 @@ export default function ExploreScreen() {
         users!activities_user_id_fkey ( username, first_name, last_name, profile_image_url )
       `,
       )
-      // Your own unpublished ideas are visible to you too; they belong in
-      // Profile > My Ideas, not Discover
-      .eq("visibility", "PUBLISHED")
+      // Everyone's published ideas, plus all of yours except the ones that
+      // weren't approved (those stay in Profile > My Ideas, with the note):
+      // a private or in-review idea shows here too, marked "only you can
+      // see this", since Explore is where people spend their time
+      .or(
+        (() => {
+          const me = useProfileStore.getState().userId;
+          return me
+            ? `visibility.eq.PUBLISHED,and(user_id.eq.${me},visibility.neq.REJECTED)`
+            : "visibility.eq.PUBLISHED";
+        })(),
+      )
       // A fixed order going in, so the same seed always shuffles the same way
       .order("idea_id", {ascending: true});
 
@@ -314,15 +328,17 @@ export default function ExploreScreen() {
             style={{position: "absolute", width: "100%", height: "100%"}}
           />
 
-          <View className="absolute top-4 left-4 flex-row gap-2">
-            <View className="bg-zinc-950/85 px-3 py-1.5 rounded-full border border-zinc-500 shadow-md shadow-black">
+          {/* Both pills the same height, text centred (the smaller text in a
+              stretched pill sat high) */}
+          <View className="absolute top-4 left-4 flex-row items-center gap-2">
+            <View className="h-7 justify-center bg-zinc-950/85 px-3 rounded-full border border-zinc-500 shadow-md shadow-black">
               <Text className="text-white font-bold text-xs">
                 {formatPrice(item.est_price_per_person)}
               </Text>
             </View>
 
             <View
-              className={`px-3 py-1.5 rounded-full border bg-[rgba(0,0,0,0.85)] shadow-md shadow-black ${
+              className={`h-7 justify-center px-3 rounded-full border bg-[rgba(0,0,0,0.85)] shadow-md shadow-black ${
                 item.modality === "STAY_IN"
                   ? "border-amber-500/80"
                   : "border-emerald-500/80"
@@ -347,6 +363,24 @@ export default function ExploreScreen() {
           <View className="absolute bottom-0 w-full p-5">
             <View className="flex-row justify-between items-end">
               <View className="flex-1 pr-4">
+                {/* Yours and not public: say so (only you see this card) */}
+                {item.visibility !== "PUBLISHED" && IDEA_STATUS[item.visibility] && (
+                  <View
+                    className="flex-row items-center gap-1.5 self-start mb-2 bg-black/75 rounded-full px-2.5 h-6"
+                    style={{borderWidth: 1, borderColor: `${IDEA_STATUS[item.visibility].color}99`}}
+                  >
+                    <Ionicons
+                      name={IDEA_STATUS[item.visibility].icon}
+                      size={12}
+                      color={IDEA_STATUS[item.visibility].color}
+                    />
+                    <Text className="text-white text-xs font-semibold">
+                      {item.visibility === "PRIVATE"
+                        ? "Only you can see this"
+                        : `${IDEA_STATUS[item.visibility].label} · only you can see this`}
+                    </Text>
+                  </View>
+                )}
                 <Text className="text-2xl font-extrabold text-white mb-1 shadow-black drop-shadow-md">
                   {item.title}
                 </Text>

@@ -15,14 +15,14 @@ import {LinearGradient} from "expo-linear-gradient";
 import {useLocalSearchParams, useRouter} from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
-import * as Location from "expo-location";
 import Ionicons from "@expo/vector-icons/build/Ionicons";
 import {supabase} from "@/src/supabase";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {parseCoordinates} from "@/utils/itineraryEngine";
 
-import MapPickerModal from "@/components/MapPickerModal";
+import PlacePicker from "@/components/places/PlacePicker";
+import {type PickedPlace, addPlace} from "@/src/lib/places";
 import ActivityTagsSelector from "@/components/home/ActivityTagsSelector";
 
 // SHARED CONSTANTS & TYPES
@@ -32,14 +32,60 @@ import {BaseActivity} from "@/types/activities";
 // Where an idea's photos live in storage (strip to get the file path)
 const PHOTO_PATH_MARKER = "/storage/v1/object/public/activities/";
 
+/**
+ * A field's label. When the field is missing on submit (the same everywhere
+ * in this form): the label turns red, with a short note on the right saying
+ * what's needed; the field itself gets a red border.
+ */
+function FieldLabel({
+  label,
+  missing,
+  hint = "Required",
+  dim = false,
+  className = "mb-2",
+}: {
+  label: string;
+  missing: boolean;
+  /** What's missing ("Add a title") */
+  hint?: string;
+  /** Not used right now (e.g. the place, for a stay-in idea) */
+  dim?: boolean;
+  className?: string;
+}) {
+  return (
+    <View className={`flex-row items-center justify-between gap-2 ml-1 ${className}`}>
+      <Text
+        className={`text-sm font-bold ${missing ? "text-red-500" : dim ? "text-zinc-700" : "text-zinc-400"}`}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+      {missing && (
+        <View className="flex-row items-center gap-1 shrink">
+          <Ionicons name="alert-circle" size={14} color="#ef4444" />
+          <Text className="text-red-400 text-xs font-semibold" numberOfLines={1}>
+            {hint}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+/** A field's border and fill: red when it's missing */
+const fieldBox = (missing: boolean) =>
+  missing ? "bg-red-950/10 border-red-500" : "bg-zinc-900 border-zinc-800";
+/**
+ * Around a group of choices (time of day, tags): an outline that's always
+ * there (so nothing shifts) and only shows, red, when the group is missing
+ */
+const groupBox = (missing: boolean) =>
+  `-mx-2 p-2 rounded-2xl border ${missing ? "border-red-500 bg-red-950/10" : "border-transparent"}`;
+
 /** The idea as loaded for editing, to tell what changed on save. */
 interface EditingOriginal {
   visibility: BaseActivity["visibility"];
   imageUrls: string[];
-  venueId: string | null;
-  venueName: string;
-  venueAddress: string;
-  coords: {lat: number; lng: number} | null;
 }
 
 /**
@@ -61,8 +107,8 @@ export default function CreateScreen() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [url, setUrl] = useState("");
-  const [venueName, setVenueName] = useState(""); // e.g. "Sundance Resort"
-  const [venueAddress, setVenueAddress] = useState(""); // e.g. "575 E Univ Pkwy"
+  // Where it is (#78): a place on Venture, or a new one to add with the idea
+  const [place, setPlace] = useState<PickedPlace | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
 
   // Enums / Selectors
@@ -101,11 +147,7 @@ export default function CreateScreen() {
   const [dbTags, setDbTags] = useState<{tag_id: number; name: string}[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isMapModalVisible, setIsMapModalVisible] = useState(false);
-  const [preciseCoords, setPreciseCoords] = useState<{
-    lat: number;
-    lng: number;
-  } | null>(null);
+  const [isPlacePickerOpen, setIsPlacePickerOpen] = useState(false);
 
   const TIME_OF_DAY_OPTIONS = [
     {label: "Early Morning", value: "EARLY_MORNING"},
@@ -141,9 +183,6 @@ export default function CreateScreen() {
       }
 
       const coords = parseCoordinates(data.venues?.coordinates);
-      const preciseFromVenue = coords
-        ? {lat: coords.latitude, lng: coords.longitude}
-        : null;
 
       setTitle(data.title ?? "");
       setDescription(data.description ?? "");
@@ -160,9 +199,18 @@ export default function CreateScreen() {
       setPrice(String(data.est_price_per_person ?? ""));
       setDuration(String(data.est_duration_minutes ?? ""));
       setIsDurationVariable(!!data.is_duration_variable);
-      setVenueName(data.venues?.name ?? "");
-      setVenueAddress(data.venues?.address ?? "");
-      setPreciseCoords(preciseFromVenue);
+      setPlace(
+        data.venue_id && data.venues && coords
+          ? {
+              kind: "existing",
+              venueId: data.venue_id,
+              name: data.venues.name,
+              address: data.venues.address ?? null,
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+            }
+          : null,
+      );
       setSelectedTags(
         (data.activity_tags ?? [])
           .map((row: any) => row.tags?.name)
@@ -174,10 +222,6 @@ export default function CreateScreen() {
       setOriginal({
         visibility: data.visibility,
         imageUrls: data.image_urls ?? [],
-        venueId: data.venue_id ?? null,
-        venueName: data.venues?.name ?? "",
-        venueAddress: data.venues?.address ?? "",
-        coords: preciseFromVenue,
       });
       setIsLoadingIdea(false);
     };
@@ -220,7 +264,7 @@ export default function CreateScreen() {
     }
   };
 
-  const openMapModal = () => setIsMapModalVisible(true);
+  const openPlacePicker = () => setIsPlacePickerOpen(true);
 
   const toggleTimeOfDay = (
     time: NonNullable<BaseActivity["time_of_day"]>[0],
@@ -251,10 +295,7 @@ export default function CreateScreen() {
     if (!imageUri) missing.push("image");
     if (!title.trim()) missing.push("title");
     if (!description.trim()) missing.push("description");
-    if (modality === "GO_OUT") {
-      if (!venueName.trim()) missing.push("venueName");
-      if (!venueAddress.trim()) missing.push("venueAddress");
-    }
+    if (modality === "GO_OUT" && !place) missing.push("place");
     if (timeOfDay.length === 0) missing.push("timeOfDay");
     if (!price) missing.push("price");
     if (!duration) missing.push("duration");
@@ -280,16 +321,8 @@ export default function CreateScreen() {
     const IS_DRY_RUN = false;
 
     if (IS_DRY_RUN) {
-      let testLat = preciseCoords?.lat || 43.2312;
-      let testLng = preciseCoords?.lng || -131.6614;
-
       console.log("\n=== 🧪 DRY RUN PAYLOAD ===");
-      console.log(
-        "1. VENUE: ",
-        modality === "GO_OUT"
-          ? `${venueName} at ${venueAddress} (${testLat}, ${testLng})`
-          : "Null (STAY_IN)",
-      );
+      console.log("1. PLACE: ", modality === "GO_OUT" ? place : "Null (STAY_IN)");
       console.log("2. IMAGE URI: ", imageUri);
       console.log("3. ACTIVITY DATA: ", {
         title,
@@ -319,49 +352,11 @@ export default function CreateScreen() {
 
     // --- ACTUAL DATABASE UPLOAD ---
     try {
-      // 1. Venue: reuse the idea's venue when editing and nothing changed,
-      //    otherwise add a new one (venues can be shared, so never edit one)
+      // 1. Place (#78): one already on Venture, or the new one added now
+      //    (places are shared, so an existing one is never edited)
       let venueId: string | null = null;
-
-      if (modality === "GO_OUT") {
-        const venueUnchanged =
-          !!original?.venueId &&
-          venueName === original.venueName &&
-          venueAddress === original.venueAddress &&
-          preciseCoords?.lat === original.coords?.lat &&
-          preciseCoords?.lng === original.coords?.lng;
-
-        if (venueUnchanged) {
-          venueId = original!.venueId;
-        } else {
-          let latitude = preciseCoords?.lat || 40.2312;
-          let longitude = preciseCoords?.lng || -111.6614;
-
-          if (!preciseCoords) {
-            try {
-              const geocoded = await Location.geocodeAsync(venueAddress);
-              if (geocoded && geocoded.length > 0) {
-                latitude = geocoded[0].latitude;
-                longitude = geocoded[0].longitude;
-              }
-            } catch (e) {
-              console.warn("Geocoding failed, using default coordinates");
-            }
-          }
-
-          const {data: venueData, error: venueError} = await supabase
-            .from("venues")
-            .insert({
-              name: venueName,
-              address: venueAddress,
-              coordinates: `POINT(${longitude} ${latitude})`,
-            })
-            .select("venue_id")
-            .single();
-
-          if (venueError) throw venueError;
-          venueId = venueData.venue_id;
-        }
+      if (modality === "GO_OUT" && place) {
+        venueId = place.kind === "existing" ? place.venueId : await addPlace(place);
       }
 
       if (!imageUri) {
@@ -506,7 +501,9 @@ export default function CreateScreen() {
             ? "It's in Profile › My Ideas. Only you can see it, and you can use it when you plan."
             : "You can follow its review in Profile › My Ideas.",
         );
-        router.push("/");
+        // Close the sheet (pushing a screen from it left the sheet under it,
+        // its top edge showing until the app reloaded)
+        router.back();
       }
     } catch (error: any) {
       console.error("Upload Error:", error);
@@ -573,18 +570,18 @@ export default function CreateScreen() {
               >
                 Tap to add cover photo
               </Text>
+              {missingFields.includes("image") && (
+                <View className="flex-row items-center gap-1 mt-2">
+                  <Ionicons name="alert-circle" size={14} color="#ef4444" />
+                  <Text className="text-red-400 text-xs font-semibold">A cover photo is required</Text>
+                </View>
+              )}
             </View>
           )}
         </Pressable>
 
         {/* TITLE, DESC, URL */}
-        <Text
-          className={`text-sm font-bold ml-1 mb-2 ${
-            missingFields.includes("title") ? "text-red-500" : "text-zinc-400"
-          }`}
-        >
-          TITLE
-        </Text>
+        <FieldLabel label="TITLE" missing={missingFields.includes("title")} hint="Add a title" />
         <TextInput
           value={title}
           onChangeText={(text) => {
@@ -595,22 +592,14 @@ export default function CreateScreen() {
           }}
           placeholder="e.g. Sunset Hike at Sundance"
           placeholderTextColor="#71717a"
-          className={`text-white p-4 rounded-2xl mb-6 border ${
-            missingFields.includes("title")
-              ? "bg-red-950/10 border-red-500"
-              : "bg-zinc-900 border-zinc-800"
-          }`}
+          className={`text-white p-4 rounded-2xl mb-6 border ${fieldBox(missingFields.includes("title"))}`}
         />
 
-        <Text
-          className={`text-sm font-bold ml-1 mb-2 ${
-            missingFields.includes("description")
-              ? "text-red-500"
-              : "text-zinc-400"
-          }`}
-        >
-          DESCRIPTION
-        </Text>
+        <FieldLabel
+          label="DESCRIPTION"
+          missing={missingFields.includes("description")}
+          hint="Add a description"
+        />
         <TextInput
           value={description}
           onChangeText={(text) => {
@@ -624,11 +613,7 @@ export default function CreateScreen() {
           placeholder="What makes this date great?"
           placeholderTextColor="#71717a"
           multiline
-          className={`text-white p-4 rounded-2xl mb-6 border h-28 pt-4 ${
-            missingFields.includes("description")
-              ? "bg-red-950/10 border-red-500"
-              : "bg-zinc-900 border-zinc-800"
-          }`}
+          className={`text-white p-4 rounded-2xl mb-6 border h-28 pt-4 ${fieldBox(missingFields.includes("description"))}`}
         />
 
         <Text className="text-zinc-400 text-sm font-bold ml-1 mb-2">
@@ -656,11 +641,7 @@ export default function CreateScreen() {
                 setModality(m);
                 // Clear location errors if they switch to STAY_IN
                 if (m === "STAY_IN") {
-                  setMissingFields((prev) =>
-                    prev.filter(
-                      (f) => f !== "venueName" && f !== "venueAddress",
-                    ),
-                  );
+                  setMissingFields((prev) => prev.filter((f) => f !== "place"));
                 }
               }}
               className={`flex-1 py-3 rounded-xl items-center border active:opacity-70 transition-opacity ${
@@ -680,99 +661,54 @@ export default function CreateScreen() {
           ))}
         </View>
 
-        {/* VENUE NAME */}
-        <View>
-          <Text
-            className={`text-sm font-bold ml-1 mb-2 ${
-              missingFields.includes("venueName")
-                ? "text-red-500"
-                : modality === "STAY_IN"
-                  ? "text-zinc-700"
-                  : "text-zinc-400"
-            }`}
-          >
-            VENUE NAME
-          </Text>
-          <TextInput
-            value={modality === "STAY_IN" ? "Not applicable" : venueName}
-            editable={modality === "GO_OUT"}
-            onChangeText={(text) => {
-              setVenueName(text);
-              if (missingFields.includes("venueName")) {
-                setMissingFields((prev) =>
-                  prev.filter((f) => f !== "venueName"),
-                );
-              }
-            }}
-            placeholder="e.g. Sundance Resort"
-            placeholderTextColor="#71717a"
-            className={`text-white p-4 rounded-2xl mb-6 border ${
-              missingFields.includes("venueName")
-                ? "bg-red-950/10 border-red-500"
-                : modality === "STAY_IN"
-                  ? "bg-zinc-950 border-zinc-900 text-zinc-700"
-                  : "bg-zinc-900 border-zinc-800"
-            }`}
+        {/* WHERE IS IT (#78): a place on Venture, or a new pin */}
+        <View className="mb-6">
+          <FieldLabel
+            label="WHERE IS IT?"
+            missing={missingFields.includes("place")}
+            hint="Choose a place"
+            dim={modality === "STAY_IN"}
           />
-        </View>
-
-        {/* VENUE ADDRESS */}
-        <View>
-          <Text
-            className={`text-sm font-bold ml-1 mb-2 ${
-              missingFields.includes("venueAddress")
-                ? "text-red-500"
-                : modality === "STAY_IN"
-                  ? "text-zinc-700"
-                  : "text-zinc-400"
-            }`}
-          >
-            ADDRESS / LOCATION
-          </Text>
-          <View
-            className={`flex-row items-center rounded-2xl border mb-6 pr-2 ${
-              missingFields.includes("venueAddress")
+          <Pressable
+            onPress={openPlacePicker}
+            disabled={modality === "STAY_IN"}
+            accessibilityRole="button"
+            accessibilityLabel={place ? `Place: ${place.name}. Change` : "Choose a place"}
+            className={`flex-row items-center gap-3 rounded-2xl border p-4 active:opacity-80 ${
+              missingFields.includes("place")
                 ? "bg-red-950/10 border-red-500"
                 : modality === "STAY_IN"
-                  ? "border-zinc-900 bg-zinc-950"
+                  ? "bg-zinc-950 border-zinc-900"
                   : "bg-zinc-900 border-zinc-800"
             }`}
           >
-            <TextInput
-              value={modality === "STAY_IN" ? "Not applicable" : venueAddress}
-              editable={modality === "GO_OUT"}
-              onChangeText={(text) => {
-                setVenueAddress(text);
-                // Note: We deliberately DO NOT wipe out preciseCoords here!
-                if (missingFields.includes("venueAddress")) {
-                  setMissingFields((prev) =>
-                    prev.filter((f) => f !== "venueAddress"),
-                  );
-                }
-              }}
-              placeholder="e.g. 575 E Univ Pkwy, Orem"
-              className={`flex-1 text-white p-4 ${
-                modality === "STAY_IN"
-                  ? "placeholder:text-zinc-800 text-zinc-700"
-                  : "placeholder:text-zinc-500"
-              }`}
+            <Ionicons
+              name={place?.kind === "new" ? "add-circle-outline" : "location-outline"}
+              size={20}
+              color={modality === "STAY_IN" ? "#3f3f46" : "#FF9D0A"}
             />
-            <Pressable
-              onPress={openMapModal}
-              disabled={modality === "STAY_IN"}
-              className={`p-2.5 rounded-xl transition-all ${
-                modality === "GO_OUT"
-                  ? "bg-zinc-800 active:bg-zinc-700 active:scale-[0.95]"
-                  : "bg-zinc-900 opacity-30"
-              }`}
-            >
-              <Ionicons
-                name="map-outline"
-                size={20}
-                color={modality === "GO_OUT" ? "white" : "#52525b"}
-              />
-            </Pressable>
-          </View>
+            <View className="flex-1">
+              {modality === "STAY_IN" ? (
+                <Text className="text-zinc-700 text-base">At home (not needed)</Text>
+              ) : place ? (
+                <>
+                  <Text className="text-white font-bold text-base" numberOfLines={1}>
+                    {place.name}
+                  </Text>
+                  <Text className="text-zinc-400 text-sm" numberOfLines={1}>
+                    {place.kind === "new"
+                      ? `New place${place.address ? ` · near ${place.address}` : ""}`
+                      : (place.address ?? "On Venture")}
+                  </Text>
+                </>
+              ) : (
+                <Text className="text-zinc-500 text-base">Search places, or add a new one</Text>
+              )}
+            </View>
+            {modality === "GO_OUT" && (
+              <Text className="text-blue-400 text-sm font-semibold">{place ? "Change" : "Choose"}</Text>
+            )}
+          </Pressable>
         </View>
 
         {/* ENVIRONMENT */}
@@ -833,16 +769,13 @@ export default function CreateScreen() {
         </Text>
 
         {/* TIME OF DAY */}
-        <Text
-          className={`text-sm font-bold ml-1 mb-2 ${
-            missingFields.includes("timeOfDay")
-              ? "text-red-500"
-              : "text-zinc-400"
-          }`}
-        >
-          BEST TIME OF DAY
-        </Text>
-        <View className="flex-row flex-wrap gap-2 mb-6">
+        <FieldLabel
+          label="BEST TIME OF DAY"
+          missing={missingFields.includes("timeOfDay")}
+          hint="Pick at least one"
+          className="mb-0"
+        />
+        <View className={`flex-row flex-wrap gap-2 mb-4 ${groupBox(missingFields.includes("timeOfDay"))}`}>
           {TIME_OF_DAY_OPTIONS.map((option) => (
             <Pressable
               key={option.value}
@@ -902,15 +835,7 @@ export default function CreateScreen() {
         {/* NUMERICS (Price & Duration) */}
         <View className="flex-row gap-4 mb-3">
           <View className="flex-1">
-            <Text
-              className={`text-sm font-bold ml-1 mb-2 ${
-                missingFields.includes("price")
-                  ? "text-red-500"
-                  : "text-zinc-400"
-              }`}
-            >
-              PRICE/PERSON ($)
-            </Text>
+            <FieldLabel label="PRICE/PERSON ($)" missing={missingFields.includes("price")} />
             <TextInput
               value={price}
               onChangeText={(text) => {
@@ -922,23 +847,11 @@ export default function CreateScreen() {
               placeholder="0.00"
               placeholderTextColor="#71717a"
               keyboardType="decimal-pad"
-              className={`text-white p-4 rounded-2xl border ${
-                missingFields.includes("price")
-                  ? "bg-red-950/10 border-red-500"
-                  : "bg-zinc-900 border-zinc-800"
-              }`}
+              className={`text-white p-4 rounded-2xl border ${fieldBox(missingFields.includes("price"))}`}
             />
           </View>
           <View className="flex-1">
-            <Text
-              className={`text-sm font-bold ml-1 mb-2 ${
-                missingFields.includes("duration")
-                  ? "text-red-500"
-                  : "text-zinc-400"
-              }`}
-            >
-              DURATION (MIN)
-            </Text>
+            <FieldLabel label="DURATION (MIN)" missing={missingFields.includes("duration")} />
             <TextInput
               value={duration}
               onChangeText={(text) => {
@@ -952,11 +865,7 @@ export default function CreateScreen() {
               placeholder="e.g. 120"
               placeholderTextColor="#71717a"
               keyboardType="number-pad"
-              className={`text-white p-4 rounded-2xl border ${
-                missingFields.includes("duration")
-                  ? "bg-red-950/10 border-red-500"
-                  : "bg-zinc-900 border-zinc-800"
-              }`}
+              className={`text-white p-4 rounded-2xl border ${fieldBox(missingFields.includes("duration"))}`}
             />
           </View>
         </View>
@@ -1022,14 +931,13 @@ export default function CreateScreen() {
         />
 
         {/* SHARED TAGS COMPONENT */}
-        <Text
-          className={`text-sm font-bold ml-1 mt-2 ${
-            missingFields.includes("tags") ? "text-red-500" : "text-zinc-400"
-          }`}
-        >
-          TAGS
-        </Text>
-        <View className="mt-2 mb-10 w-full">
+        <FieldLabel
+          label="TAGS"
+          missing={missingFields.includes("tags")}
+          hint="Pick at least one"
+          className="mt-2 mb-0"
+        />
+        <View className={`mb-8 ${groupBox(missingFields.includes("tags"))}`}>
           <ActivityTagsSelector
             key={tagsKey}
             mode="publish"
@@ -1148,21 +1056,16 @@ export default function CreateScreen() {
         </LinearGradient>
       </View>
 
-      {/* MAP MODAL */}
-      <MapPickerModal
-        visible={isMapModalVisible}
-        onClose={() => setIsMapModalVisible(false)}
-        initialAddress={venueAddress}
-        initialCoords={preciseCoords}
-        onSelectLocation={(data) => {
-          setVenueAddress(data.address);
-          setPreciseCoords({lat: data.latitude, lng: data.longitude});
-          setIsMapModalVisible(false);
-          // Clear address error after map selection
-          if (missingFields.includes("venueAddress")) {
-            setMissingFields((prev) =>
-              prev.filter((f) => f !== "venueAddress"),
-            );
+      {/* WHERE IS IT: search places on Venture, or add a new one */}
+      <PlacePicker
+        visible={isPlacePickerOpen}
+        current={place}
+        onClose={() => setIsPlacePickerOpen(false)}
+        onPick={(picked) => {
+          setPlace(picked);
+          setIsPlacePickerOpen(false);
+          if (missingFields.includes("place")) {
+            setMissingFields((prev) => prev.filter((f) => f !== "place"));
           }
         }}
       />

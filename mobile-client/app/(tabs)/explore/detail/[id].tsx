@@ -83,7 +83,8 @@ export default function IdeaDetailScreen() {
           .select(
             `
             *,
-            venues ( name, address, coordinates, opening_hours, hours_checked_at ),
+            venues ( name, address, coordinates, opening_hours, hours_checked_at, access_note,
+              pinned_by:users ( username ) ),
             users!activities_user_id_fkey ( username ),
             activity_tags (
               tags ( name )
@@ -426,14 +427,30 @@ export default function IdeaDetailScreen() {
                     <Text className="text-white font-bold text-lg">
                       {idea.venues.name}
                     </Text>
-                    <Text className="text-zinc-400 mt-1">
-                      {idea.venues.address}
-                    </Text>
+                    {idea.venues.address ? (
+                      <Text className="text-zinc-400 mt-1">
+                        {idea.venues.address}
+                      </Text>
+                    ) : null}
+                    {/* A community-added place (#78): who put it on the map */}
+                    {idea.venues.pinned_by?.username ? (
+                      <Text className="text-zinc-500 text-xs mt-1.5">
+                        Pinned by @{idea.venues.pinned_by.username}
+                      </Text>
+                    ) : null}
                   </View>
                   <View className="w-10 h-10 rounded-full bg-zinc-800 items-center justify-center border border-zinc-700">
                     <Ionicons name="expand-outline" size={18} color="#FF9D0A" />
                   </View>
                 </View>
+
+                {/* How to get there (places that aren't on any map) */}
+                {idea.venues.access_note ? (
+                  <View className="px-5 py-4 border-b border-zinc-800 flex-row gap-2.5">
+                    <Ionicons name="trail-sign-outline" size={16} color="#FF9D0A" style={{marginTop: 2}} />
+                    <Text className="flex-1 text-zinc-300 text-sm leading-5">{idea.venues.access_note}</Text>
+                  </View>
+                ) : null}
 
                 {coords && (
                   <View className="h-48 w-full pointer-events-none">
@@ -454,6 +471,15 @@ export default function IdeaDetailScreen() {
                   </View>
                 )}
               </Pressable>
+              {/* Outdoor places: keep them the way you found them (#78) */}
+              {idea.environment === "OUTDOOR" && (
+                <View className="flex-row gap-2.5 mt-3 px-1">
+                  <Ionicons name="leaf-outline" size={15} color="#4ade80" style={{marginTop: 1}} />
+                  <Text className="flex-1 text-zinc-400 text-xs leading-5">
+                    Leave no trace: pack out what you bring, stay on the trail, and leave it the way you found it.
+                  </Text>
+                </View>
+              )}
             </View>
           )}
 
