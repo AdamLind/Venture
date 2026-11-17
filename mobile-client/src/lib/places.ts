@@ -122,3 +122,21 @@ export async function addPlace(place: Extract<PickedPlace, {kind: "new"}>): Prom
   if (error) throw new Error(friendlyError(error));
   return data.venue_id as string;
 }
+
+/**
+ * Change a place you added (#6): its name, how-to-get-there note and hours
+ * (null: not sure). Only while it's private (no published idea there); the
+ * database says so otherwise. Throws a readable Error.
+ */
+export async function updateMyPlace(
+  venueId: string,
+  changes: {name: string; accessNote: string | null; openingHours: string | null},
+): Promise<void> {
+  const {error} = await supabase.rpc("update_my_place", {
+    p_venue_id: venueId,
+    p_name: changes.name.trim(),
+    p_access_note: changes.accessNote?.trim() || null,
+    p_opening_hours: changes.openingHours,
+  });
+  if (error) throw new Error(friendlyError(error));
+}

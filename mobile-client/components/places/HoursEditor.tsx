@@ -12,7 +12,7 @@ import DateTimePicker, {DateTimePickerAndroid} from "@react-native-community/dat
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
 
-import {DAYLIGHT, type DayHours, hoursText} from "@/utils/openingHours";
+import {DAYLIGHT, type DayHours, hoursText, parseOpeningHours} from "@/utils/openingHours";
 
 export type HoursMode = "unknown" | "always" | "daylight" | "set";
 export type HoursChoice = {mode: HoursMode; week: DayHours[]};
@@ -22,6 +22,31 @@ export const DEFAULT_HOURS: HoursChoice = {
   mode: "unknown",
   week: Array.from({length: 7}, () => ({open: true, from: 9 * 60, to: 17 * 60})),
 };
+
+/**
+ * Saved hours back into the editor (editing a place you added). A day with
+ * more than one range (lunch and dinner) shows as one, first open to last
+ * close; hours it can't read start as "Not sure".
+ */
+export function choiceFromHours(hours: string | null | undefined): HoursChoice {
+  const text = hours?.trim();
+  if (!text) return DEFAULT_HOURS;
+  if (text === "24/7") return {...DEFAULT_HOURS, mode: "always"};
+  if (text.toLowerCase() === DAYLIGHT) return {...DEFAULT_HOURS, mode: "daylight"};
+  const week = parseOpeningHours(text);
+  if (!week) return DEFAULT_HOURS;
+  return {
+    mode: "set",
+    // Monday first, as the editor shows them
+    week: [1, 2, 3, 4, 5, 6, 0].map((d) => {
+      const spans = week[d];
+      if (spans.length === 0) return {open: false, from: 9 * 60, to: 17 * 60};
+      const from = Math.min(...spans.map(([a]) => a));
+      const to = Math.max(...spans.map(([, b]) => b)) % (24 * 60);
+      return {open: true, from, to};
+    }),
+  };
+}
 
 /** The hours to save (null: not sure) */
 export function hoursFromChoice(choice: HoursChoice): string | null {

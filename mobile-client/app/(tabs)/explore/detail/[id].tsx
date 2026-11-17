@@ -30,6 +30,7 @@ import {IDEA_STATUS} from "@/src/lib/ideas";
 import {WEATHER_NEEDS_OPTIONS} from "@/src/lib/weatherRules";
 import {normalizeTimeOfDay, TIME_OF_DAY_LABEL} from "@/src/lib/timeOfDay";
 import PlaceHours from "@/components/ideas/PlaceHours";
+import EditPlaceSheet, {type EditablePlace} from "@/components/places/EditPlaceSheet";
 
 const {width, height} = Dimensions.get("window");
 
@@ -47,6 +48,8 @@ export default function IdeaDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMapModalVisible, setIsMapModalVisible] = useState(false);
+  // Editing a place you added (#6)
+  const [editingPlace, setEditingPlace] = useState<EditablePlace | null>(null);
 
   const {hasPermission, requestLocation} = useLocationStore();
   const myUserId = useProfileStore((s) => s.userId);
@@ -83,7 +86,7 @@ export default function IdeaDetailScreen() {
           .select(
             `
             *,
-            venues ( name, address, coordinates, opening_hours, hours_checked_at, access_note,
+            venues ( venue_id, created_by, name, address, coordinates, opening_hours, hours_checked_at, access_note,
               pinned_by:users ( username ) ),
             users!activities_user_id_fkey ( username ),
             activity_tags (
@@ -439,6 +442,28 @@ export default function IdeaDetailScreen() {
                         Pinned by @{idea.venues.pinned_by.username}
                       </Text>
                     ) : null}
+                    {/* You added this place and it's still private: change its name,
+                        directions or hours (#6). Once anything here is published,
+                        changes are suggested and checked (#10) */}
+                    {myUserId && idea.venues.created_by === myUserId && idea.visibility !== "PUBLISHED" ? (
+                      <Pressable
+                        onPress={() =>
+                          setEditingPlace({
+                            venueId: idea.venues.venue_id,
+                            name: idea.venues.name,
+                            accessNote: idea.venues.access_note ?? null,
+                            openingHours: idea.venues.opening_hours ?? null,
+                          })
+                        }
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Edit this place"
+                        className="flex-row items-center gap-1 self-start mt-2 active:opacity-70"
+                      >
+                        <Ionicons name="pencil-outline" size={13} color="#60a5fa" />
+                        <Text className="text-blue-400 text-sm font-semibold">Edit place</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                   <View className="w-10 h-10 rounded-full bg-zinc-800 items-center justify-center border border-zinc-700">
                     <Ionicons name="expand-outline" size={18} color="#FF9D0A" />
@@ -599,6 +624,29 @@ export default function IdeaDetailScreen() {
         </View>
       </View>
       )}
+
+      {/* EDIT A PLACE YOU ADDED */}
+      <EditPlaceSheet
+        place={editingPlace}
+        onClose={() => setEditingPlace(null)}
+        onSaved={(saved) => {
+          setIdea((prev: any) =>
+            prev
+              ? {
+                  ...prev,
+                  venues: {
+                    ...prev.venues,
+                    name: saved.name,
+                    access_note: saved.accessNote,
+                    opening_hours: saved.openingHours,
+                    hours_checked_at: saved.hoursCheckedAt,
+                  },
+                }
+              : prev,
+          );
+          setEditingPlace(null);
+        }}
+      />
 
       {/* FULL-SCREEN INTERACTIVE MAP MODAL */}
       <Modal
