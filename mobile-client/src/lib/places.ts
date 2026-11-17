@@ -43,6 +43,8 @@ export type PickedPlace =
       longitude: number;
       /** How to get there (optional) */
       accessNote: string | null;
+      /** Opening hours (OpenStreetMap format; null: not sure, #6) */
+      openingHours: string | null;
     };
 
 export const pickExisting = (p: PlaceResult): PickedPlace => ({
@@ -111,6 +113,9 @@ export async function addPlace(place: Extract<PickedPlace, {kind: "new"}>): Prom
       address: place.address,
       coordinates: `POINT(${place.longitude} ${place.latitude})`,
       access_note: place.accessNote?.trim() || null,
+      // Whoever added it just set them
+      opening_hours: place.openingHours,
+      hours_checked_at: place.openingHours ? new Date().toISOString() : null,
     })
     .select("venue_id")
     .single();

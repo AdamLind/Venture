@@ -51,6 +51,7 @@ import {
 import {getDistance} from "@/utils/geo";
 import type {LatLng} from "@/utils/timeline";
 import GlassSurface from "@/components/ui/GlassSurface";
+import HoursEditor, {DEFAULT_HOURS, type HoursChoice, hoursFromChoice} from "./HoursEditor";
 import MapPin, {PIN_COLOR, PIN_TIP_Y, PIN_WIDTH} from "./MapPin";
 
 /** A pin this close to your saved home area (miles) gets a check */
@@ -149,6 +150,7 @@ export default function PlacePicker({
   const [pin, setPin] = useState<LatLng>(around);
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
+  const [hours, setHours] = useState<HoursChoice>(DEFAULT_HOURS);
   const [address, setAddress] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [similar, setSimilar] = useState<PlaceResult[]>([]);
@@ -227,6 +229,7 @@ export default function PlacePicker({
     setQuery("");
     setName("");
     setNote("");
+    setHours(DEFAULT_HOURS);
     setSimilar([]);
   };
   const close = () => {
@@ -258,6 +261,7 @@ export default function PlacePicker({
     latitude: pin.latitude,
     longitude: pin.longitude,
     accessNote: note.trim() || null,
+    openingHours: hoursFromChoice(hours),
   });
 
   // Last check before adding: is the pin at someone's home (yours)?
@@ -661,6 +665,15 @@ export default function PlacePicker({
                     className="min-h-28 px-4 pt-3.5 pb-3.5 text-white bg-zinc-900 border border-zinc-800 rounded-2xl"
                     style={INPUT_TEXT}
                   />
+                </View>
+
+                {/* When it's open (#6): plans and the live date warn when it's closed */}
+                <View className="gap-2">
+                  <View className="flex-row items-baseline justify-between mx-1">
+                    <Text className="text-zinc-400 text-sm font-bold">HOURS</Text>
+                    <Text className="text-zinc-600 text-xs">Optional</Text>
+                  </View>
+                  <HoursEditor value={hours} onChange={setHours} />
                 </View>
               </View>
             </ScrollView>

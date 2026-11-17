@@ -79,14 +79,34 @@ export function nextGoodStart(values: readonly string[] | null | undefined, from
   return best ?? from;
 }
 
-/** "Best in the evening", "Best in the morning or afternoon", or null. */
+/** The window as a plain noun ("early morning", "afternoon") */
+const noun = (t: TimeOfDay) => TIME_OF_DAY_LABEL[t].toLowerCase();
+
+/** "a", "a or b", "a, b, or c" */
+const orList = (items: string[]) =>
+  items.length <= 2 ? items.join(" or ") : `${items.slice(0, -1).join(", ")}, or ${items[items.length - 1]}`;
+
+/**
+ * "Best in the evening", "Best in the morning, afternoon, or evening",
+ * "Best in the evening or late at night", "Best from early morning to
+ * evening" (four or more in a row), or null (any time).
+ */
 export function bestTimeLabel(values: readonly string[] | null | undefined): string | null {
   const windows = normalizeTimeOfDay(values);
   if (windows.length === 0 || windows.length === ORDER.length) return null;
-  const phrases = windows.map((t) => WINDOWS[t].phrase);
-  const joined =
-    phrases.length <= 2
-      ? phrases.join(" or ")
-      : `${phrases.slice(0, -1).join(", ")}, or ${phrases[phrases.length - 1]}`;
-  return `Best ${joined}`;
+
+  // Four or more back to back: a range is shorter than the list
+  const first = ORDER.indexOf(windows[0]);
+  const inARow = windows.every((t, i) => ORDER.indexOf(t) === first + i);
+  if (inARow && windows.length >= 4) {
+    return `Best from ${noun(windows[0])} to ${noun(windows[windows.length - 1])}`;
+  }
+
+  // "in the" once for the daytime ones; late night reads "late at night"
+  const day = windows.filter((t) => t !== "LATE_NIGHT").map(noun);
+  const items = [
+    ...day.map((d, i) => (i === 0 ? `in the ${d}` : d)),
+    ...(windows.includes("LATE_NIGHT") ? [WINDOWS.LATE_NIGHT.phrase] : []),
+  ];
+  return `Best ${orList(items)}`;
 }

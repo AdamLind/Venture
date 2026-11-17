@@ -434,7 +434,14 @@ export default function ActiveDateScreen() {
     if (!activity || activity.modality === "STAY_IN" || isDone(slot)) return null;
     const length = slot.endTime - slot.startTime;
     const start = isArrived(slot) ? slot.startTime : Math.max(now, slot.startTime);
-    const check = checkHours(activity.venues?.opening_hours, start, start + length);
+    const check = checkHours(
+      activity.venues?.opening_hours,
+      start,
+      start + length,
+      typeof activity.latitude === "number" && typeof activity.longitude === "number"
+        ? {latitude: activity.latitude, longitude: activity.longitude}
+        : null,
+    );
     return check.status === "closed" || check.status === "partly" ? hoursMessage(check, start) : null;
   };
   const focusNote = focus && !allDone ? hoursNoteFor(focus) : null;

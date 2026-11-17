@@ -1,12 +1,27 @@
 // utils/sunset.ts
 // Sunset time for a day and place, from the standard "sunrise equation"
 // (accurate to a few minutes; checked against Provo, London and Tokyo).
-// Used by the plan evaluator's "outside after dark" rule.
+// Used by the plan evaluator's "outside after dark" rule, and by places
+// open from sunrise to sunset (utils/openingHours.ts).
 
 const rad = Math.PI / 180;
 
 /** Sunset on `day` (local calendar date) at lat/lng, or null (polar day/night). */
 export function sunsetAt(day: Date, latitude: number, longitude: number): Date | null {
+  return sunTimes(day, latitude, longitude)?.sunset ?? null;
+}
+
+/** Sunrise on `day` (local calendar date) at lat/lng, or null (polar day/night). */
+export function sunriseAt(day: Date, latitude: number, longitude: number): Date | null {
+  return sunTimes(day, latitude, longitude)?.sunrise ?? null;
+}
+
+/** Sunrise and sunset on `day` at lat/lng, or null (polar day/night). */
+export function sunTimes(
+  day: Date,
+  latitude: number,
+  longitude: number,
+): {sunrise: Date; sunset: Date} | null {
   const noon = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12);
   const julianDay = noon.getTime() / 86_400_000 + 2440587.5;
   // Days since 2000-01-01 noon UTC, nudged to this longitude's solar noon
@@ -33,5 +48,6 @@ export function sunsetAt(day: Date, latitude: number, longitude: number): Date |
   if (cosHourAngle < -1 || cosHourAngle > 1) return null;
 
   const hourAngle = Math.acos(cosHourAngle) / rad;
-  return new Date((solarNoon + hourAngle / 360 - 2440587.5) * 86_400_000);
+  const at = (julian: number) => new Date((julian - 2440587.5) * 86_400_000);
+  return {sunrise: at(solarNoon - hourAngle / 360), sunset: at(solarNoon + hourAngle / 360)};
 }

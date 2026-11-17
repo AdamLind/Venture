@@ -20,6 +20,7 @@ export default function PlaceHours({
   hours,
   checkedAt,
   url,
+  at,
   className = "",
 }: {
   hours: string | null | undefined;
@@ -27,6 +28,8 @@ export default function PlaceHours({
   checkedAt?: string | null;
   /** The idea's website / menu link */
   url?: string | null;
+  /** The place (for daylight-only hours) */
+  at?: {latitude: number; longitude: number} | null;
   /** Spacing around it (it renders nothing when the hours aren't known) */
   className?: string;
 }) {
@@ -40,7 +43,7 @@ export default function PlaceHours({
   const [weekHeight, setWeekHeight] = useState(0);
   const progress = useSharedValue(0);
   const weekStyle = useAnimatedStyle(() => ({height: weekHeight * progress.get()}));
-  const status = openNow(hours, now);
+  const status = openNow(hours, now, at);
   const week = weekLines(hours, now);
   if (!status || !week) return null;
 

@@ -371,7 +371,15 @@ export function evaluatePlan(
 
     // Opening hours: the venue's, when we know them (stay-in ideas are at home)
     if (activity.modality !== "STAY_IN") {
-      const check = checkHours(activity.venues?.opening_hours, slot.startTime, slot.endTime);
+      // (the place's own location, for daylight-only hours)
+      const check = checkHours(
+        activity.venues?.opening_hours,
+        slot.startTime,
+        slot.endTime,
+        typeof activity.latitude === "number" && typeof activity.longitude === "number"
+          ? {latitude: activity.latitude, longitude: activity.longitude}
+          : null,
+      );
       const message = hoursMessage(check, slot.startTime);
       if (message && check.status !== "unknown" && check.status !== "open") {
         // Open for under half the stop counts as closed

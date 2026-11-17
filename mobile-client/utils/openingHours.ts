@@ -14,6 +14,20 @@
 // ~5 MB; this covers what venues actually use.)
 //
 // Times are the phone's local time (the date's places are nearby).
+//
+// "sunrise-sunset" (daylight only: trails, lookouts) is understood too,
+// worked out for the place's location (pass `at`); without a location it
+// counts as unknown.
+//
+// hoursText() goes the other way: a simple week (open / closed, from, to)
+// to this format, for the place form (#6).
+
+import {sunTimes} from "./sunset";
+
+/** A place open from sunrise to sunset (OpenStreetMap's own value for it) */
+export const DAYLIGHT = "sunrise-sunset";
+
+type Spot = {latitude: number; longitude: number};
 
 /** Minutes after midnight, per weekday (0 = Sunday); an end past 1440 runs into the next day */
 export type WeekHours = [number, number][][];
@@ -152,13 +166,47 @@ export function parseOpeningHours(value: string | null | undefined): WeekHours |
   return result;
 }
 
+/** `daylight`: the place is open from sunrise to sunset */
 export type HoursCheck =
   | {status: "unknown"}
-  | {status: "open"}
+  | {status: "open"; daylight?: boolean}
   /** Opens after you arrive, or closes before you leave */
-  | {status: "partly"; opensAt: number | null; closesAt: number | null; openShare: number}
+  | {status: "partly"; opensAt: number | null; closesAt: number | null; openShare: number; daylight?: boolean}
   /** `closedAt`: when it closed earlier that day (null: not open that day before then) */
-  | {status: "closed"; nextOpen: number | null; closedAt: number | null};
+  | {status: "closed"; nextOpen: number | null; closedAt: number | null; daylight?: boolean};
+
+const isDaylight = (hours: string | null | undefined) =>
+  typeof hours === "string" && hours.trim().toLowerCase() === DAYLIGHT;
+
+/** Daylight spans (ms), sunrise to sunset, from the day before `fromMs` through `days` days after `toMs`. */
+function daylightSpans(at: Spot, fromMs: number, toMs: number, days = 1): [number, number][] {
+  const spans: [number, number][] = [];
+  const first = new Date(fromMs - DAY_MS);
+  for (
+    let day = new Date(first.getFullYear(), first.getMonth(), first.getDate());
+    day.getTime() <= toMs + days * DAY_MS;
+    day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)
+  ) {
+    const sun = sunTimes(day, at.latitude, at.longitude);
+    if (sun) spans.push([sun.sunrise.getTime(), sun.sunset.getTime()]);
+  }
+  return spans;
+}
+
+/** The open spans for a place's hours (null: unknown) */
+function spansFor(
+  hours: string | null | undefined,
+  at: Spot | null | undefined,
+  fromMs: number,
+  toMs: number,
+  days: number,
+): {spans: [number, number][]; daylight: boolean} | null {
+  if (isDaylight(hours)) {
+    return at ? {spans: daylightSpans(at, fromMs, toMs, days), daylight: true} : null;
+  }
+  const week = parseOpeningHours(hours);
+  return week ? {spans: openSpans(week, fromMs, toMs, days), daylight: false} : null;
+}
 
 /** Open spans (ms) from the day before `fromMs` through `days` days after `toMs`, merged. */
 function openSpans(week: WeekHours, fromMs: number, toMs: number, days = 1): [number, number][] {
@@ -187,21 +235,29 @@ function openSpans(week: WeekHours, fromMs: number, toMs: number, days = 1): [nu
   return merged;
 }
 
-/** Whether a place with these hours is open for a stop from `startMs` to `endMs`. */
-export function checkHours(hours: string | null | undefined, startMs: number, endMs: number): HoursCheck {
-  const week = parseOpeningHours(hours);
-  if (!week) return {status: "unknown"};
-  const spans = openSpans(week, startMs, endMs, 7);
+/**
+ * Whether a place with these hours is open for a stop from `startMs` to
+ * `endMs`. `at`: the place (for daylight-only hours).
+ */
+export function checkHours(
+  hours: string | null | undefined,
+  startMs: number,
+  endMs: number,
+  at?: Spot | null,
+): HoursCheck {
+  const found = spansFor(hours, at, startMs, endMs, 7);
+  if (!found) return {status: "unknown"};
+  const {spans, daylight} = found;
   const length = Math.max(1, endMs - startMs);
   const openFor = spans.reduce(
     (sum, [a, b]) => sum + Math.max(0, Math.min(b, endMs) - Math.max(a, startMs)),
     0,
   );
-  if (openFor >= length) return {status: "open"};
+  if (openFor >= length) return {status: "open", daylight};
   if (openFor <= 0) {
     const next = spans.find(([a]) => a >= startMs);
     const before = spans.filter(([, b]) => b <= startMs && sameDay(b, startMs)).pop();
-    return {status: "closed", nextOpen: next ? next[0] : null, closedAt: before ? before[1] : null};
+    return {status: "closed", nextOpen: next ? next[0] : null, closedAt: before ? before[1] : null, daylight};
   }
   const covering = spans.find(([a, b]) => a <= startMs && startMs < b);
   const opening = spans.find(([a]) => a > startMs && a < endMs);
@@ -210,6 +266,7 @@ export function checkHours(hours: string | null | undefined, startMs: number, en
     opensAt: covering ? null : (opening?.[0] ?? null),
     closesAt: covering && covering[1] < endMs ? covering[1] : null,
     openShare: openFor / length,
+    daylight,
   };
 }
 
@@ -229,11 +286,29 @@ export type OpenNow = {
 };
 
 /** Whether the place is open at `nowMs`, for the idea page (null: hours unknown). */
-export function openNow(hours: string | null | undefined, nowMs: number): OpenNow | null {
-  const week = parseOpeningHours(hours);
-  if (!week) return null;
-  const spans = openSpans(week, nowMs, nowMs, 7);
+export function openNow(hours: string | null | undefined, nowMs: number, at?: Spot | null): OpenNow | null {
+  const found = spansFor(hours, at, nowMs, nowMs, 7);
+  if (!found) return null;
+  const {spans, daylight} = found;
   const covering = spans.find(([a, b]) => a <= nowMs && nowMs < b);
+  if (daylight) {
+    if (covering) {
+      const soon = covering[1] - nowMs <= SOON_MS;
+      return {
+        open: true,
+        soon,
+        label: soon ? `Sunset soon · ${clock(covering[1])}` : `Open until sunset · ${clock(covering[1])}`,
+      };
+    }
+    const sunrise = spans.find(([a]) => a > nowMs);
+    if (!sunrise) return {open: false, soon: false, label: "Daylight only"};
+    const tomorrow = !sameDay(sunrise[0], nowMs);
+    return {
+      open: false,
+      soon: false,
+      label: `Closed · opens at sunrise${tomorrow ? " tomorrow" : ""} (${clock(sunrise[0])})`,
+    };
+  }
   if (covering) {
     // Open all week (24/7, or every day all day)
     if (covering[1] - nowMs > 6 * DAY_MS) return {open: true, soon: false, label: "Open 24 hours"};
@@ -268,9 +343,13 @@ export function weekLines(
   hours: string | null | undefined,
   nowMs: number,
 ): {day: string; text: string; today: boolean}[] | null {
+  const today = new Date(nowMs).getDay();
+  const dayName = (d: number) => new Date(2000, 0, 2 + d).toLocaleDateString([], {weekday: "short"});
+  if (isDaylight(hours)) {
+    return [1, 2, 3, 4, 5, 6, 0].map((d) => ({day: dayName(d), text: "Sunrise to sunset", today: d === today}));
+  }
   const week = parseOpeningHours(hours);
   if (!week) return null;
-  const today = new Date(nowMs).getDay();
   return [1, 2, 3, 4, 5, 6, 0].map((d) => ({
     // A known Sunday (Jan 2 2000) + d, so the name is in the phone's language
     day: new Date(2000, 0, 2 + d).toLocaleDateString([], {weekday: "short"}),
@@ -281,6 +360,17 @@ export function weekLines(
 
 /** "Closed then · opens 5:00 PM", "Closes at 9:00 PM", "Opens at 10:00 AM" (null: fine or unknown) */
 export function hoursMessage(check: HoursCheck, startMs: number): string | null {
+  if (check.status !== "unknown" && check.status !== "open" && check.daylight) {
+    // Daylight-only places say it with the sun
+    if (check.status === "closed") {
+      if (check.nextOpen && sameDay(check.nextOpen, startMs)) return `Before sunrise · ${clock(check.nextOpen)}`;
+      if (check.closedAt) return `After sunset · ${clock(check.closedAt)}`;
+      return "Daylight only";
+    }
+    if (check.closesAt) return `Sunset is ${clock(check.closesAt)}`;
+    if (check.opensAt) return `Sunrise is ${clock(check.opensAt)}`;
+    return "Daylight only";
+  }
   switch (check.status) {
     case "closed":
       if (check.nextOpen && sameDay(check.nextOpen, startMs)) {
@@ -295,4 +385,34 @@ export function hoursMessage(check: HoursCheck, startMs: number): string | null 
     default:
       return null;
   }
+}
+
+// ─── Writing hours (the place form, #6) ────────────────────────────────────
+
+/** One day of a simple week: open or not, and from / to (minutes after midnight) */
+export type DayHours = {open: boolean; from: number; to: number};
+
+const hhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+/** Monday first, as the form shows them */
+const WEEK_ORDER = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+
+/**
+ * A simple week (Monday first) as opening hours: days with the same hours
+ * grouped ("Mo-Fr 09:00-17:00; Sa 10:00-14:00; Su off"), "24/7" when it's
+ * open all day every day. A close time at or before the open time runs
+ * past midnight.
+ */
+export function hoursText(week: DayHours[]): string {
+  const key = (d: DayHours) => (d.open ? (d.from === d.to ? "24h" : `${d.from}-${d.to}`) : "off");
+  if (week.every((d) => d.open && d.from === d.to)) return "24/7";
+  const rules: string[] = [];
+  for (let i = 0; i < 7; ) {
+    let j = i;
+    while (j + 1 < 7 && key(week[j + 1]) === key(week[i])) j++;
+    const days = i === j ? WEEK_ORDER[i] : `${WEEK_ORDER[i]}-${WEEK_ORDER[j]}`;
+    const d = week[i];
+    rules.push(`${days} ${!d.open ? "off" : d.from === d.to ? "00:00-24:00" : `${hhmm(d.from)}-${hhmm(d.to)}`}`);
+    i = j + 1;
+  }
+  return rules.join("; ");
 }

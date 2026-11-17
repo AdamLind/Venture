@@ -419,9 +419,11 @@ function Chip({
 }) {
   const t = CHIP_TONES[tone];
   return (
-    <View className={`flex-row items-center gap-1 px-2 py-1 rounded-lg ${t.box}`}>
+    // Never wider than the card: a long note ("Best in the morning,
+    // afternoon, evening") wraps inside the chip instead of running off it
+    <View className={`flex-row items-center gap-1 px-2 py-1 rounded-lg max-w-full ${t.box}`}>
       <Ionicons name={icon} size={11} color={t.icon} />
-      <Text className={`text-xs font-semibold ${t.text}`}>{text}</Text>
+      <Text className={`text-xs font-semibold shrink ${t.text}`}>{text}</Text>
     </View>
   );
 }

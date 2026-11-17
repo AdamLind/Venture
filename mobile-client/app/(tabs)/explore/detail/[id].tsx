@@ -332,6 +332,7 @@ export default function IdeaDetailScreen() {
                 hours={idea.venues.opening_hours}
                 checkedAt={idea.venues.hours_checked_at}
                 url={idea.url}
+                at={coords}
                 className="w-full mb-4 pb-4 border-b border-zinc-800"
               />
             )}
