@@ -93,7 +93,8 @@ const styles = StyleSheet.create({
   overlay: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
+    // (matches the pills on Explore's cards)
+    backgroundColor: "rgba(0,0,0,0.65)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.3)",
   },

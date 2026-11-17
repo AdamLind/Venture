@@ -28,6 +28,7 @@ import TabHeader, {
 import {supabase} from "@/src/supabase";
 import {LinearGradient} from "expo-linear-gradient";
 import {useLocationStore} from "@/src/store/useLocationStore";
+import {getDistance} from "@/utils/geo";
 import GlassSurface from "@/components/ui/GlassSurface";
 import Avatar from "@/components/profile/Avatar";
 import type {PublicProfile} from "@/types/profile";
@@ -65,6 +66,13 @@ interface DateIdea {
     coordinates: string | null;
   } | null;
 }
+
+/** The card's pills: the same see-through dark circle as the save button */
+const CARD_PILL = {
+  backgroundColor: "rgba(0,0,0,0.65)",
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: "rgba(255,255,255,0.3)",
+} as const;
 
 const formatPrice = (priceString: string | number): string => {
   const price =
@@ -297,6 +305,14 @@ export default function ExploreScreen() {
   }, []);
 
   // --- UI COMPONENTS ---
+  // How far a go-out idea is from you ("2.3 mi"); "Go out" without your location
+  const whereLabel = (item: DateIdea): string => {
+    if (!userLocation || item.latitude == null || item.longitude == null) return "Go out";
+    const miles = getDistance(userLocation, {latitude: item.latitude, longitude: item.longitude});
+    if (miles < 0.2) return "Nearby";
+    return `${miles < 10 ? miles.toFixed(1) : Math.round(miles)} mi`;
+  };
+
   const renderIdeaItem = ({item}: {item: DateIdea}) => {
     const displayImage = sizedImage(
       item.image_urls?.[0] ||
@@ -328,32 +344,54 @@ export default function ExploreScreen() {
             style={{position: "absolute", width: "100%", height: "100%"}}
           />
 
-          {/* Both pills the same height, text centred (the smaller text in a
-              stretched pill sat high) */}
+          {/* Price, how far (or at home), and for your own unpublished ideas a
+              status icon: same height, same look as the save button */}
           <View className="absolute top-4 left-4 flex-row items-center gap-2">
-            <View className="h-7 justify-center bg-zinc-950/85 px-3 rounded-full border border-zinc-500 shadow-md shadow-black">
+            <View className="h-7 justify-center px-3 rounded-full" style={CARD_PILL}>
               <Text className="text-white font-bold text-xs">
                 {formatPrice(item.est_price_per_person)}
               </Text>
             </View>
 
+            {/* Where: stay-in ideas are at home; go-out ones say how far */}
             <View
-              className={`h-7 justify-center px-3 rounded-full border bg-[rgba(0,0,0,0.85)] shadow-md shadow-black ${
-                item.modality === "STAY_IN"
-                  ? "border-amber-500/80"
-                  : "border-emerald-500/80"
-              }`}
+              className="h-7 flex-row items-center gap-1 px-3 rounded-full"
+              style={CARD_PILL}
+              accessible
+              accessibilityLabel={item.modality === "STAY_IN" ? "Stay in, at home" : `Go out, ${whereLabel(item)}`}
             >
-              <Text
-                className={`text-[10px] font-bold uppercase tracking-wider ${
-                  item.modality === "STAY_IN"
-                    ? "text-amber-400"
-                    : "text-emerald-400"
-                }`}
-              >
-                {(item.modality ?? "GO OUT").replace("_", " ")}
+              <Ionicons
+                name={item.modality === "STAY_IN" ? "home" : "navigate"}
+                size={11}
+                color={item.modality === "STAY_IN" ? "#fbbf24" : "#34d399"}
+              />
+              <Text className="text-white font-bold text-xs">
+                {item.modality === "STAY_IN" ? "Home" : whereLabel(item)}
               </Text>
             </View>
+
+            {/* Yours and not public: a small icon in the same row (only you see
+                this card), out of the way of the photo */}
+            {item.visibility !== "PUBLISHED" && IDEA_STATUS[item.visibility] && (
+              <View
+                className="h-7 w-7 items-center justify-center rounded-full"
+                style={CARD_PILL}
+                accessible
+                accessibilityLabel={
+                  item.visibility === "PRIVATE"
+                    ? "Only you can see this"
+                    : `${IDEA_STATUS[item.visibility].label}. Only you can see this`
+                }
+              >
+                <Ionicons
+                  name={IDEA_STATUS[item.visibility].icon}
+                  size={13}
+                  color={IDEA_STATUS[item.visibility].color}
+                  // (the glyphs sit a hair left of their box)
+                  style={{marginLeft: 1}}
+                />
+              </View>
+            )}
           </View>
 
           <View className="absolute top-4 right-4">
@@ -363,24 +401,6 @@ export default function ExploreScreen() {
           <View className="absolute bottom-0 w-full p-5">
             <View className="flex-row justify-between items-end">
               <View className="flex-1 pr-4">
-                {/* Yours and not public: say so (only you see this card) */}
-                {item.visibility !== "PUBLISHED" && IDEA_STATUS[item.visibility] && (
-                  <View
-                    className="flex-row items-center gap-1.5 self-start mb-2 bg-black/75 rounded-full px-2.5 h-6"
-                    style={{borderWidth: 1, borderColor: `${IDEA_STATUS[item.visibility].color}99`}}
-                  >
-                    <Ionicons
-                      name={IDEA_STATUS[item.visibility].icon}
-                      size={12}
-                      color={IDEA_STATUS[item.visibility].color}
-                    />
-                    <Text className="text-white text-xs font-semibold">
-                      {item.visibility === "PRIVATE"
-                        ? "Only you can see this"
-                        : `${IDEA_STATUS[item.visibility].label} · only you can see this`}
-                    </Text>
-                  </View>
-                )}
                 <Text className="text-2xl font-extrabold text-white mb-1 shadow-black drop-shadow-md">
                   {item.title}
                 </Text>
