@@ -1,6 +1,7 @@
 // app/settings/hidden-ideas.tsx
-// Ideas you marked "Not interested" (public.hidden_ideas), newest first.
-// Unhiding puts an idea back in Discover and the builder.
+// Creators you blocked (public.blocked_users, #76), then ideas you marked
+// "Not interested" (public.hidden_ideas), newest first. Unblocking or
+// unhiding puts their ideas back in Discover and the builder.
 
 import React, {useCallback, useState} from "react";
 import {useFocusEffect} from "expo-router";
@@ -23,14 +24,19 @@ import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
 import {IDEA_SUMMARY_COLUMNS, ideaImage} from "@/src/lib/ideas";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
+import {useBlockStore} from "@/src/store/useBlockStore";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import type {IdeaSummary} from "@/types/ideas";
 
 type HiddenRow = {idea_id: number; idea: IdeaSummary | null};
+type BlockedRow = {blocked_id: string; username: string | null};
 
 export default function HiddenIdeasScreen() {
   const userId = useProfileStore((s) => s.userId);
   const unhide = useHiddenStore((s) => s.unhide);
+  const unblock = useBlockStore((s) => s.unblock);
+  const [blocked, setBlocked] = useState<BlockedRow[]>([]);
+  const [unblocking, setUnblocking] = useState<string | null>(null);
 
   const [rows, setRows] = useState<HiddenRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +45,20 @@ export default function HiddenIdeasScreen() {
 
   const load = useCallback(async () => {
     if (!userId) return;
+    // Not fatal: the hidden ideas still load
+    const blocks = await supabase
+      .from("blocked_users")
+      .select("blocked_id, created_at, users!blocked_users_blocked_id_fkey ( username )")
+      .eq("user_id", userId)
+      .order("created_at", {ascending: false});
+    if (blocks.error) console.warn("Blocked creators load error:", blocks.error);
+    setBlocked(
+      (blocks.data ?? []).map((row: any) => ({
+        blocked_id: row.blocked_id,
+        username: row.users?.username ?? null,
+      })),
+    );
+
     const {data, error: dbError} = await supabase
       .from("hidden_ideas")
       .select(`idea_id, created_at, activities ( ${IDEA_SUMMARY_COLUMNS} )`)
@@ -92,6 +112,28 @@ export default function HiddenIdeasScreen() {
     }
   };
 
+  const onUnblock = async (row: BlockedRow) => {
+    setUnblocking(row.blocked_id);
+    try {
+      await unblock(row.blocked_id);
+      setBlocked((prev) => prev.filter((b) => b.blocked_id !== row.blocked_id));
+      Toast.show({
+        type: "success",
+        text1: row.username ? `Unblocked @${row.username}` : "Unblocked",
+        position: "bottom",
+      });
+    } catch (e) {
+      Toast.show({
+        type: "error",
+        text1: "Couldn't unblock them",
+        text2: e instanceof Error ? e.message : undefined,
+        position: "bottom",
+      });
+    } finally {
+      setUnblocking(null);
+    }
+  };
+
   const visible = rows;
 
   return (
@@ -103,6 +145,42 @@ export default function HiddenIdeasScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#a1a1aa" />
         }
       >
+        {/* BLOCKED CREATORS */}
+        {blocked.length > 0 && (
+          <View className="gap-2 mb-4">
+            <Text className="text-zinc-400 text-sm font-bold ml-1">BLOCKED CREATORS</Text>
+            <View className="bg-zinc-900 border border-zinc-800 rounded-3xl">
+              {blocked.map((row, i) => (
+                <View
+                  key={row.blocked_id}
+                  className={`flex-row items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-zinc-800" : ""}`}
+                >
+                  <Ionicons name="ban-outline" size={18} color="#a1a1aa" />
+                  <Text className="text-white font-semibold text-base flex-1" numberOfLines={1}>
+                    {row.username ? `@${row.username}` : "A creator"}
+                  </Text>
+                  <Pressable
+                    onPress={() => onUnblock(row)}
+                    disabled={unblocking === row.blocked_id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Unblock ${row.username ?? "creator"}`}
+                    className="bg-zinc-800 rounded-full px-4 py-2 active:opacity-70"
+                  >
+                    {unblocking === row.blocked_id ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <Text className="text-white font-bold text-sm">Unblock</Text>
+                    )}
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+            <Text className="text-zinc-500 text-xs px-1">
+              You won&apos;t see their ideas. They aren&apos;t told.
+            </Text>
+          </View>
+        )}
+
         <Text className="text-zinc-500 text-sm px-1 mb-1">
           Ideas you marked &quot;Not interested&quot;. They won&apos;t show up in
           Discover or when you plan a date.

@@ -1,5 +1,7 @@
 // src/store/useNotificationStore.ts
-// In-app notifications (public.notifications): review decisions on your ideas.
+// In-app notifications (public.notifications): review decisions on your
+// ideas, what happened to your reports, and (staff) reported ideas (#76).
+// Staff alerts only show while Staff tools is on.
 // Loaded by the root layout after sign-in and kept live with a realtime
 // subscription, so the bell's dot appears as soon as a decision lands.
 
@@ -8,11 +10,23 @@ import type {RealtimeChannel} from "@supabase/supabase-js";
 import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
+import {useStaffStore, useStaffTools} from "@/src/store/useStaffStore";
 
 export type NotificationKind =
   | "IDEA_PUBLISHED"
   | "IDEA_NEEDS_REVISION"
-  | "IDEA_REJECTED";
+  | "IDEA_REJECTED"
+  /** Your idea is hidden from Discover while a moderator looks at reports */
+  | "IDEA_HELD"
+  /** Staff: an idea was reported */
+  | "IDEA_REPORTED"
+  /** Your report: we took it down */
+  | "REPORT_ACTIONED"
+  /** Your report: we looked, and it's within the guidelines */
+  | "REPORT_DISMISSED";
+
+/** Kinds only staff get; shown while Staff tools is on */
+export const isStaffKind = (kind: NotificationKind) => kind === "IDEA_REPORTED";
 
 export interface AppNotification {
   notification_id: number;
@@ -37,8 +51,9 @@ interface NotificationState {
 
   load: (userId: string) => Promise<void>;
   reload: () => Promise<void>;
-  /** Marks everything seen (moves it from New to Earlier next time). */
-  markAllSeen: () => Promise<void>;
+  /** Marks everything shown seen (moves it from New to Earlier next time).
+   *  Staff alerts only when they're shown (Staff tools on). */
+  markAllSeen: (includeStaff: boolean) => Promise<void>;
   clear: () => void;
 }
 
@@ -79,9 +94,11 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
             filter: `user_id=eq.${userId}`,
           },
           () => {
-            // A review decision: refresh the list and the idea's status
+            // A review decision: refresh the list and the idea's status;
+            // a reported idea (staff): the queue's counts
             get().reload();
             useMyIdeasStore.getState().reload();
+            useStaffStore.getState().refreshCounts();
           },
         )
         .subscribe();
@@ -107,18 +124,21 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     if (userId) await load(userId);
   },
 
-  markAllSeen: async () => {
+  markAllSeen: async (includeStaff) => {
     const {userId, items} = get();
-    if (!userId || !items.some((n) => !n.seen_at)) return;
+    const marks = (n: AppNotification) => !n.seen_at && (includeStaff || !isStaffKind(n.kind));
+    if (!userId || !items.some(marks)) return;
 
     const seenAt = new Date().toISOString();
-    set({items: items.map((n) => (n.seen_at ? n : {...n, seen_at: seenAt}))});
+    set({items: items.map((n) => (marks(n) ? {...n, seen_at: seenAt} : n))});
 
-    const {error} = await supabase
+    let query = supabase
       .from("notifications")
       .update({seen_at: seenAt})
       .eq("user_id", userId)
       .is("seen_at", null);
+    if (!includeStaff) query = query.neq("kind", "IDEA_REPORTED");
+    const {error} = await query;
     if (error) console.warn("Couldn't mark notifications seen:", error.message);
   },
 
@@ -128,6 +148,17 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 }));
 
+/** The notifications to show: staff alerts only with Staff tools on. */
+export function useVisibleNotifications() {
+  const showStaff = useStaffTools();
+  const items = useNotificationStore((s) => s.items);
+  return {items: showStaff ? items : items.filter((n) => !isStaffKind(n.kind)), showStaff};
+}
+
 /** How many notifications are new (for the bell's dot). */
-export const useUnseenCount = () =>
-  useNotificationStore((s) => s.items.filter((n) => !n.seen_at).length);
+export const useUnseenCount = () => {
+  const showStaff = useStaffTools();
+  return useNotificationStore(
+    (s) => s.items.filter((n) => !n.seen_at && (showStaff || !isStaffKind(n.kind))).length,
+  );
+};

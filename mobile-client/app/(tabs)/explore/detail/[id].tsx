@@ -330,7 +330,9 @@ export default function IdeaDetailScreen() {
               idea={idea}
               onDecided={(visibility, note, rules) => {
                 setIdea((prev: any) =>
-                  prev ? {...prev, visibility, moderation_note: note, moderation_rules: rules} : prev,
+                  prev
+                    ? {...prev, visibility, moderation_note: note, moderation_rules: rules, held_at: null}
+                    : prev,
                 );
                 // From the queue: straight back to it for the next one
                 if (from === "queue") router.back();
@@ -344,6 +346,16 @@ export default function IdeaDetailScreen() {
               <Text className="text-zinc-300 text-sm">
                 {IDEA_STATUS[idea.visibility as keyof typeof IDEA_STATUS]?.detail}
               </Text>
+              {/* Reported a few times: out of Discover until a moderator looks */}
+              {idea.visibility === "PUBLISHED" && idea.held_at && (
+                <View className="flex-row gap-2 bg-amber-500/10 rounded-2xl px-3 py-2.5 mt-1">
+                  <Ionicons name="eye-off" size={14} color="#fcd34d" style={{marginTop: 2}} />
+                  <Text className="text-amber-100/80 text-sm flex-1">
+                    Hidden from Discover for now: it was reported a few times, and a moderator will take a
+                    look soon. People who saved it can still see it.
+                  </Text>
+                </View>
+              )}
             </View>
           )}
 
@@ -650,6 +662,7 @@ export default function IdeaDetailScreen() {
               // After "Not interested", leave: it's gone from Discover
               showIdeaMenu(idea.idea_id, {
                 onHidden: () => router.back(),
+                creator: idea.user_id ? {id: idea.user_id, username: idea.users?.username ?? null} : null,
                 onReview:
                   staffRole && staffToolsOn && !showReview
                     ? () => router.setParams({review: "1"})

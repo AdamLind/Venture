@@ -4,6 +4,7 @@
 // panel is open also counts as new, and is marked seen when you leave.
 
 import React, {useEffect, useState} from "react";
+import {router} from "expo-router";
 import {View, Text, ScrollView, Pressable, RefreshControl} from "react-native";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {Image} from "expo-image";
@@ -14,9 +15,11 @@ import {openIdea} from "@/components/ideas/IdeaRows";
 import {ideaImage} from "@/src/lib/ideas";
 import {
   useNotificationStore,
+  useVisibleNotifications,
   type AppNotification,
   type NotificationKind,
 } from "@/src/store/useNotificationStore";
+import {useStaffStore} from "@/src/store/useStaffStore";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -44,7 +47,44 @@ const KIND: Record<
     body: (n) =>
       `"${n.idea_title ?? "Your idea"}"${n.note ? `: ${n.note}` : " won't be published."}`,
   },
+  IDEA_HELD: {
+    icon: "eye-off",
+    color: "#fbbf24",
+    title: "Your idea is hidden for now",
+    body: (n) =>
+      `"${n.idea_title ?? "Your idea"}" was reported a few times, so it's out of Discover until a moderator takes a look. People who saved it can still see it.`,
+  },
+  IDEA_REPORTED: {
+    icon: "flag",
+    color: "#f87171",
+    title: "An idea was reported",
+    body: (n) => `"${n.idea_title ?? "An idea"}"${n.note ? `: ${n.note}` : ""}`,
+  },
+  REPORT_ACTIONED: {
+    icon: "shield-checkmark",
+    color: "#34d399",
+    title: "Thanks for your report",
+    body: (n) => `We took "${n.idea_title ?? "that idea"}" out of Discover.`,
+  },
+  REPORT_DISMISSED: {
+    icon: "shield-checkmark",
+    color: "#a1a1aa",
+    title: "We looked at your report",
+    body: (n) =>
+      `"${n.idea_title ?? "That idea"}" is within our guidelines, so it's staying up. It's still hidden for you.`,
+  },
 };
+
+/** Where a notification goes: staff alerts open the review; a report that
+ *  was acted on goes nowhere (the idea's gone) */
+function openNotification(n: AppNotification) {
+  if (!n.idea_id || n.kind === "REPORT_ACTIONED") return;
+  if (n.kind === "IDEA_REPORTED") {
+    router.push({pathname: "/idea/[id]", params: {id: String(n.idea_id), review: "1"}});
+    return;
+  }
+  openIdea(n.idea_id);
+}
 
 /** "now", "5m", "3h", "2d", "Nov 3" */
 function timeAgo(iso: string) {
@@ -58,10 +98,12 @@ function timeAgo(iso: string) {
 
 function NotificationRow({item, isNew}: {item: AppNotification; isNew: boolean}) {
   const kind = KIND[item.kind];
+  // A kind this version doesn't know (a newer server): skip it
+  if (!kind) return null;
   return (
     <Pressable
-      onPress={() => item.idea_id && openIdea(item.idea_id)}
-      disabled={!item.idea_id}
+      onPress={() => openNotification(item)}
+      disabled={!item.idea_id || item.kind === "REPORT_ACTIONED"}
       className={`flex-row items-start gap-3 p-3 rounded-3xl active:opacity-80 ${
         isNew ? "bg-zinc-900 border border-zinc-800" : ""
       }`}
@@ -93,7 +135,7 @@ function NotificationRow({item, isNew}: {item: AppNotification; isNew: boolean})
 }
 
 export default function NotificationsScreen() {
-  const items = useNotificationStore((s) => s.items);
+  const {items} = useVisibleNotifications();
   const reload = useNotificationStore((s) => s.reload);
   const markAllSeen = useNotificationStore((s) => s.markAllSeen);
   const [refreshing, setRefreshing] = useState(false);
@@ -110,10 +152,16 @@ export default function NotificationsScreen() {
   );
 
   useEffect(() => {
-    markAllSeen();
+    // Staff alerts count as seen only when they're shown (Staff tools on),
+    // read at the time so a switch flipped meanwhile counts
+    const staffShown = () => {
+      const s = useStaffStore.getState();
+      return !!s.role && s.toolsOn;
+    };
+    markAllSeen(staffShown());
     // Anything that arrived while you were here: seen once you leave
     return () => {
-      markAllSeen();
+      markAllSeen(staffShown());
     };
   }, [markAllSeen]);
 

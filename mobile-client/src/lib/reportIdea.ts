@@ -1,5 +1,6 @@
 // src/lib/reportIdea.ts
-// The ••• menu on someone else's idea: Not interested, and Report.
+// The ••• menu on someone else's idea: Not interested, Block the creator,
+// and Report.
 // Reports go to public.idea_reports, which is write-only from the app.
 // Reporting also hides the idea for you (like "Not interested"), so you
 // don't keep seeing what you reported; Settings > Hidden ideas undoes it.
@@ -10,6 +11,8 @@ import Toast from "react-native-toast-message";
 import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
+import {useBlockStore} from "@/src/store/useBlockStore";
+import {SUSPENDED_MESSAGE, useAccountStore} from "@/src/store/useAccountStore";
 
 type Reason = "INAPPROPRIATE" | "SPAM" | "UNSAFE" | "AGE_RATING" | "OTHER";
 
@@ -62,6 +65,10 @@ async function submit(ideaId: number, reason: Reason, details: string | undefine
 }
 
 function chooseReason(ideaId: number, onHidden?: () => void) {
+  if (useAccountStore.getState().suspension) {
+    Alert.alert("You can't report right now", SUSPENDED_MESSAGE);
+    return;
+  }
   const onReason = (reason: Reason) => {
     if (reason === "OTHER" && Platform.OS === "ios") {
       Alert.prompt(
@@ -152,19 +159,67 @@ async function notInterested(ideaId: number, onHidden?: () => void) {
   });
 }
 
+/** Hides every idea from a creator (#76). Nobody is told. */
+function confirmBlock(creator: {id: string; username: string | null}, onHidden?: () => void) {
+  const name = creator.username ? `@${creator.username}` : "this creator";
+  Alert.alert(
+    `Block ${name}?`,
+    "You won't see their ideas in Discover or when you plan a date. They won't be told. You can unblock them in Settings › Hidden ideas.",
+    [
+      {text: "Cancel", style: "cancel"},
+      {
+        text: "Block",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await useBlockStore.getState().block(creator.id);
+          } catch (e) {
+            Toast.show({
+              type: "error",
+              text1: "Couldn't block them",
+              text2: e instanceof Error ? e.message : undefined,
+              position: "bottom",
+            });
+            return;
+          }
+          Toast.show({type: "success", text1: `Blocked ${name}`, position: "bottom"});
+          onHidden?.();
+        },
+      },
+    ],
+  );
+}
+
 /**
  * The ••• menu on someone else's idea.
  * `onHidden` runs once it's hidden for you: after "Not interested", or after
  * reporting it (e.g. leave the page).
  * `onReview` (staff with their tools on) adds "Review as staff" first.
+ * `creator` adds "Block @username".
  */
 export function showIdeaMenu(
   ideaId: number,
-  {onHidden, onReview}: {onHidden?: () => void; onReview?: () => void} = {},
+  {
+    onHidden,
+    onReview,
+    creator,
+  }: {
+    onHidden?: () => void;
+    onReview?: () => void;
+    creator?: {id: string; username: string | null} | null;
+  } = {},
 ) {
   const items: {label: string; destructive?: boolean; run: () => void}[] = [
     ...(onReview ? [{label: "Review as staff", run: onReview}] : []),
     {label: "Not interested", run: () => notInterested(ideaId, onHidden)},
+    ...(creator
+      ? [
+          {
+            label: creator.username ? `Block @${creator.username}` : "Block creator",
+            run: () => confirmBlock(creator, onHidden),
+          },
+        ]
+      : []),
     {label: "Report idea", destructive: true, run: () => chooseReason(ideaId, onHidden)},
   ];
 

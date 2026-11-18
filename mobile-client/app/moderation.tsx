@@ -236,9 +236,21 @@ function ReportedRow({idea, onPress}: {idea: ReportedIdea; onPress: () => void})
         </Text>
       </View>
       <View className="items-end gap-1">
-        <View className="flex-row items-center gap-1 bg-red-500/15 rounded-full px-2 py-0.5">
-          <Ionicons name="flag" size={11} color="#fca5a5" />
-          <Text className="text-red-300 text-xs font-extrabold">{idea.reports.length}</Text>
+        <View className="flex-row items-center gap-1.5">
+          {/* Out of Discover until someone looks */}
+          {idea.held && (
+            <View
+              className="flex-row items-center gap-1 bg-amber-500/15 rounded-full px-2 py-0.5"
+              accessibilityLabel="Hidden from Discover"
+            >
+              <Ionicons name="eye-off" size={11} color="#fcd34d" />
+              <Text className="text-amber-300 text-xs font-extrabold">Hidden</Text>
+            </View>
+          )}
+          <View className="flex-row items-center gap-1 bg-red-500/15 rounded-full px-2 py-0.5">
+            <Ionicons name="flag" size={11} color="#fca5a5" />
+            <Text className="text-red-300 text-xs font-extrabold">{idea.reports.length}</Text>
+          </View>
         </View>
         <Text className="text-zinc-500 text-xs">{ago(idea.reports[0]?.created_at ?? null)}</Text>
       </View>

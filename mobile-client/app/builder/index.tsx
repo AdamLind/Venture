@@ -28,6 +28,7 @@ import {usePrefsStore} from "@/src/store/usePrefsStore";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
 import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
+import {useBlockStore} from "@/src/store/useBlockStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {START_NOW_WINDOW_MS, autoTitle, formatWhen} from "@/src/lib/dates";
 import {SafeAreaView, useSafeAreaInsets} from "react-native-safe-area-context";
@@ -202,13 +203,16 @@ export default function BuilderScreen() {
   // ─── Activity Feed ────────────────────────────────────────────────────────────
   // (minus ones you just marked "Not interested" on their full page)
   const hiddenIds = useHiddenStore((s) => s.ids);
+  const blockedIds = useBlockStore((s) => s.ids);
   const availableActivities = useMemo(
     () =>
       activities.filter(
         (a) =>
-          !placed.some((p) => p.activity.idea_id === a.idea_id) && !hiddenIds.has(a.idea_id),
+          !placed.some((p) => p.activity.idea_id === a.idea_id) &&
+          !hiddenIds.has(a.idea_id) &&
+          !(a.user_id && blockedIds.has(a.user_id)),
       ),
-    [activities, placed, hiddenIds],
+    [activities, placed, hiddenIds, blockedIds],
   );
 
   const rankWeather = useMemo(() => weatherLookup(weather), [weather]);

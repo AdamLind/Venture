@@ -28,6 +28,9 @@ export interface UserPreferences {
   vibes: string[];
   dietary: string[];
   onboarded_at: string | null;
+  /** The terms version accepted (src/lib/terms.ts), and when (#76) */
+  terms_version?: string | null;
+  terms_accepted_at?: string | null;
   created_at: string;
   updated_at: string;
 }

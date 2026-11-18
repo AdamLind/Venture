@@ -22,6 +22,7 @@ import {supabase} from "@/src/supabase";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {confirmDeleteIdea, confirmUnpublishIdea} from "@/src/lib/ideaActions";
 import {POSTER_PROMISE} from "@/src/lib/ideaGuidelines";
+import {SUSPENDED_MESSAGE, useAccountStore} from "@/src/store/useAccountStore";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {parseCoordinates} from "@/utils/itineraryEngine";
 
@@ -146,6 +147,8 @@ export default function CreateScreen() {
 
   // Publishing: "This is legal to do here, and I've noted any risks" (#81, #85)
   const [promised, setPromised] = useState(false);
+  // Suspended (#76): can still save private ideas, not submit for review
+  const suspended = useAccountStore((s) => !!s.suspension);
 
   // --- ERROR TRACKING ---
   const [missingFields, setMissingFields] = useState<string[]>([]);
@@ -318,6 +321,14 @@ export default function CreateScreen() {
         "Missing Information",
         "Please fill out the highlighted fields to continue.",
       );
+      return;
+    }
+
+    if (visibility === "PENDING_REVIEW" && suspended) {
+      Alert.alert("You can't publish right now", SUSPENDED_MESSAGE, [
+        {text: "Cancel", style: "cancel"},
+        {text: "Keep it private", onPress: () => setVisibility("PRIVATE")},
+      ]);
       return;
     }
 

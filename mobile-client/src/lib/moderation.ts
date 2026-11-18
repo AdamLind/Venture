@@ -40,6 +40,8 @@ export interface Report {
 
 export interface ReportedIdea extends Omit<QueueIdea, "submitted_at" | "place"> {
   reports: Report[];
+  /** Hidden from Discover automatically after enough reports (#76) */
+  held: boolean;
 }
 
 export interface LogEntry {
@@ -91,7 +93,7 @@ export async function fetchReported(): Promise<ReportedIdea[]> {
     .from("idea_reports")
     .select(
       `reason, details, created_at,
-       activities ( idea_id, user_id, title, image_urls, visibility, created_at,
+       activities ( idea_id, user_id, title, image_urls, visibility, created_at, held_at,
          users!activities_user_id_fkey ( username ) )`,
     )
     .eq("status", "OPEN")
@@ -115,6 +117,7 @@ export async function fetchReported(): Promise<ReportedIdea[]> {
         created_at: idea.created_at,
         username: idea.users?.username ?? null,
         reports: [],
+        held: !!idea.held_at,
       };
       byIdea.set(idea.idea_id, entry);
     }
@@ -153,9 +156,13 @@ export async function fetchLog(): Promise<LogEntry[]> {
   return (data ?? []).map(toLogEntry);
 }
 
-/** One idea's open reports and its review history, for the review panel. */
-export async function fetchIdeaReview(ideaId: number): Promise<{reports: Report[]; history: LogEntry[]}> {
-  const [reports, history] = await Promise.all([
+/** One idea's open reports, its review history, and whether its creator is
+ *  suspended, for the review panel. */
+export async function fetchIdeaReview(
+  ideaId: number,
+  creatorId: string | null,
+): Promise<{reports: Report[]; history: LogEntry[]; creatorSuspended: boolean}> {
+  const [reports, history, suspension] = await Promise.all([
     supabase
       .from("idea_reports")
       .select("reason, details, created_at")
@@ -168,12 +175,16 @@ export async function fetchIdeaReview(ideaId: number): Promise<{reports: Report[
       .eq("idea_id", ideaId)
       .order("created_at", {ascending: false})
       .limit(20),
+    creatorId
+      ? supabase.from("account_suspensions").select("user_id").eq("user_id", creatorId).maybeSingle()
+      : Promise.resolve({data: null, error: null}),
   ]);
   if (reports.error) throw new Error(friendlyError(reports.error));
   if (history.error) throw new Error(friendlyError(history.error));
   return {
     reports: (reports.data ?? []) as Report[],
     history: (history.data ?? []).map(toLogEntry),
+    creatorSuspended: !!suspension.data,
   };
 }
 
@@ -188,6 +199,17 @@ export async function reviewIdea(ideaId: number, decision: Decision, note?: stri
   });
   if (error) throw new Error(error.message || friendlyError(error));
   useStaffStore.getState().refreshCounts();
+}
+
+/** Suspend an account (with a reason) or lift its suspension (#76). */
+export async function setSuspension(userId: string, suspend: boolean, note: string | null, ideaId?: number) {
+  const {error} = await supabase.rpc("set_suspension", {
+    p_user_id: userId,
+    p_suspend: suspend,
+    p_note: note?.trim() || null,
+    p_idea_id: ideaId ?? null,
+  });
+  if (error) throw new Error(error.message || friendlyError(error));
 }
 
 /** Close an idea's open reports: acted on, or nothing wrong. */
@@ -210,6 +232,14 @@ const ACTION_LABEL: Record<string, string> = {
   ADD_STAFF: "added a staff member",
   CHANGE_STAFF: "changed a staff role",
   REMOVE_STAFF: "removed a staff member",
+  SUSPEND: "suspended",
+  UNSUSPEND: "lifted the suspension on",
+};
+
+/** How many people reported it, for an automatic hold */
+const heldAfter = (entry: LogEntry) => {
+  const people = Number(entry.detail?.people ?? 0);
+  return people ? ` after ${people} report${people === 1 ? "" : "s"}` : "";
 };
 
 /** On one idea's page, where the idea goes without saying */
@@ -219,6 +249,8 @@ const HISTORY_LABEL: Record<string, string> = {
   REJECT: "rejected it",
   RESOLVE_REPORTS: "resolved its reports",
   DISMISS_REPORTS: "dismissed its reports",
+  SUSPEND: "suspended its creator",
+  UNSUSPEND: "lifted its creator's suspension",
 };
 
 const whoDid = (entry: LogEntry, myUsername?: string | null) =>
@@ -230,12 +262,20 @@ const whoDid = (entry: LogEntry, myUsername?: string | null) =>
 
 /** "You asked for changes" */
 export function historyLine(entry: LogEntry, myUsername?: string | null) {
+  if (entry.action === "AUTO_HOLD") return `Hidden from Discover automatically${heldAfter(entry)}`;
   return `${whoDid(entry, myUsername)} ${HISTORY_LABEL[entry.action] ?? entry.action.toLowerCase()}`;
 }
 
 /** "@sam approved “Sunset kayak”" */
 export function logLine(entry: LogEntry, myUsername?: string | null) {
+  if (entry.action === "AUTO_HOLD") {
+    return `“${entry.idea_title ?? "An idea"}” was hidden automatically${heldAfter(entry)}`;
+  }
   const who = whoDid(entry, myUsername);
+  if (entry.action === "SUSPEND" || entry.action === "UNSUSPEND") {
+    const target = entry.idea_id ? `the creator of “${entry.idea_title ?? "an idea"}”` : "an account";
+    return `${who} ${ACTION_LABEL[entry.action]} ${target}`;
+  }
   const what = ACTION_LABEL[entry.action] ?? entry.action.toLowerCase();
   const onIdea = entry.idea_id
     ? ` “${entry.idea_title ?? "a private idea"}”`

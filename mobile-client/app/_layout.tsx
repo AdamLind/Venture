@@ -23,6 +23,10 @@ import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
 import {useNotificationStore} from "@/src/store/useNotificationStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
+import {useBlockStore} from "@/src/store/useBlockStore";
+import {useAccountStore} from "@/src/store/useAccountStore";
+import TermsGate from "@/components/TermsGate";
+import {TERMS_VERSION} from "@/src/lib/terms";
 import {signOut} from "@/src/lib/signOut";
 
 // --- CREATE YOUR CUSTOM TOAST THEMES ---
@@ -88,6 +92,7 @@ function InitialLayout() {
   const profileError = useProfileStore((s) => s.error);
   const hasProfile = useProfileStore((s) => !!s.profile);
   const onboarded = useProfileStore((s) => !!s.preferences?.onboarded_at);
+  const preferences = useProfileStore((s) => s.preferences);
   const loadProfile = useProfileStore((s) => s.load);
   const reloadProfile = useProfileStore((s) => s.reload);
   const clearProfile = useProfileStore((s) => s.clear);
@@ -128,6 +133,10 @@ function InitialLayout() {
   const loadNotifications = useNotificationStore((s) => s.load);
   const staffUserId = useStaffStore((s) => s.userId);
   const loadStaff = useStaffStore((s) => s.load);
+  const blockUserId = useBlockStore((s) => s.userId);
+  const loadBlocks = useBlockStore((s) => s.load);
+  const accountUserId = useAccountStore((s) => s.userId);
+  const loadAccount = useAccountStore((s) => s.load);
   useEffect(() => {
     if (!userId || !onboarded || profileStatus !== "ready") return;
     if (savedUserId !== userId) loadSaved(userId);
@@ -135,6 +144,8 @@ function InitialLayout() {
     if (hiddenUserId !== userId) loadHidden(userId);
     if (notificationsUserId !== userId) loadNotifications(userId);
     if (staffUserId !== userId) loadStaff(userId);
+    if (blockUserId !== userId) loadBlocks(userId);
+    if (accountUserId !== userId) loadAccount(userId);
   }, [
     userId,
     onboarded,
@@ -149,6 +160,10 @@ function InitialLayout() {
     loadNotifications,
     staffUserId,
     loadStaff,
+    blockUserId,
+    loadBlocks,
+    accountUserId,
+    loadAccount,
   ]);
 
   // The Reactive Auth Routing Logic
@@ -191,6 +206,16 @@ function InitialLayout() {
     !!session &&
     (!hasProfile || profileUserId !== userId) &&
     profileStatus !== "ready";
+
+  // Set up, but hasn't accepted the current terms
+  const acceptedTermsVersion = preferences?.terms_version ?? null;
+  const showTermsGate =
+    !!session &&
+    !showProfileGate &&
+    profileStatus === "ready" &&
+    onboarded &&
+    !!preferences &&
+    acceptedTermsVersion !== TERMS_VERSION;
 
   if (!fontsReady) {
     return null;
@@ -263,6 +288,9 @@ function InitialLayout() {
           name="settings/hidden-ideas"
           options={{headerShown: false}}
         />
+        {/* TERMS OF USE (Settings › Help) */}
+        <Stack.Screen name="terms" options={{headerShown: false}} />
+
         {/* MODERATION (staff only) */}
         <Stack.Screen name="moderation" options={{headerShown: false}} />
 
@@ -313,6 +341,10 @@ function InitialLayout() {
           )}
         </View>
       )}
+
+      {/* Terms of use (#76): accepted once you're set up, and again when
+          they change */}
+      {showTermsGate && <TermsGate updated={!!acceptedTermsVersion} />}
 
       <StatusBar style="light" />
       {/* Bottom toasts ("Tap to undo") sit above the bottom bars, not on them */}

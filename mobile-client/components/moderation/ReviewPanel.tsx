@@ -4,7 +4,7 @@
 // The database checks every decision (review_idea / resolve_reports).
 
 import React, {useCallback, useEffect, useState} from "react";
-import {ActivityIndicator, Alert, Pressable, Text, View} from "react-native";
+import {ActivityIndicator, Alert, Platform, Pressable, Text, View} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
 import {useRouter} from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -23,6 +23,7 @@ import {
   historyLine,
   resolveReports,
   reviewIdea,
+  setSuspension,
 } from "@/src/lib/moderation";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
@@ -48,7 +49,13 @@ export default function ReviewPanel({
   idea,
   onDecided,
 }: {
-  idea: {idea_id: number; user_id: string | null; visibility: IdeaVisibility};
+  idea: {
+    idea_id: number;
+    user_id: string | null;
+    visibility: IdeaVisibility;
+    held_at?: string | null;
+    users?: {username: string | null} | null;
+  };
   /** After a decision: the idea's new state */
   onDecided: (visibility: IdeaVisibility, note: string | null, rules: RuleId[] | null) => void;
 }) {
@@ -60,7 +67,8 @@ export default function ReviewPanel({
   const [reports, setReports] = useState<Report[] | null>(null);
   const [history, setHistory] = useState<LogEntry[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<Decision | "DISMISS" | null>(null);
+  const [busy, setBusy] = useState<Decision | "DISMISS" | "SUSPEND" | null>(null);
+  const [creatorSuspended, setCreatorSuspended] = useState(false);
   const [noteFor, setNoteFor] = useState<NoteDecision | null>(null);
 
   // Bumped to reload after a decision
@@ -69,11 +77,12 @@ export default function ReviewPanel({
 
   useEffect(() => {
     let active = true;
-    fetchIdeaReview(idea.idea_id)
+    fetchIdeaReview(idea.idea_id, idea.user_id)
       .then((result) => {
         if (!active) return;
         setReports(result.reports);
         setHistory(result.history);
+        setCreatorSuspended(result.creatorSuspended);
         setLoadError(null);
       })
       .catch((e) => {
@@ -82,7 +91,7 @@ export default function ReviewPanel({
     return () => {
       active = false;
     };
-  }, [idea.idea_id, version]);
+  }, [idea.idea_id, idea.user_id, version]);
 
   // Moderators can't decide on their own ideas; admins can (it's logged)
   const ownIdea = !!myUserId && idea.user_id === myUserId;
@@ -148,6 +157,59 @@ export default function ReviewPanel({
         },
       },
     ]);
+
+  // Suspend the creator (repeat offenders), or lift it. Staff can't be
+  // suspended; the database says so
+  const creatorName = idea.users?.username ? `@${idea.users.username}` : "the creator";
+  const runSuspension = async (suspend: boolean, note: string | null) => {
+    if (!idea.user_id) return;
+    setBusy("SUSPEND");
+    try {
+      await setSuspension(idea.user_id, suspend, note, idea.idea_id);
+      Toast.show({
+        type: "success",
+        text1: suspend ? `Suspended ${creatorName}` : "Suspension lifted",
+        position: "bottom",
+      });
+      load();
+    } catch (e) {
+      Alert.alert("Couldn't save that", e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const onSuspend = () => {
+    if (creatorSuspended) {
+      Alert.alert(`Lift the suspension on ${creatorName}?`, "They can publish and report again.", [
+        {text: "Cancel", style: "cancel"},
+        {text: "Lift it", onPress: () => runSuspension(false, null)},
+      ]);
+      return;
+    }
+    const body =
+      "For repeat offenders. They can't publish or report, and their ideas leave Discover. They can still plan privately.";
+    if (Platform.OS === "ios") {
+      Alert.prompt(
+        `Suspend ${creatorName}?`,
+        `${body} Add the reason (it's logged).`,
+        [
+          {text: "Cancel", style: "cancel"},
+          {text: "Suspend", style: "destructive", onPress: (text?: string) => runSuspension(true, text ?? "")},
+        ],
+        "plain-text",
+        "Repeatedly broke the idea guidelines",
+      );
+    } else {
+      Alert.alert(`Suspend ${creatorName}?`, body, [
+        {text: "Cancel", style: "cancel"},
+        {
+          text: "Suspend",
+          style: "destructive",
+          onPress: () => runSuspension(true, "Repeatedly broke the idea guidelines"),
+        },
+      ]);
+    }
+  };
 
   // Reasons with counts: "Spam or misleading ×2"
   const reasonCounts = new Map<string, number>();
@@ -253,16 +315,49 @@ export default function ReviewPanel({
               )}
             </Pressable>
           )}
-          {idea.visibility === "PUBLISHED" && (
+          {idea.visibility === "PUBLISHED" && idea.held_at ? (
+            <View className="flex-row gap-2 bg-amber-500/10 rounded-2xl px-3 py-2.5">
+              <Ionicons name="eye-off" size={14} color="#fcd34d" style={{marginTop: 2}} />
+              <Text className="text-amber-100/80 text-xs flex-1">
+                Hidden from Discover automatically after its reports. Dismiss them to bring it back, or
+                send it back or reject it.
+              </Text>
+            </View>
+          ) : idea.visibility === "PUBLISHED" ? (
             <Text className="text-zinc-500 text-xs">
               Changes or Reject takes it out of Discover and closes its reports.
             </Text>
-          )}
+          ) : null}
         </View>
       ) : (
         <Text className="text-zinc-400 text-sm">
           This is your idea, so someone else needs to review it.
         </Text>
+      )}
+
+      {/* THE CREATOR: suspend repeat offenders (not your own ideas) */}
+      {canDecide && !ownIdea && idea.user_id && (
+        <Pressable
+          onPress={onSuspend}
+          disabled={!!busy}
+          accessibilityRole="button"
+          className="flex-row items-center justify-center gap-1.5 h-10 rounded-2xl border border-zinc-800 active:opacity-80"
+        >
+          {busy === "SUSPEND" ? (
+            <ActivityIndicator color="#a1a1aa" size="small" />
+          ) : (
+            <>
+              <Ionicons
+                name={creatorSuspended ? "lock-open-outline" : "ban-outline"}
+                size={15}
+                color={creatorSuspended ? "#a1a1aa" : "#f87171"}
+              />
+              <Text className={`text-sm font-semibold ${creatorSuspended ? "text-zinc-300" : "text-red-400"}`}>
+                {creatorSuspended ? `${creatorName} is suspended · Lift it` : `Suspend ${creatorName}`}
+              </Text>
+            </>
+          )}
+        </Pressable>
       )}
 
       {/* HISTORY */}

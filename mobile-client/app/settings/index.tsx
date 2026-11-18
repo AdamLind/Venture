@@ -1,6 +1,6 @@
 // app/settings/index.tsx
 import React, {useState} from "react";
-import {View, Text, Pressable, ScrollView, Alert, ActivityIndicator, Switch} from "react-native";
+import {View, Text, Pressable, ScrollView, Alert, ActivityIndicator, Switch, Linking} from "react-native";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
@@ -9,6 +9,9 @@ import ScreenHeader from "@/components/ui/ScreenHeader";
 import {useAuth} from "@/src/providers/AuthProvider";
 import {signOut} from "@/src/lib/signOut";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
+import {useBlockStore} from "@/src/store/useBlockStore";
+import {SUSPENDED_MESSAGE, useAccountStore} from "@/src/store/useAccountStore";
+import {SUPPORT_EMAIL} from "@/src/lib/terms";
 import {useStaffStore} from "@/src/store/useStaffStore";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -116,7 +119,8 @@ export default function SettingsScreen() {
   const router = useRouter();
   const {session} = useAuth();
   const [signingOut, setSigningOut] = useState(false);
-  const hiddenCount = useHiddenStore((s) => s.ids.size);
+  const hiddenCount = useHiddenStore((s) => s.ids.size) + useBlockStore((s) => s.ids.size);
+  const suspension = useAccountStore((s) => s.suspension);
 
   const confirmSignOut = () => {
     Alert.alert("Sign out?", "You can sign back in anytime.", [
@@ -140,6 +144,18 @@ export default function SettingsScreen() {
     <SafeAreaView edges={["top"]} style={{flex: 1, backgroundColor: "#000"}}>
       <ScreenHeader title="Settings" />
       <ScrollView contentContainerClassName="px-5 pt-4 pb-16 gap-8">
+        {/* Suspended (#76): say so, and why */}
+        {suspension && (
+          <View className="flex-row gap-3 bg-red-500/10 border border-red-500/30 rounded-3xl p-4 mb-6">
+            <Ionicons name="ban-outline" size={20} color="#f87171" style={{marginTop: 1}} />
+            <View className="flex-1 gap-1">
+              <Text className="text-red-300 font-bold text-base">Your account is suspended</Text>
+              <Text className="text-zinc-300 text-sm">{SUSPENDED_MESSAGE}</Text>
+              <Text className="text-zinc-400 text-sm">Reason: {suspension.reason}</Text>
+            </View>
+          </View>
+        )}
+
         <StaffSection />
 
         <Section title="Profile">
@@ -168,6 +184,19 @@ export default function SettingsScreen() {
             icon="book-outline"
             label="Idea guidelines"
             onPress={() => router.push("/guidelines")}
+          />
+          <Divider />
+          <Row
+            icon="document-text-outline"
+            label="Terms of use"
+            onPress={() => router.push("/terms")}
+          />
+          <Divider />
+          <Row
+            icon="chatbubble-outline"
+            label="Contact us"
+            value={SUPPORT_EMAIL ?? "Coming soon"}
+            onPress={SUPPORT_EMAIL ? () => Linking.openURL(`mailto:${SUPPORT_EMAIL}`) : undefined}
           />
         </Section>
 

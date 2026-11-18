@@ -20,6 +20,7 @@ import {newSeed, seededShuffle} from "@/src/lib/random";
 import SaveButton from "@/components/ideas/SaveButton";
 import {useUnseenCount} from "@/src/store/useNotificationStore";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
+import {useBlockStore} from "@/src/store/useBlockStore";
 import TabHeader, {
   HeaderIconButton,
   useTabHeader,
@@ -50,6 +51,8 @@ const glassStyles = StyleSheet.create({
 // --- TYPES & CONSTANTS ---
 interface DateIdea {
   idea_id: number;
+  /** The creator (blocked creators' ideas stay out, #76) */
+  user_id?: string | null;
   title: string;
   /** Your own ideas show here at any stage but "not approved" */
   visibility: IdeaVisibility;
@@ -196,9 +199,13 @@ export default function ExploreScreen() {
   const [allIdeas, setIdeas] = useState<DateIdea[]>([]);
   // "Not interested" ideas drop out right away, and come back on undo
   const hiddenIds = useHiddenStore((s) => s.ids);
+  const blockedIds = useBlockStore((s) => s.ids);
   const ideas = useMemo(
-    () => allIdeas.filter((idea) => !hiddenIds.has(idea.idea_id)),
-    [allIdeas, hiddenIds],
+    () =>
+      allIdeas.filter(
+        (idea) => !hiddenIds.has(idea.idea_id) && !(idea.user_id && blockedIds.has(idea.user_id)),
+      ),
+    [allIdeas, hiddenIds, blockedIds],
   );
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [isLoading, setIsLoading] = useState(true);
@@ -238,13 +245,15 @@ export default function ExploreScreen() {
       // Everyone's published ideas, plus all of yours except the ones that
       // weren't approved (those stay in Profile > My Ideas, with the note):
       // a private or in-review idea shows here too, marked "only you can
-      // see this", since Explore is where people spend their time
+      // see this", since Explore is where people spend their time. Held
+      // ideas (enough reports, #76) are out until a moderator looks; you
+      // still see them if you saved one, just not here
       .or(
         (() => {
           const me = useProfileStore.getState().userId;
           return me
-            ? `visibility.eq.PUBLISHED,and(user_id.eq.${me},visibility.neq.REJECTED)`
-            : "visibility.eq.PUBLISHED";
+            ? `and(visibility.eq.PUBLISHED,held_at.is.null),and(user_id.eq.${me},visibility.neq.REJECTED)`
+            : "and(visibility.eq.PUBLISHED,held_at.is.null)";
         })(),
       )
       // A fixed order going in, so the same seed always shuffles the same way

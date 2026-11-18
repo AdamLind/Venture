@@ -228,11 +228,12 @@ export const queryCandidates = async (
       )
       // Published ideas, plus ALL of your own: until one is approved it acts
       // like a private idea (yours to plan with, hidden from everyone else;
-      // RLS enforces the "hidden" part, this just says it out loud)
+      // RLS enforces the "hidden" part, this just says it out loud). Not
+      // held ones (reported, waiting for a moderator, #76)
       .or(
         userId
-          ? `visibility.eq.PUBLISHED,user_id.eq.${userId}`
-          : "visibility.eq.PUBLISHED",
+          ? `and(visibility.eq.PUBLISHED,held_at.is.null),user_id.eq.${userId}`
+          : "and(visibility.eq.PUBLISHED,held_at.is.null)",
       )
       // Going out means willing to travel, so stay-in ideas (at home) count
       // too; staying in means staying in

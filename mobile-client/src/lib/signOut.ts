@@ -11,6 +11,8 @@ import {useHiddenStore} from "@/src/store/useHiddenStore";
 import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {useNotificationStore} from "@/src/store/useNotificationStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
+import {useBlockStore} from "@/src/store/useBlockStore";
+import {useAccountStore} from "@/src/store/useAccountStore";
 import {friendlyError} from "@/src/lib/profile";
 
 /** Clears every in-memory store so the next person on this device starts fresh. */
@@ -23,6 +25,8 @@ function clearLocalState() {
   usePlanSeedStore.getState().clear();
   useNotificationStore.getState().clear();
   useStaffStore.getState().clear();
+  useBlockStore.getState().clear();
+  useAccountStore.getState().clear();
   usePrefsStore.getState().resetPrefs();
   useBuilderStore.getState().clearBuilder();
   useActiveDateStore.getState().endActiveDate();
