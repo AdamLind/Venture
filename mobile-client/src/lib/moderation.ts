@@ -5,6 +5,7 @@
 
 import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
+import type {RuleId} from "@/src/lib/ideaGuidelines";
 import {useStaffStore} from "@/src/store/useStaffStore";
 import type {IdeaVisibility} from "@/types/ideas";
 
@@ -177,11 +178,13 @@ export async function fetchIdeaReview(ideaId: number): Promise<{reports: Report[
 }
 
 /** Approve, send back or reject. Throws a readable Error. */
-export async function reviewIdea(ideaId: number, decision: Decision, note?: string) {
+export async function reviewIdea(ideaId: number, decision: Decision, note?: string, rules?: RuleId[]) {
   const {error} = await supabase.rpc("review_idea", {
     p_idea_id: ideaId,
     p_decision: decision,
     p_note: note?.trim() || null,
+    // The guidelines the note cites (#85); the creator's note links to them
+    p_rules: decision === "APPROVE" || !rules?.length ? null : rules,
   });
   if (error) throw new Error(error.message || friendlyError(error));
   useStaffStore.getState().refreshCounts();

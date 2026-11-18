@@ -163,6 +163,14 @@ export default function SettingsScreen() {
           />
         </Section>
 
+        <Section title="Help">
+          <Row
+            icon="book-outline"
+            label="Idea guidelines"
+            onPress={() => router.push("/guidelines")}
+          />
+        </Section>
+
         <Section title="Account">
           <Row icon="mail-outline" label="Email" value={session?.user.email} />
           <Divider />

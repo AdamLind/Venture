@@ -9,7 +9,9 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Keyboard,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import {Image} from "expo-image";
 import {LinearGradient} from "expo-linear-gradient";
 import {useLocalSearchParams, useRouter} from "expo-router";
@@ -19,6 +21,7 @@ import Ionicons from "@expo/vector-icons/build/Ionicons";
 import {supabase} from "@/src/supabase";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {confirmDeleteIdea, confirmUnpublishIdea} from "@/src/lib/ideaActions";
+import {POSTER_PROMISE} from "@/src/lib/ideaGuidelines";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {parseCoordinates} from "@/utils/itineraryEngine";
 
@@ -140,6 +143,9 @@ export default function CreateScreen() {
   // System
   const [visibility, setVisibility] =
     useState<BaseActivity["visibility"]>("PENDING_REVIEW");
+
+  // Publishing: "This is legal to do here, and I've noted any risks" (#81, #85)
+  const [promised, setPromised] = useState(false);
 
   // --- ERROR TRACKING ---
   const [missingFields, setMissingFields] = useState<string[]>([]);
@@ -276,6 +282,10 @@ export default function CreateScreen() {
   };
 
   const handleSubmit = async () => {
+    // Nothing focused: iOS puts the cursor back in the last-used field when
+    // an alert closes, which scrolled the form up to it
+    Keyboard.dismiss();
+
     // 0. Auth Check
     const {
       data: {session},
@@ -308,6 +318,16 @@ export default function CreateScreen() {
         "Missing Information",
         "Please fill out the highlighted fields to continue.",
       );
+      return;
+    }
+
+    // Publishing needs the poster's promise (private ideas don't). The box
+    // is right above the button, so mark it instead of an alert
+    if (visibility === "PENDING_REVIEW" && !promised) {
+      setMissingFields(["promise"]);
+      if (process.env.EXPO_OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
       return;
     }
 
@@ -417,7 +437,7 @@ export default function CreateScreen() {
           // the last reviewer note for reference
           .update(
             visibility === "PENDING_REVIEW"
-              ? {...fields, moderation_note: null}
+              ? {...fields, moderation_note: null, moderation_rules: null}
               : fields,
           )
           .eq("idea_id", editingId)
@@ -536,8 +556,19 @@ export default function CreateScreen() {
         automaticallyAdjustKeyboardInsets={true}
         keyboardShouldPersistTaps="handled"
       >
-        <Text className="text-3xl font-bold text-white mb-8">
+        <Text className="text-3xl font-bold text-white mb-2">
           {editingId ? "Edit idea" : "Post an Activity"}
+        </Text>
+
+        {/* GUIDELINES (#85): a quiet link under the title, so people can
+            check what's expected before they fill it in */}
+        <Text
+          onPress={() => router.push("/guidelines")}
+          accessibilityRole="link"
+          suppressHighlighting
+          className="self-start text-zinc-500 text-sm underline mb-8"
+        >
+          What makes a good idea?
         </Text>
 
         {/* IMAGE PICKER */}
@@ -988,7 +1019,16 @@ export default function CreateScreen() {
               Publish to Feed
             </Text>
             <Text className="text-zinc-500 text-xs text-center mt-1">
-              Will be reviewed by our team
+              Reviewed against our{" "}
+              <Text
+                onPress={() => router.push("/guidelines")}
+                accessibilityRole="link"
+                suppressHighlighting
+                className="font-semibold"
+                style={{color: "#FF9D0A"}}
+              >
+                guidelines
+              </Text>
             </Text>
           </Pressable>
 
@@ -1017,6 +1057,44 @@ export default function CreateScreen() {
             </Text>
           </Pressable>
         </View>
+
+        {/* The promise for publishing (#81) */}
+        {visibility === "PENDING_REVIEW" && (
+          <View className="-mt-6 mb-10">
+            <Pressable
+              onPress={() => {
+                setPromised((p) => !p);
+                if (missingFields.includes("promise")) {
+                  setMissingFields((prev) => prev.filter((f) => f !== "promise"));
+                }
+              }}
+              accessibilityRole="checkbox"
+              accessibilityState={{checked: promised}}
+              className={`flex-row items-center gap-3 p-4 rounded-2xl border ${
+                missingFields.includes("promise")
+                  ? "bg-red-500/10 border-red-500"
+                  : "bg-zinc-900 border-zinc-800"
+              }`}
+            >
+              <View
+                className={`w-6 h-6 rounded-md border items-center justify-center ${
+                  promised ? "bg-white border-white" : "border-zinc-500"
+                }`}
+              >
+                {promised && <Ionicons name="checkmark" size={16} color="black" />}
+              </View>
+              <Text className="text-zinc-200 text-sm flex-1">{POSTER_PROMISE}</Text>
+            </Pressable>
+            {missingFields.includes("promise") && (
+              <View className="flex-row items-center gap-1 ml-1 mt-2">
+                <Ionicons name="alert-circle" size={14} color="#ef4444" />
+                <Text className="text-red-400 text-xs font-semibold">
+                  Tick this to send it for review
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* SUBMIT BUTTON */}
         <Pressable

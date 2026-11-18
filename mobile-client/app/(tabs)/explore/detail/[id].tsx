@@ -33,6 +33,7 @@ import PlaceHours from "@/components/ideas/PlaceHours";
 import EditPlaceSheet, {type EditablePlace} from "@/components/places/EditPlaceSheet";
 import ReviewPanel from "@/components/moderation/ReviewPanel";
 import {useStaffStore} from "@/src/store/useStaffStore";
+import {RULE_BY_ID, isRuleId, type RuleId} from "@/src/lib/ideaGuidelines";
 
 const {width, height} = Dimensions.get("window");
 
@@ -215,6 +216,10 @@ export default function IdeaDetailScreen() {
         : idea.visibility === "PRIVATE" && idea.moderation_note
           ? {title: "From the last review", color: "#a1a1aa", canResubmit: false}
           : null;
+  // The guidelines the last review cited (#85), known ids only
+  const citedRules: RuleId[] = review
+    ? ((idea.moderation_rules ?? []) as string[]).filter(isRuleId)
+    : [];
   // What weather it needs (null: the default for its environment), and when it's best
   const weatherLabel =
     WEATHER_NEEDS_OPTIONS.find(
@@ -323,8 +328,10 @@ export default function IdeaDetailScreen() {
           {showReview && (
             <ReviewPanel
               idea={idea}
-              onDecided={(visibility, note) => {
-                setIdea((prev: any) => (prev ? {...prev, visibility, moderation_note: note} : prev));
+              onDecided={(visibility, note, rules) => {
+                setIdea((prev: any) =>
+                  prev ? {...prev, visibility, moderation_note: note, moderation_rules: rules} : prev,
+                );
                 // From the queue: straight back to it for the next one
                 if (from === "queue") router.back();
               }}
@@ -355,6 +362,40 @@ export default function IdeaDetailScreen() {
               <Text className="text-zinc-200 text-[15px] leading-6">
                 {idea.moderation_note || "The reviewer didn't leave a note."}
               </Text>
+              {/* The guidelines the review cited, each opening the rule itself */}
+              {citedRules.length > 0 && (
+                <View className="flex-row flex-wrap gap-2 mt-1">
+                  {citedRules.map((ruleId) => (
+                    <Pressable
+                      key={ruleId}
+                      onPress={() => router.push({pathname: "/guidelines", params: {rules: citedRules.join(",")}})}
+                      accessibilityRole="link"
+                      accessibilityHint="Opens the idea guidelines"
+                      className="flex-row items-center gap-1.5 rounded-full px-3 py-1.5 bg-black/40 active:opacity-70"
+                    >
+                      <Ionicons name={RULE_BY_ID[ruleId].icon} size={13} color={review.color} />
+                      <Text className="text-zinc-200 text-sm font-semibold">{RULE_BY_ID[ruleId].title}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              <Pressable
+                onPress={() =>
+                  router.push(
+                    citedRules.length
+                      ? {pathname: "/guidelines", params: {rules: citedRules.join(",")}}
+                      : "/guidelines",
+                  )
+                }
+                hitSlop={6}
+                accessibilityRole="link"
+                className="self-start flex-row items-center gap-1 active:opacity-70"
+              >
+                <Text className="text-sm font-semibold" style={{color: review.color}}>
+                  What makes a good idea
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={review.color} />
+              </Pressable>
               {review.canResubmit && (
                 <Pressable
                   onPress={editIdea}

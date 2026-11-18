@@ -266,6 +266,12 @@ function InitialLayout() {
         {/* MODERATION (staff only) */}
         <Stack.Screen name="moderation" options={{headerShown: false}} />
 
+        {/* IDEA GUIDELINES (#85): a sheet, so it opens over the post form */}
+        <Stack.Screen
+          name="guidelines"
+          options={{headerShown: false, presentation: "modal", contentStyle: {backgroundColor: "#09090b"}}}
+        />
+
         {/* SAVED DATE DETAIL */}
         <Stack.Screen name="itinerary/[id]" options={{headerShown: false}} />
 

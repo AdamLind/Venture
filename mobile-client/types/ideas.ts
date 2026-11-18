@@ -18,6 +18,8 @@ export interface IdeaSummary {
   modality: "STAY_IN" | "GO_OUT";
   visibility: IdeaVisibility;
   moderation_note: string | null;
+  /** Guidelines the last review cited (#85; ids from src/lib/ideaGuidelines.ts) */
+  moderation_rules?: string[] | null;
   created_at: string;
   venues?: {name: string} | null;
 }

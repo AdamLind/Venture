@@ -6,11 +6,13 @@
 import React, {useCallback, useEffect, useState} from "react";
 import {ActivityIndicator, Alert, Pressable, Text, View} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
+import {useRouter} from "expo-router";
 import * as Haptics from "expo-haptics";
 import Toast from "react-native-toast-message";
 
 import {StatusChip} from "@/components/ideas/IdeaRows";
 import ReviewNoteSheet from "@/components/moderation/ReviewNoteSheet";
+import type {NoteDecision, RuleId} from "@/src/lib/ideaGuidelines";
 import {
   REPORT_REASON_LABEL,
   type Decision,
@@ -48,8 +50,9 @@ export default function ReviewPanel({
 }: {
   idea: {idea_id: number; user_id: string | null; visibility: IdeaVisibility};
   /** After a decision: the idea's new state */
-  onDecided: (visibility: IdeaVisibility, note: string | null) => void;
+  onDecided: (visibility: IdeaVisibility, note: string | null, rules: RuleId[] | null) => void;
 }) {
+  const router = useRouter();
   const role = useStaffStore((s) => s.role);
   const myUserId = useProfileStore((s) => s.userId);
   const myUsername = useProfileStore((s) => s.profile?.username ?? null);
@@ -58,7 +61,7 @@ export default function ReviewPanel({
   const [history, setHistory] = useState<LogEntry[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Decision | "DISMISS" | null>(null);
-  const [noteFor, setNoteFor] = useState<Exclude<Decision, "APPROVE"> | null>(null);
+  const [noteFor, setNoteFor] = useState<NoteDecision | null>(null);
 
   // Bumped to reload after a decision
   const [version, setVersion] = useState(0);
@@ -89,14 +92,18 @@ export default function ReviewPanel({
   );
   const openReports = reports?.length ?? 0;
 
-  const decide = async (decision: Decision, note?: string) => {
+  const decide = async (decision: Decision, note?: string, rules?: RuleId[]) => {
     setBusy(decision);
     try {
-      await reviewIdea(idea.idea_id, decision, note);
+      await reviewIdea(idea.idea_id, decision, note, rules);
       if (process.env.EXPO_OS === "ios") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Toast.show({type: "success", text1: DONE_TOAST[decision], position: "bottom"});
       setNoteFor(null);
-      onDecided(DECISIONS[decision].to, decision === "APPROVE" ? null : (note ?? null));
+      onDecided(
+        DECISIONS[decision].to,
+        decision === "APPROVE" ? null : (note ?? null),
+        decision === "APPROVE" || !rules?.length ? null : rules,
+      );
       load();
     } catch (e) {
       Alert.alert("Couldn't save that", e instanceof Error ? e.message : "Please try again.");
@@ -159,6 +166,18 @@ export default function ReviewPanel({
         <Text className="font-bold text-base flex-1" style={{color: STAFF_COLOR}}>
           Staff review
         </Text>
+        <Pressable
+          onPress={() => router.push("/guidelines")}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Idea guidelines"
+          className="flex-row items-center gap-1 active:opacity-70"
+        >
+          <Ionicons name="book-outline" size={14} color={STAFF_COLOR} />
+          <Text className="text-xs font-bold" style={{color: STAFF_COLOR}}>
+            Guidelines
+          </Text>
+        </Pressable>
         <StatusChip visibility={idea.visibility} />
       </View>
 
@@ -263,7 +282,7 @@ export default function ReviewPanel({
       <ReviewNoteSheet
         decision={noteFor}
         onClose={() => setNoteFor(null)}
-        onSend={(note) => decide(noteFor!, note)}
+        onSend={(note, rules) => decide(noteFor!, note, rules)}
       />
     </View>
   );

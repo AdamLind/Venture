@@ -1,7 +1,8 @@
 // components/moderation/ReviewNoteSheet.tsx
 // The note a moderator sends with "Request changes" or "Reject" (#26). The
 // creator sees it on their idea, so it's written to them. Quick picks fill
-// in common reasons; they can be edited before sending.
+// in common reasons and cite the guideline they come from (#85); the creator's
+// note links to the cited guidelines. Both can be edited before sending.
 
 import React, {useState} from "react";
 import {
@@ -16,38 +17,24 @@ import {
 } from "react-native";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 
-import type {Decision} from "@/src/lib/moderation";
+import {QUICK_PICKS, RULES, type NoteDecision, type RuleId} from "@/src/lib/ideaGuidelines";
 
 const NOTE_MAX = 1000;
 /** Font size only (a line height pushes text off centre on iOS) */
 const INPUT_TEXT = {fontSize: 16};
 
-const COPY: Record<Exclude<Decision, "APPROVE">, {title: string; hint: string; send: string; color: string; picks: string[]}> = {
+const COPY: Record<NoteDecision, {title: string; hint: string; send: string; color: string}> = {
   REQUEST_CHANGES: {
     title: "Request changes",
     hint: "Tell them what to change. They can edit it and send it back.",
     send: "Send back",
     color: "#fb923c",
-    picks: [
-      "Add a clear cover photo of the place or activity.",
-      "Add where it is so people can find it.",
-      "Make this one activity. Post the others separately, or save them together as a mini.",
-      "Check the price and how long it takes.",
-      "Say what you actually do on the date.",
-    ],
   },
   REJECT: {
     title: "Reject",
     hint: "Tell them why. It stays theirs to plan with, but won't be published.",
     send: "Reject",
     color: "#f87171",
-    picks: [
-      "This isn't really a date idea.",
-      "This looks unsafe or against the law.",
-      "It's an everyday chain visit. Those stay private unless there's something unusual about it.",
-      "This is already on Venture.",
-      "This doesn't follow the community guidelines.",
-    ],
   },
 };
 
@@ -57,10 +44,10 @@ export default function ReviewNoteSheet({
   onSend,
 }: {
   /** null: closed */
-  decision: Exclude<Decision, "APPROVE"> | null;
+  decision: NoteDecision | null;
   onClose: () => void;
   /** Resolves when sent; throws to keep the sheet open */
-  onSend: (note: string) => Promise<void>;
+  onSend: (note: string, rules: RuleId[]) => Promise<void>;
 }) {
   return (
     <Modal visible={!!decision} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -74,28 +61,34 @@ function NoteForm({
   onClose,
   onSend,
 }: {
-  decision: Exclude<Decision, "APPROVE">;
+  decision: NoteDecision;
   onClose: () => void;
-  onSend: (note: string) => Promise<void>;
+  onSend: (note: string, rules: RuleId[]) => Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
   const copy = COPY[decision];
   const [note, setNote] = useState("");
+  // The guidelines it breaks (a quick pick cites its own)
+  const [rules, setRules] = useState<RuleId[]>([]);
   const [sending, setSending] = useState(false);
   const canSend = note.trim().length > 0 && !sending;
 
-  const pick = (text: string) =>
+  const pick = ({text, rule}: {text: string; rule: RuleId}) => {
     setNote((prev) => {
       if (prev.includes(text)) return prev;
       const joined = prev.trim() ? `${prev.trim()} ${text}` : text;
       return joined.slice(0, NOTE_MAX);
     });
+    setRules((prev) => (prev.includes(rule) ? prev : [...prev, rule]));
+  };
+  const toggleRule = (rule: RuleId) =>
+    setRules((prev) => (prev.includes(rule) ? prev.filter((r) => r !== rule) : [...prev, rule]));
 
   const send = async () => {
     if (!canSend) return;
     setSending(true);
     try {
-      await onSend(note.trim());
+      await onSend(note.trim(), rules);
     } catch {
       // The caller shows the error; stay open so the note isn't lost
       setSending(false);
@@ -166,16 +159,45 @@ function NoteForm({
 
         <View className="gap-2">
           <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider mx-1">Quick picks</Text>
-          {copy.picks.map((text) => (
+          {QUICK_PICKS[decision].map((p) => (
             <Pressable
-              key={text}
-              onPress={() => pick(text)}
+              key={p.text}
+              onPress={() => pick(p)}
               accessibilityRole="button"
               className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 active:opacity-70"
             >
-              <Text className="text-zinc-200 text-sm">{text}</Text>
+              <Text className="text-zinc-200 text-sm">{p.text}</Text>
             </Pressable>
           ))}
+        </View>
+
+        {/* Linked from their note, so they can read the rule itself */}
+        <View className="gap-2">
+          <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider mx-1">
+            Guidelines it breaks
+          </Text>
+          <View className="flex-row flex-wrap gap-2">
+            {RULES.map((rule) => {
+              const on = rules.includes(rule.id);
+              return (
+                <Pressable
+                  key={rule.id}
+                  onPress={() => toggleRule(rule.id)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{checked: on}}
+                  className="rounded-full px-3 py-1.5 border active:opacity-70"
+                  style={{
+                    backgroundColor: on ? `${copy.color}22` : "#18181b",
+                    borderColor: on ? copy.color : "#27272a",
+                  }}
+                >
+                  <Text className="text-sm font-semibold" style={{color: on ? copy.color : "#a1a1aa"}}>
+                    {rule.title}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

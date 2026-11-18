@@ -73,7 +73,7 @@ export const useMyIdeasStore = create<MyIdeasState>((set, get) => ({
     const resubmit = visibility === "PENDING_REVIEW";
     const {data, error} = await supabase
       .from("activities")
-      .update(resubmit ? {visibility, moderation_note: null} : {visibility})
+      .update(resubmit ? {visibility, moderation_note: null, moderation_rules: null} : {visibility})
       .eq("idea_id", ideaId)
       .select("idea_id")
       .maybeSingle();
@@ -83,7 +83,12 @@ export const useMyIdeasStore = create<MyIdeasState>((set, get) => ({
     set({
       ideas: get().ideas.map((idea) =>
         idea.idea_id === ideaId
-          ? {...idea, visibility, moderation_note: resubmit ? null : idea.moderation_note}
+          ? {
+              ...idea,
+              visibility,
+              moderation_note: resubmit ? null : idea.moderation_note,
+              moderation_rules: resubmit ? null : idea.moderation_rules,
+            }
           : idea,
       ),
     });
