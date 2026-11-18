@@ -5,11 +5,12 @@ import {Ionicons} from "@expo/vector-icons";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
-// `value` is what the planner stores; `label` is what people see
+// `value` is what the planner stores; `label` is what people see.
+// Venture is for couples and group dates for now; the planner still reads
+// "Activity" (an older, non-date plan type) from saved drafts.
 const OPTIONS: {value: string; label: string; icon: IconName}[] = [
   {value: "Date", label: "Date", icon: "heart"},
-  {value: "Group-Date", label: "Group", icon: "people"},
-  {value: "Activity", label: "Activity", icon: "sparkles"},
+  {value: "Group-Date", label: "Group date", icon: "people"},
 ];
 
 export default function SocialSelector({
