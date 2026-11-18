@@ -10,6 +10,7 @@ import {isLiquidGlassAvailable} from "expo-glass-effect";
 
 import ActiveDateBanner, {ActiveDateAccessory} from "@/components/ActiveDateBanner";
 import {useActiveDateStore} from "@/src/store/activeDateStore";
+import {useStaffStore, useStaffTools} from "@/src/store/useStaffStore";
 
 // iOS 26's tab bar has a slot above it for things like a mini player
 const HAS_ACCESSORY = Platform.OS === "ios" && isLiquidGlassAvailable();
@@ -21,6 +22,10 @@ const MANUAL_INSETS = Platform.OS === "ios";
 
 export default function TabLayout() {
   const hasActiveDate = useActiveDateStore((state) => !!state.timeline);
+  // Staff tools on (#26): a badge on Profile, so it's clear the app isn't
+  // the default view. It counts what's waiting in the queue (a dot if none)
+  const staffTools = useStaffTools();
+  const staffWaiting = useStaffStore((s) => s.counts.toReview + s.counts.reported);
 
   return (
     <>
@@ -74,6 +79,9 @@ export default function TabLayout() {
             md="account_circle"
           />
           <NativeTabs.Trigger.Label hidden>Profile</NativeTabs.Trigger.Label>
+          {staffTools && (
+            <NativeTabs.Trigger.Badge>{staffWaiting ? String(staffWaiting) : undefined}</NativeTabs.Trigger.Badge>
+          )}
         </NativeTabs.Trigger>
 
         {HAS_ACCESSORY && hasActiveDate && (

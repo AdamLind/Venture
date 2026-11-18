@@ -46,7 +46,7 @@ export const useSavedStore = create<SavedState>((set, get) => ({
 
     const {data, error} = await supabase
       .from("saved_activities")
-      .select(`activity_id, created_at, activities ( ${IDEA_SUMMARY_COLUMNS} )`)
+      .select(`activity_id, created_at, activities ( user_id, ${IDEA_SUMMARY_COLUMNS} )`)
       .eq("user_id", userId)
       .order("created_at", {ascending: false});
 
@@ -58,11 +58,17 @@ export const useSavedStore = create<SavedState>((set, get) => ({
       return;
     }
 
-    const items: SavedIdea[] = (data ?? []).map((row: any) => ({
-      activity_id: row.activity_id,
-      saved_at: row.created_at,
-      idea: row.activities ?? null,
-    }));
+    const items: SavedIdea[] = (data ?? []).map((row: any) => {
+      const idea = row.activities;
+      // Gone: deleted, or unpublished since (staff can still read those,
+      // but like everyone else they can't plan with someone's unpublished idea)
+      const visible = !!idea && (idea.visibility === "PUBLISHED" || idea.user_id === userId);
+      return {
+        activity_id: row.activity_id,
+        saved_at: row.created_at,
+        idea: visible ? idea : null,
+      };
+    });
     set({
       items,
       ids: new Set(items.map((item) => item.activity_id)),

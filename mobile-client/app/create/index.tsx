@@ -18,6 +18,7 @@ import * as ImageManipulator from "expo-image-manipulator";
 import Ionicons from "@expo/vector-icons/build/Ionicons";
 import {supabase} from "@/src/supabase";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
+import {confirmDeleteIdea, confirmUnpublishIdea} from "@/src/lib/ideaActions";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {parseCoordinates} from "@/utils/itineraryEngine";
 
@@ -1039,6 +1040,45 @@ export default function CreateScreen() {
             </Text>
           )}
         </Pressable>
+
+        {/* EDITING: delete it (live ideas are unpublished first: deleting
+            would pull them out of other people's dates and bucket lists) */}
+        {editingId && original && (
+          <View className="items-center gap-2 -mt-4 mb-10">
+            {original.visibility === "PUBLISHED" ? (
+              <>
+                <Pressable
+                  onPress={() =>
+                    confirmUnpublishIdea(editingId, () => {
+                      // Now private: saving keeps it private, and it can be deleted
+                      setOriginal((prev) => (prev ? {...prev, visibility: "PRIVATE"} : prev));
+                      setVisibility("PRIVATE");
+                    })
+                  }
+                  disabled={isSubmitting}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  className="py-2 active:opacity-70"
+                >
+                  <Text className="text-red-400 font-bold text-base">Unpublish idea</Text>
+                </Pressable>
+                <Text className="text-zinc-500 text-xs text-center px-6">
+                  Live ideas can&apos;t be deleted. Unpublish it first, then you can delete it.
+                </Text>
+              </>
+            ) : (
+              <Pressable
+                onPress={() => confirmDeleteIdea(editingId, () => router.back())}
+                disabled={isSubmitting}
+                hitSlop={8}
+                accessibilityRole="button"
+                className="py-2 active:opacity-70"
+              >
+                <Text className="text-red-400 font-bold text-base">Delete idea</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* SWIPE-DOWN GRABBER (custom; native one is off in app/_layout.tsx).

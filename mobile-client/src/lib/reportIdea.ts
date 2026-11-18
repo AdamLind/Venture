@@ -1,6 +1,8 @@
 // src/lib/reportIdea.ts
 // The ••• menu on someone else's idea: Not interested, and Report.
 // Reports go to public.idea_reports, which is write-only from the app.
+// Reporting also hides the idea for you (like "Not interested"), so you
+// don't keep seeing what you reported; Settings > Hidden ideas undoes it.
 
 import {ActionSheetIOS, Alert, Platform} from "react-native";
 import Toast from "react-native-toast-message";
@@ -19,7 +21,7 @@ const REASONS: {value: Reason; label: string}[] = [
   {value: "OTHER", label: "Something else"},
 ];
 
-async function submit(ideaId: number, reason: Reason, details?: string) {
+async function submit(ideaId: number, reason: Reason, details: string | undefined, onHidden?: () => void) {
   // No .select(): reports are write-only, so there's nothing to read back
   const {error} = await supabase.from("idea_reports").insert({
     idea_id: ideaId,
@@ -36,15 +38,30 @@ async function submit(ideaId: number, reason: Reason, details?: string) {
     });
     return;
   }
+  // Out of your Discover and plans either way (best effort)
+  let hidden = false;
+  try {
+    await useHiddenStore.getState().hide(ideaId);
+    hidden = true;
+  } catch (e) {
+    console.warn("Couldn't hide the reported idea:", e);
+  }
   Toast.show({
     type: "success",
     text1: error ? "You've already reported this" : "Thanks for letting us know",
-    text2: error ? undefined : "We'll take a look.",
+    text2: hidden
+      ? error
+        ? "It's hidden for you while we look."
+        : "We've hidden it for you, and we'll take a look."
+      : error
+        ? undefined
+        : "We'll take a look.",
     position: "bottom",
   });
+  if (hidden) onHidden?.();
 }
 
-function chooseReason(ideaId: number) {
+function chooseReason(ideaId: number, onHidden?: () => void) {
   const onReason = (reason: Reason) => {
     if (reason === "OTHER" && Platform.OS === "ios") {
       Alert.prompt(
@@ -52,13 +69,13 @@ function chooseReason(ideaId: number) {
         "A short note helps us review it.",
         [
           {text: "Cancel", style: "cancel"},
-          {text: "Report", style: "destructive", onPress: (text?: string) => submit(ideaId, reason, text)},
+          {text: "Report", style: "destructive", onPress: (text?: string) => submit(ideaId, reason, text, onHidden)},
         ],
         "plain-text",
       );
       return;
     }
-    submit(ideaId, reason);
+    submit(ideaId, reason, undefined, onHidden);
   };
 
   if (Platform.OS === "ios") {
@@ -137,27 +154,38 @@ async function notInterested(ideaId: number, onHidden?: () => void) {
 
 /**
  * The ••• menu on someone else's idea.
- * `onHidden` runs after "Not interested" succeeds (e.g. leave the page).
+ * `onHidden` runs once it's hidden for you: after "Not interested", or after
+ * reporting it (e.g. leave the page).
+ * `onReview` (staff with their tools on) adds "Review as staff" first.
  */
-export function showIdeaMenu(ideaId: number, {onHidden}: {onHidden?: () => void} = {}) {
+export function showIdeaMenu(
+  ideaId: number,
+  {onHidden, onReview}: {onHidden?: () => void; onReview?: () => void} = {},
+) {
+  const items: {label: string; destructive?: boolean; run: () => void}[] = [
+    ...(onReview ? [{label: "Review as staff", run: onReview}] : []),
+    {label: "Not interested", run: () => notInterested(ideaId, onHidden)},
+    {label: "Report idea", destructive: true, run: () => chooseReason(ideaId, onHidden)},
+  ];
+
   if (Platform.OS === "ios") {
     ActionSheetIOS.showActionSheetWithOptions(
       {
-        options: ["Not interested", "Report idea", "Cancel"],
-        destructiveButtonIndex: 1,
-        cancelButtonIndex: 2,
+        options: [...items.map((i) => i.label), "Cancel"],
+        destructiveButtonIndex: items.findIndex((i) => i.destructive),
+        cancelButtonIndex: items.length,
         userInterfaceStyle: "dark",
       },
-      (index) => {
-        if (index === 0) notInterested(ideaId, onHidden);
-        if (index === 1) chooseReason(ideaId);
-      },
+      (index) => items[index]?.run(),
     );
   } else {
     Alert.alert("Idea options", undefined, [
       {text: "Cancel", style: "cancel"},
-      {text: "Not interested", onPress: () => notInterested(ideaId, onHidden)},
-      {text: "Report idea", style: "destructive", onPress: () => chooseReason(ideaId)},
+      ...items.map((i) => ({
+        text: i.label,
+        style: i.destructive ? ("destructive" as const) : undefined,
+        onPress: i.run,
+      })),
     ]);
   }
 }

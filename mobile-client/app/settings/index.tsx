@@ -1,6 +1,6 @@
 // app/settings/index.tsx
 import React, {useState} from "react";
-import {View, Text, Pressable, ScrollView, Alert, ActivityIndicator} from "react-native";
+import {View, Text, Pressable, ScrollView, Alert, ActivityIndicator, Switch} from "react-native";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
@@ -9,6 +9,7 @@ import ScreenHeader from "@/components/ui/ScreenHeader";
 import {useAuth} from "@/src/providers/AuthProvider";
 import {signOut} from "@/src/lib/signOut";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
+import {useStaffStore} from "@/src/store/useStaffStore";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -73,6 +74,44 @@ function Section({title, children}: {title: string; children: React.ReactNode}) 
 
 const Divider = () => <View className="h-px bg-zinc-800 ml-12" />;
 
+/** Staff only (#26): the queue, and the switch for inline staff tools. */
+function StaffSection() {
+  const router = useRouter();
+  const role = useStaffStore((s) => s.role);
+  const toolsOn = useStaffStore((s) => s.toolsOn);
+  const setToolsOn = useStaffStore((s) => s.setToolsOn);
+  const waiting = useStaffStore((s) => s.counts.toReview + s.counts.reported);
+  if (!role) return null;
+
+  return (
+    <View className="gap-2">
+      <Section title={role === "ADMIN" ? "Staff · Admin" : "Staff · Moderator"}>
+        <Row
+          icon="shield-checkmark-outline"
+          label="Moderation"
+          value={waiting ? `${waiting} waiting` : null}
+          onPress={() => router.push("/moderation")}
+        />
+        <Divider />
+        <View className="flex-row items-center gap-3 px-4 py-3">
+          <Ionicons name="construct-outline" size={20} color="white" />
+          <Text className="flex-1 text-base font-semibold text-white">Staff tools</Text>
+          <Switch
+            value={toolsOn}
+            onValueChange={setToolsOn}
+            trackColor={{true: "#8b5cf6"}}
+            accessibilityLabel="Staff tools"
+          />
+        </View>
+      </Section>
+      <Text className="text-zinc-500 text-xs px-2">
+        Off, the app looks the way it does for everyone. On, reports and review
+        options show on Explore and idea pages, with a badge on Profile.
+      </Text>
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
   const {session} = useAuth();
@@ -101,6 +140,8 @@ export default function SettingsScreen() {
     <SafeAreaView edges={["top"]} style={{flex: 1, backgroundColor: "#000"}}>
       <ScreenHeader title="Settings" />
       <ScrollView contentContainerClassName="px-5 pt-4 pb-16 gap-8">
+        <StaffSection />
+
         <Section title="Profile">
           <Row
             icon="person-outline"

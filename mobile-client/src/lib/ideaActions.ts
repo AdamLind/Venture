@@ -50,8 +50,48 @@ function confirm(
   ]);
 }
 
+/** Confirm, then unpublish (back to private). `onDone` runs after it's done. */
+export function confirmUnpublishIdea(ideaId: number, onDone?: () => void) {
+  confirm(
+    "Unpublish this idea?",
+    "It leaves Discover and goes back to private. Anyone who saved it or added it to a date won't see it anymore. Publishing again means another review.",
+    "Unpublish",
+    () =>
+      useMyIdeasStore
+        .getState()
+        .setVisibility(ideaId, "PRIVATE")
+        .then(() => {
+          useSavedStore.getState().reload();
+          done("Unpublished");
+          onDone?.();
+        })
+        .catch(fail("Couldn't unpublish it")),
+  );
+}
+
+/** Confirm, then delete (not for published ideas). `onDone` runs after. */
+export function confirmDeleteIdea(ideaId: number, onDone?: () => void) {
+  confirm(
+    "Delete this idea?",
+    "This can't be undone. If it's a stop in any of your dates, it's removed from them too.",
+    "Delete",
+    () =>
+      useMyIdeasStore
+        .getState()
+        .remove(ideaId)
+        .then(() => {
+          // It may have been a stop in your dates or in your bucket list
+          useItineraryStore.getState().reload();
+          useSavedStore.getState().reload();
+          done("Idea deleted");
+          onDone?.();
+        })
+        .catch(fail("Couldn't delete it")),
+  );
+}
+
 export function showIdeaActions(idea: IdeaSummary) {
-  const {setVisibility, remove} = useMyIdeasStore.getState();
+  const {setVisibility} = useMyIdeasStore.getState();
   const actions: Action[] = [
     {
       label: "Edit",
@@ -64,19 +104,7 @@ export function showIdeaActions(idea: IdeaSummary) {
     actions.push({
       label: "Unpublish",
       destructive: true,
-      run: () =>
-        confirm(
-          "Unpublish this idea?",
-          "It leaves Discover and goes back to private. Anyone who saved it or added it to a date won't see it anymore. Publishing again means another review.",
-          "Unpublish",
-          () =>
-            setVisibility(idea.idea_id, "PRIVATE")
-              .then(() => {
-                useSavedStore.getState().reload();
-                done("Unpublished");
-              })
-              .catch(fail("Couldn't unpublish it")),
-        ),
+      run: () => confirmUnpublishIdea(idea.idea_id),
     });
   }
 
@@ -108,21 +136,7 @@ export function showIdeaActions(idea: IdeaSummary) {
     actions.push({
       label: "Delete",
       destructive: true,
-      run: () =>
-        confirm(
-          "Delete this idea?",
-          "This can't be undone. If it's a stop in any of your dates, it's removed from them too.",
-          "Delete",
-          () =>
-            remove(idea.idea_id)
-              .then(() => {
-                // It may have been a stop in your dates or in your bucket list
-                useItineraryStore.getState().reload();
-                useSavedStore.getState().reload();
-                done("Idea deleted");
-              })
-              .catch(fail("Couldn't delete it")),
-        ),
+      run: () => confirmDeleteIdea(idea.idea_id),
     });
   }
 

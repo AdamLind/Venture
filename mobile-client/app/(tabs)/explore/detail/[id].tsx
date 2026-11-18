@@ -1,4 +1,4 @@
-import React, {useCallback, useState} from "react";
+import React, {useCallback, useRef, useState} from "react";
 import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import {
   View,
@@ -31,6 +31,8 @@ import {WEATHER_NEEDS_OPTIONS} from "@/src/lib/weatherRules";
 import {normalizeTimeOfDay, TIME_OF_DAY_LABEL} from "@/src/lib/timeOfDay";
 import PlaceHours from "@/components/ideas/PlaceHours";
 import EditPlaceSheet, {type EditablePlace} from "@/components/places/EditPlaceSheet";
+import ReviewPanel from "@/components/moderation/ReviewPanel";
+import {useStaffStore} from "@/src/store/useStaffStore";
 
 const {width, height} = Dimensions.get("window");
 
@@ -40,7 +42,13 @@ export default function IdeaDetailScreen() {
   // adding it. Then the bottom button adds it to that plan (`add=1`), or
   // there's none (already in the plan, or it doesn't fit); never "Plan a
   // date with this", which would start a different plan.
-  const {id, from, add} = useLocalSearchParams<{id: string; from?: string; add?: string}>();
+  // `review=1`: staff reviewing it (from the queue, or "Review as staff")
+  const {id, from, add, review: reviewParam} = useLocalSearchParams<{
+    id: string;
+    from?: string;
+    add?: string;
+    review?: string;
+  }>();
   const fromBuilder = from === "builder";
   const requestAdd = useBuilderStore((s) => s.requestAdd);
 
@@ -53,6 +61,10 @@ export default function IdeaDetailScreen() {
 
   const {hasPermission, requestLocation} = useLocationStore();
   const myUserId = useProfileStore((s) => s.userId);
+  // Staff (#26): the review panel, from the queue or with Staff tools on
+  const staffRole = useStaffStore((s) => s.role);
+  const staffToolsOn = useStaffStore((s) => s.toolsOn);
+  const reportCount = useStaffStore((s) => s.reportedIdeas.get(Number(id)) ?? 0);
   const setPlanSeed = usePlanSeedStore((s) => s.setSeed);
   const insets = useSafeAreaInsets();
 
@@ -77,6 +89,7 @@ export default function IdeaDetailScreen() {
 
   // --- FETCH DATA ---
   // On focus, so coming back from editing the idea shows the new version
+  const loadedOnce = useRef(false);
   useFocusEffect(
     useCallback(() => {
     const fetchIdeaDetails = async () => {
@@ -97,7 +110,13 @@ export default function IdeaDetailScreen() {
           .eq("idea_id", id)
           .single();
 
+        // Gone since you opened it (you deleted it from the edit form): leave
+        if (dbError?.code === "PGRST116" && loadedOnce.current) {
+          router.back();
+          return;
+        }
         if (dbError) throw dbError;
+        loadedOnce.current = true;
         setIdea(data);
       } catch (err: any) {
         console.error("Fetch Error:", err);
@@ -108,7 +127,7 @@ export default function IdeaDetailScreen() {
     };
 
     if (id) fetchIdeaDetails();
-    }, [id]),
+    }, [id, router]),
   );
 
   const handleOpenMap = async () => {
@@ -176,6 +195,15 @@ export default function IdeaDetailScreen() {
     : null;
   // Your own idea: say where it stands, and offer to edit it
   const isMine = !!myUserId && idea.user_id === myUserId;
+  // Staff review: asked for (queue / menu), or tools on and it needs a look
+  // (in review, sent back, rejected, or reported). Never on private ideas
+  const showReview =
+    !!staffRole &&
+    idea.visibility !== "PRIVATE" &&
+    (reviewParam === "1" ||
+      (staffToolsOn && (idea.visibility !== "PUBLISHED" || reportCount > 0)));
+  // Someone else's unpublished idea (staff only see these): nothing to plan
+  const canPlan = isMine || idea.visibility === "PUBLISHED";
   // After a verdict: what the reviewer said (kept for reference if you
   // withdrew it to private)
   const review = !isMine
@@ -290,6 +318,18 @@ export default function IdeaDetailScreen() {
               </Text>
             </Text>
           </View>
+
+          {/* STAFF REVIEW */}
+          {showReview && (
+            <ReviewPanel
+              idea={idea}
+              onDecided={(visibility, note) => {
+                setIdea((prev: any) => (prev ? {...prev, visibility, moderation_note: note} : prev));
+                // From the queue: straight back to it for the next one
+                if (from === "queue") router.back();
+              }}
+            />
+          )}
 
           {isMine && (
             <View className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 mb-6 gap-2">
@@ -567,7 +607,13 @@ export default function IdeaDetailScreen() {
           <Pressable
             onPress={() =>
               // After "Not interested", leave: it's gone from Discover
-              showIdeaMenu(idea.idea_id, {onHidden: () => router.back()})
+              showIdeaMenu(idea.idea_id, {
+                onHidden: () => router.back(),
+                onReview:
+                  staffRole && staffToolsOn && !showReview
+                    ? () => router.setParams({review: "1"})
+                    : undefined,
+              })
             }
             accessibilityRole="button"
             accessibilityLabel="More options"
@@ -582,7 +628,7 @@ export default function IdeaDetailScreen() {
 
       {/* PLAN A DATE WITH THIS (or, from the builder, ADD TO PLAN): the
           page's main action, pinned to the bottom */}
-      {(!fromBuilder || add === "1") && (
+      {canPlan && (!fromBuilder || add === "1") && (
       <View
         pointerEvents="box-none"
         style={{position: "absolute", left: 0, right: 0, bottom: 0}}

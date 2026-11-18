@@ -34,6 +34,7 @@ import Avatar from "@/components/profile/Avatar";
 import type {PublicProfile} from "@/types/profile";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {IDEA_STATUS} from "@/src/lib/ideas";
+import {useStaffStore} from "@/src/store/useStaffStore";
 import type {IdeaVisibility} from "@/types/ideas";
 
 // Shape for the map's floating preview card (GlassSurface takes style, not className)
@@ -177,6 +178,8 @@ const SkeletonIdea = () => (
 
 export default function ExploreScreen() {
   const router = useRouter();
+  // Staff tools on (#26): flag reported ideas on their cards
+  const reportedIdeas = useStaffStore((s) => (s.role && s.toolsOn ? s.reportedIdeas : null));
   const insets = useSafeAreaInsets();
   const header = useTabHeader({eyebrow: true});
   // iOS: the screen runs under the floating tab bar, whose height is in the
@@ -392,6 +395,19 @@ export default function ExploreScreen() {
                 />
               </View>
             )}
+
+            {/* Staff tools on: open reports on this idea */}
+            {reportedIdeas?.get(item.idea_id) ? (
+              <View
+                className="h-7 flex-row items-center gap-1 px-2.5 rounded-full"
+                style={CARD_PILL}
+                accessible
+                accessibilityLabel={`${reportedIdeas.get(item.idea_id)} open reports`}
+              >
+                <Ionicons name="flag" size={11} color="#f87171" />
+                <Text className="text-white font-bold text-xs">{reportedIdeas.get(item.idea_id)}</Text>
+              </View>
+            ) : null}
           </View>
 
           <View className="absolute top-4 right-4">

@@ -22,6 +22,7 @@ import {useSavedStore} from "@/src/store/useSavedStore";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
 import {useNotificationStore} from "@/src/store/useNotificationStore";
+import {useStaffStore} from "@/src/store/useStaffStore";
 import {signOut} from "@/src/lib/signOut";
 
 // --- CREATE YOUR CUSTOM TOAST THEMES ---
@@ -125,12 +126,15 @@ function InitialLayout() {
   const loadHidden = useHiddenStore((s) => s.load);
   const notificationsUserId = useNotificationStore((s) => s.userId);
   const loadNotifications = useNotificationStore((s) => s.load);
+  const staffUserId = useStaffStore((s) => s.userId);
+  const loadStaff = useStaffStore((s) => s.load);
   useEffect(() => {
     if (!userId || !onboarded || profileStatus !== "ready") return;
     if (savedUserId !== userId) loadSaved(userId);
     if (myIdeasUserId !== userId) loadMyIdeas(userId);
     if (hiddenUserId !== userId) loadHidden(userId);
     if (notificationsUserId !== userId) loadNotifications(userId);
+    if (staffUserId !== userId) loadStaff(userId);
   }, [
     userId,
     onboarded,
@@ -143,6 +147,8 @@ function InitialLayout() {
     loadHidden,
     notificationsUserId,
     loadNotifications,
+    staffUserId,
+    loadStaff,
   ]);
 
   // The Reactive Auth Routing Logic
@@ -257,6 +263,8 @@ function InitialLayout() {
           name="settings/hidden-ideas"
           options={{headerShown: false}}
         />
+        {/* MODERATION (staff only) */}
+        <Stack.Screen name="moderation" options={{headerShown: false}} />
 
         {/* SAVED DATE DETAIL */}
         <Stack.Screen name="itinerary/[id]" options={{headerShown: false}} />
