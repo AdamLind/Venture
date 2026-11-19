@@ -26,6 +26,7 @@ import {useStaffStore} from "@/src/store/useStaffStore";
 import {useBlockStore} from "@/src/store/useBlockStore";
 import {useAccountStore} from "@/src/store/useAccountStore";
 import TermsGate from "@/components/TermsGate";
+import {watchDeviceAccounts} from "@/src/store/useDeviceAccounts";
 import {TERMS_VERSION} from "@/src/lib/terms";
 import {signOut} from "@/src/lib/signOut";
 
@@ -133,6 +134,9 @@ function InitialLayout() {
   const loadNotifications = useNotificationStore((s) => s.load);
   const staffUserId = useStaffStore((s) => s.userId);
   const loadStaff = useStaffStore((s) => s.load);
+  // Accounts on this device (#31): keep saved sessions current
+  useEffect(() => watchDeviceAccounts(), []);
+
   const blockUserId = useBlockStore((s) => s.userId);
   const loadBlocks = useBlockStore((s) => s.load);
   const accountUserId = useAccountStore((s) => s.userId);

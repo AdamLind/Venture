@@ -1,17 +1,21 @@
 // app/settings/index.tsx
-import React, {useState} from "react";
+import React, {useEffect, useState} from "react";
 import {View, Text, Pressable, ScrollView, Alert, ActivityIndicator, Switch, Linking} from "react-native";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
+import Toast from "react-native-toast-message";
 
 import ScreenHeader from "@/components/ui/ScreenHeader";
 import {useAuth} from "@/src/providers/AuthProvider";
-import {signOut} from "@/src/lib/signOut";
+import {addAnotherAccount, signOut, switchAccount} from "@/src/lib/signOut";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
 import {useBlockStore} from "@/src/store/useBlockStore";
-import {SUSPENDED_MESSAGE, useAccountStore} from "@/src/store/useAccountStore";
+import {useAccountStore} from "@/src/store/useAccountStore";
+import SuspensionNotice from "@/components/settings/SuspensionNotice";
 import {SUPPORT_EMAIL} from "@/src/lib/terms";
+import {sortedAccounts, useDeviceAccounts} from "@/src/store/useDeviceAccounts";
+import {useProfileStore} from "@/src/store/useProfileStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -115,6 +119,105 @@ function StaffSection() {
   );
 }
 
+/**
+ * Accounts on this device (#31): switch to a test account and back without
+ * signing out, to try reporting, blocking and moderation from both sides.
+ * Shown in dev builds and to admins; once it's in use, to every account on
+ * this device (so a test account can switch back).
+ */
+function DeviceAccountsSection() {
+  const isAdmin = useStaffStore((s) => s.role === "ADMIN");
+  const enabled = useDeviceAccounts((s) => s.enabled);
+  const accounts = sortedAccounts(useDeviceAccounts((s) => s.accounts));
+  const myUserId = useProfileStore((s) => s.userId);
+  const myUsername = useProfileStore((s) => s.profile?.username ?? null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  // Label this account with its username in the list
+  useEffect(() => {
+    if (myUserId && myUsername) useDeviceAccounts.getState().setUsername(myUserId, myUsername);
+  }, [myUserId, myUsername]);
+
+  if (!__DEV__ && !isAdmin && !enabled) return null;
+
+  const onSwitch = async (userId: string, name: string) => {
+    setBusy(userId);
+    try {
+      await switchAccount(userId);
+      Toast.show({type: "success", text1: `Switched to ${name}`, position: "bottom"});
+    } catch (e) {
+      Alert.alert("Couldn't switch", e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      // Either way: the list is ready for the next switch
+      setBusy(null);
+    }
+  };
+
+  const onRemove = (userId: string, name: string) =>
+    Alert.alert(`Remove ${name} from this device?`, "You can sign in to it again anytime.", [
+      {text: "Cancel", style: "cancel"},
+      {text: "Remove", style: "destructive", onPress: () => useDeviceAccounts.getState().forget(userId)},
+    ]);
+
+  const onAdd = () =>
+    Alert.alert(
+      "Add another account?",
+      "You'll go to sign in. This account stays on this device, so you can switch back from Settings or the sign-in screen.",
+      [
+        {text: "Cancel", style: "cancel"},
+        {text: "Continue", onPress: () => addAnotherAccount()},
+      ],
+    );
+
+  const others = accounts.filter((a) => a.userId !== myUserId);
+
+  return (
+    <View className="gap-2">
+      <Section title="Accounts on this device">
+        {others.map((account, i) => {
+          const name = account.username ? `@${account.username}` : (account.email ?? "Account");
+          return (
+            <View key={account.userId}>
+              {i > 0 && <Divider />}
+              <Pressable
+                onPress={() => onSwitch(account.userId, name)}
+                onLongPress={() => onRemove(account.userId, name)}
+                disabled={!!busy}
+                accessibilityRole="button"
+                accessibilityHint="Switches to this account. Long press to remove it."
+                className="flex-row items-center gap-3 px-4 py-4 active:bg-zinc-800"
+              >
+                <Ionicons name="person-circle-outline" size={20} color="white" />
+                <View className="flex-1">
+                  <Text className="text-base font-semibold text-white" numberOfLines={1}>
+                    {name}
+                  </Text>
+                  {account.username && account.email ? (
+                    <Text className="text-zinc-500 text-xs" numberOfLines={1}>
+                      {account.email}
+                    </Text>
+                  ) : null}
+                </View>
+                {busy === account.userId ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="text-zinc-400 text-sm font-semibold">Switch</Text>
+                )}
+              </Pressable>
+            </View>
+          );
+        })}
+        {others.length > 0 && <Divider />}
+        <Row icon="person-add-outline" label="Add an account" onPress={onAdd} />
+      </Section>
+      <Text className="text-zinc-500 text-xs px-2">
+        For testing: switch accounts without signing out. Long press one to remove it. Signing out removes
+        that account from this list.
+      </Text>
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
   const {session} = useAuth();
@@ -145,15 +248,8 @@ export default function SettingsScreen() {
       <ScreenHeader title="Settings" />
       <ScrollView contentContainerClassName="px-5 pt-4 pb-16 gap-8">
         {/* Suspended (#76): say so, and why */}
-        {suspension && (
-          <View className="flex-row gap-3 bg-red-500/10 border border-red-500/30 rounded-3xl p-4 mb-6">
-            <Ionicons name="ban-outline" size={20} color="#f87171" style={{marginTop: 1}} />
-            <View className="flex-1 gap-1">
-              <Text className="text-red-300 font-bold text-base">Your account is suspended</Text>
-              <Text className="text-zinc-300 text-sm">{SUSPENDED_MESSAGE}</Text>
-              <Text className="text-zinc-400 text-sm">Reason: {suspension.reason}</Text>
-            </View>
-          </View>
+        {suspension && session?.user.id && (
+          <SuspensionNotice userId={session.user.id} suspension={suspension} />
         )}
 
         <StaffSection />
@@ -199,6 +295,8 @@ export default function SettingsScreen() {
             onPress={SUPPORT_EMAIL ? () => Linking.openURL(`mailto:${SUPPORT_EMAIL}`) : undefined}
           />
         </Section>
+
+        <DeviceAccountsSection />
 
         <Section title="Account">
           <Row icon="mail-outline" label="Email" value={session?.user.email} />

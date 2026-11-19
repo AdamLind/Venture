@@ -201,7 +201,37 @@ export async function reviewIdea(ideaId: number, decision: Decision, note?: stri
   useStaffStore.getState().refreshCounts();
 }
 
-/** Suspend an account (with a reason) or lift its suspension (#76). */
+export interface SuspendedAccount {
+  user_id: string;
+  username: string | null;
+  reason: string;
+  created_at: string;
+  suspended_by: string | null;
+}
+
+/** Every suspended account, newest first (Moderation › Suspended). */
+export async function fetchSuspended(): Promise<SuspendedAccount[]> {
+  const {data, error} = await supabase
+    .from("account_suspensions")
+    .select(
+      `user_id, reason, created_at,
+       account:users!account_suspensions_user_id_fkey ( username ),
+       moderator:users!account_suspensions_suspended_by_fkey ( username )`,
+    )
+    .order("created_at", {ascending: false})
+    .limit(200);
+  if (error) throw new Error(friendlyError(error));
+  return (data ?? []).map((row: any) => ({
+    user_id: row.user_id,
+    username: row.account?.username ?? null,
+    reason: row.reason,
+    created_at: row.created_at,
+    suspended_by: row.moderator?.username ?? null,
+  }));
+}
+
+/** Suspend an account (with a reason) or lift its suspension (#76).
+ *  Suspending from an idea rejects that idea too. */
 export async function setSuspension(userId: string, suspend: boolean, note: string | null, ideaId?: number) {
   const {error} = await supabase.rpc("set_suspension", {
     p_user_id: userId,

@@ -161,6 +161,8 @@ export default function ReviewPanel({
   // Suspend the creator (repeat offenders), or lift it. Staff can't be
   // suspended; the database says so
   const creatorName = idea.users?.username ? `@${idea.users.username}` : "the creator";
+  // Suspending from here rejects this idea too (unless it already is)
+  const rejectsIdea = idea.visibility !== "REJECTED" && idea.visibility !== "PRIVATE";
   const runSuspension = async (suspend: boolean, note: string | null) => {
     if (!idea.user_id) return;
     setBusy("SUSPEND");
@@ -169,8 +171,10 @@ export default function ReviewPanel({
       Toast.show({
         type: "success",
         text1: suspend ? `Suspended ${creatorName}` : "Suspension lifted",
+        text2: suspend && rejectsIdea ? "This idea was rejected too." : undefined,
         position: "bottom",
       });
+      if (suspend && rejectsIdea) onDecided("REJECTED", note?.trim() || null, null);
       load();
     } catch (e) {
       Alert.alert("Couldn't save that", e instanceof Error ? e.message : "Please try again.");
@@ -186,8 +190,9 @@ export default function ReviewPanel({
       ]);
       return;
     }
-    const body =
-      "For repeat offenders. They can't publish or report, and their ideas leave Discover. They can still plan privately.";
+    const body = `For repeat offenders. ${
+      rejectsIdea ? "This idea is rejected, and they" : "They"
+    } can't publish or report; their other ideas leave Discover. They can still plan privately.`;
     if (Platform.OS === "ios") {
       Alert.prompt(
         `Suspend ${creatorName}?`,

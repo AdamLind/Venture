@@ -9,13 +9,30 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import {Ionicons} from "@expo/vector-icons";
 import {supabase} from "@/src/supabase";
+import {switchAccount} from "@/src/lib/signOut";
+import {sortedAccounts, useDeviceAccounts, type DeviceAccount} from "@/src/store/useDeviceAccounts";
 
 export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
+  // Accounts on this device (#31): back to one without its password
+  const saved = sortedAccounts(useDeviceAccounts((s) => s.accounts));
+  const [switching, setSwitching] = useState<string | null>(null);
+
+  async function continueAs(account: DeviceAccount) {
+    setSwitching(account.userId);
+    try {
+      await switchAccount(account.userId);
+    } catch (e) {
+      Alert.alert("Couldn't switch", e instanceof Error ? e.message : "Please sign in.");
+    } finally {
+      setSwitching(null);
+    }
+  }
 
   async function handleAuth() {
     setLoading(true);
@@ -111,6 +128,40 @@ export default function AuthScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {saved.length > 0 && (
+        <View className="mt-6 gap-2">
+          <Text className="text-gray-500 text-xs font-bold uppercase tracking-wider ml-1">
+            On this device
+          </Text>
+          {saved.map((account) => (
+            <TouchableOpacity
+              key={account.userId}
+              onPress={() => continueAs(account)}
+              disabled={!!switching || loading}
+              accessibilityRole="button"
+              className="flex-row items-center gap-3 bg-[#1e1e1e] border border-[#333] rounded-xl px-4 py-3"
+            >
+              <Ionicons name="person-circle-outline" size={24} color="#a1a1aa" />
+              <View className="flex-1">
+                <Text className="text-white font-bold" numberOfLines={1}>
+                  {account.username ? `@${account.username}` : (account.email ?? "Account")}
+                </Text>
+                {account.username && account.email ? (
+                  <Text className="text-gray-500 text-xs" numberOfLines={1}>
+                    {account.email}
+                  </Text>
+                ) : null}
+              </View>
+              {switching === account.userId ? (
+                <ActivityIndicator color="#a1a1aa" size="small" />
+              ) : (
+                <Text className="text-gray-400 text-sm font-semibold">Continue</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }

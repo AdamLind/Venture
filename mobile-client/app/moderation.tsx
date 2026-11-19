@@ -5,7 +5,8 @@
 // panel on top. Staff only (Settings shows the way in).
 
 import React, {useCallback, useState} from "react";
-import {ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View} from "react-native";
+import {ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, Text, View} from "react-native";
+import Toast from "react-native-toast-message";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {useFocusEffect, useRouter} from "expo-router";
 import {Image} from "expo-image";
@@ -18,21 +19,29 @@ import {
   type LogEntry,
   type QueueIdea,
   type ReportedIdea,
+  type SuspendedAccount,
   ago,
   fetchLog,
   fetchReported,
+  fetchSuspended,
   fetchToReview,
   logLine,
+  setSuspension,
 } from "@/src/lib/moderation";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
 
-type Tab = "review" | "reported" | "log";
+type Tab = "review" | "reported" | "suspended" | "log";
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 const EMPTY: Record<Tab, {icon: IconName; title: string; body: string}> = {
   review: {icon: "checkmark-done-outline", title: "All caught up", body: "New ideas show up here when they're posted."},
   reported: {icon: "flag-outline", title: "No open reports", body: "Reported ideas show up here, most reported first."},
+  suspended: {
+    icon: "ban-outline",
+    title: "Nobody's suspended",
+    body: "Suspend a creator from the review panel on one of their ideas.",
+  },
   log: {icon: "document-text-outline", title: "Nothing yet", body: "Every decision is logged here with who made it."},
 };
 
@@ -47,15 +56,23 @@ export default function ModerationScreen() {
   const [toReview, setToReview] = useState<QueueIdea[] | null>(null);
   const [reported, setReported] = useState<ReportedIdea[] | null>(null);
   const [log, setLog] = useState<LogEntry[] | null>(null);
+  const [suspended, setSuspended] = useState<SuspendedAccount[] | null>(null);
+  const [lifting, setLifting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [a, b, c] = await Promise.all([fetchToReview(), fetchReported(), fetchLog()]);
+      const [a, b, c, d] = await Promise.all([
+        fetchToReview(),
+        fetchReported(),
+        fetchLog(),
+        fetchSuspended(),
+      ]);
       setToReview(a);
       setReported(b);
       setLog(c);
+      setSuspended(d);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load the queue");
@@ -76,6 +93,29 @@ export default function ModerationScreen() {
     setRefreshing(false);
   };
 
+  // Lift a suspension: works even when none of their ideas are left to open
+  const lift = (account: SuspendedAccount) => {
+    const name = account.username ? `@${account.username}` : "this account";
+    Alert.alert(`Lift the suspension on ${name}?`, "They can publish and report again.", [
+      {text: "Cancel", style: "cancel"},
+      {
+        text: "Lift it",
+        onPress: async () => {
+          setLifting(account.user_id);
+          try {
+            await setSuspension(account.user_id, false, null);
+            Toast.show({type: "success", text1: "Suspension lifted", position: "bottom"});
+            await load();
+          } catch (e) {
+            Alert.alert("Couldn't lift it", e instanceof Error ? e.message : "Please try again.");
+          } finally {
+            setLifting(null);
+          }
+        },
+      },
+    ]);
+  };
+
   const open = (ideaId: number) =>
     router.push({pathname: "/idea/[id]", params: {id: String(ideaId), review: "1", from: "queue"}});
 
@@ -93,9 +133,11 @@ export default function ModerationScreen() {
   const tabs: {key: Tab; label: string; count?: number}[] = [
     {key: "review", label: "To review", count: toReview?.length},
     {key: "reported", label: "Reported", count: reported?.length},
+    {key: "suspended", label: "Suspended"},
     {key: "log", label: "Log"},
   ];
-  const data: any[] | null = tab === "review" ? toReview : tab === "reported" ? reported : log;
+  const data: any[] | null =
+    tab === "review" ? toReview : tab === "reported" ? reported : tab === "suspended" ? suspended : log;
   const empty = EMPTY[tab];
 
   return (
@@ -114,7 +156,9 @@ export default function ModerationScreen() {
               accessibilityState={{selected: active}}
               className={`flex-1 h-9 rounded-xl flex-row items-center justify-center gap-1.5 ${active ? "bg-zinc-700" : ""}`}
             >
-              <Text className={`text-sm font-bold ${active ? "text-white" : "text-zinc-400"}`}>{t.label}</Text>
+              <Text className={`text-sm font-bold ${active ? "text-white" : "text-zinc-400"}`} numberOfLines={1}>
+                {t.label}
+              </Text>
               {t.count ? (
                 <View
                   className={`min-w-5 h-5 px-1.5 rounded-full items-center justify-center ${t.key === "reported" ? "bg-red-500" : "bg-amber-500"}`}
@@ -141,7 +185,9 @@ export default function ModerationScreen() {
       ) : (
         <FlatList
           data={data}
-          keyExtractor={(item) => String(tab === "log" ? item.action_id : item.idea_id)}
+          keyExtractor={(item) =>
+            String(tab === "log" ? item.action_id : tab === "suspended" ? item.user_id : item.idea_id)
+          }
           contentContainerClassName="px-5 pb-16 gap-3"
           contentContainerStyle={data.length === 0 ? {flexGrow: 1} : undefined}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="white" />}
@@ -162,6 +208,13 @@ export default function ModerationScreen() {
               />
             ) : tab === "reported" ? (
               <ReportedRow idea={item} onPress={() => open(item.idea_id)} />
+            ) : tab === "suspended" ? (
+              <SuspendedRow
+                account={item}
+                myUsername={myUsername}
+                busy={lifting === item.user_id}
+                onLift={() => lift(item)}
+              />
             ) : (
               <LogRow
                 entry={item}
@@ -255,6 +308,53 @@ function ReportedRow({idea, onPress}: {idea: ReportedIdea; onPress: () => void})
         <Text className="text-zinc-500 text-xs">{ago(idea.reports[0]?.created_at ?? null)}</Text>
       </View>
     </Pressable>
+  );
+}
+
+function SuspendedRow({
+  account,
+  myUsername,
+  busy,
+  onLift,
+}: {
+  account: SuspendedAccount;
+  myUsername: string | null;
+  busy: boolean;
+  onLift: () => void;
+}) {
+  const by = account.suspended_by
+    ? account.suspended_by === myUsername
+      ? "you"
+      : `@${account.suspended_by}`
+    : "a moderator";
+  return (
+    <View className="flex-row items-center bg-zinc-900 border border-zinc-800 rounded-3xl p-4 gap-3">
+      <Ionicons name="ban-outline" size={22} color="#f87171" />
+      <View className="flex-1 gap-0.5">
+        <Text className="text-white font-bold text-base" numberOfLines={1}>
+          {account.username ? `@${account.username}` : "An account"}
+        </Text>
+        <Text className="text-zinc-300 text-sm" numberOfLines={2}>
+          {account.reason}
+        </Text>
+        <Text className="text-zinc-500 text-xs">
+          By {by} · {ago(account.created_at)} ago
+        </Text>
+      </View>
+      <Pressable
+        onPress={onLift}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel={`Lift the suspension on ${account.username ?? "this account"}`}
+        className="bg-zinc-800 rounded-full px-4 py-2 active:opacity-70"
+      >
+        {busy ? (
+          <ActivityIndicator size="small" color="white" />
+        ) : (
+          <Text className="text-white font-bold text-sm">Lift</Text>
+        )}
+      </Pressable>
+    </View>
   );
 }
 

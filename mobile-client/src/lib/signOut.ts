@@ -13,6 +13,7 @@ import {useNotificationStore} from "@/src/store/useNotificationStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
 import {useBlockStore} from "@/src/store/useBlockStore";
 import {useAccountStore} from "@/src/store/useAccountStore";
+import {useDeviceAccounts} from "@/src/store/useDeviceAccounts";
 import {friendlyError} from "@/src/lib/profile";
 
 /** Clears every in-memory store so the next person on this device starts fresh. */
@@ -38,6 +39,10 @@ function clearLocalState() {
  * The root layout redirects to the login screen once the session is gone.
  */
 export async function signOut() {
+  // Signing out ends this session everywhere, so it can't be switched back to
+  const {data} = await supabase.auth.getSession();
+  if (data.session) useDeviceAccounts.getState().forget(data.session.user.id);
+
   const {error} = await supabase.auth.signOut();
   if (error) {
     // Couldn't reach the server to revoke the session everywhere;
@@ -45,6 +50,45 @@ export async function signOut() {
     console.warn("Global sign-out failed, signing out locally:", error.message);
     await supabase.auth.signOut({scope: "local"});
   }
+  clearLocalState();
+}
+
+/**
+ * Accounts on this device (#31): switch to a saved account without signing
+ * out (the current one stays saved, to switch back). Throws a readable Error
+ * if the saved session has ended (it's dropped from the list).
+ */
+export async function switchAccount(userId: string) {
+  const accounts = useDeviceAccounts.getState();
+  const target = accounts.accounts[userId];
+  if (!target) throw new Error("That account isn't on this device anymore.");
+
+  const {data} = await supabase.auth.getSession();
+  if (data.session) {
+    if (data.session.user.id === userId) return;
+    accounts.remember(data.session);
+  }
+
+  const {data: switched, error} = await supabase.auth.setSession({
+    access_token: target.accessToken,
+    refresh_token: target.refreshToken,
+  });
+  if (error || !switched.session) {
+    accounts.forget(userId);
+    throw new Error("That account was signed out. Sign in to it again to add it back.");
+  }
+  // The new session's stores load from scratch (the root layout reloads them)
+  clearLocalState();
+}
+
+/** Accounts on this device: keep this one, and go to sign-in for another. */
+export async function addAnotherAccount() {
+  const accounts = useDeviceAccounts.getState();
+  accounts.enable();
+  const {data} = await supabase.auth.getSession();
+  if (data.session) accounts.remember(data.session);
+  // Local only: the saved session stays valid on the server
+  await supabase.auth.signOut({scope: "local"});
   clearLocalState();
 }
 
