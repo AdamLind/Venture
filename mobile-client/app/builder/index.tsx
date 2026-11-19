@@ -627,7 +627,7 @@ export default function BuilderScreen() {
     // 2. Starting soon? Offer to start it. Otherwise file it under Upcoming.
     const goToUpcoming = () => {
       clearDraft();
-      router.dismissTo("/(tabs)/activity");
+      router.dismissTo("/(tabs)/dates");
     };
 
     if (startsAt.getTime() - Date.now() <= START_NOW_WINDOW_MS) {

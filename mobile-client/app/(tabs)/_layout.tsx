@@ -2,6 +2,10 @@
 // Native tabs: the system tab bar. On iOS 26+ that's Liquid Glass, with the
 // sliding glass highlight between tabs; older iOS gets the standard blurred
 // bar and Android gets Material's bottom navigation.
+//
+// Four tabs: Discover (the pictures bring the app alive), Plan (plan a whole
+// date in under a minute), Dates (live, upcoming and past) and Profile.
+// No feed: Venture isn't a social network.
 
 import React from "react";
 import {Platform} from "react-native";
@@ -46,15 +50,7 @@ export default function TabLayout() {
             sf={{default: "house", selected: "house.fill"}}
             md="home"
           />
-          <NativeTabs.Trigger.Label hidden>Explore</NativeTabs.Trigger.Label>
-        </NativeTabs.Trigger>
-
-        <NativeTabs.Trigger name="feed" disableAutomaticContentInsets={MANUAL_INSETS}>
-          <NativeTabs.Trigger.Icon
-            sf={{default: "person.2", selected: "person.2.fill"}}
-            md="group"
-          />
-          <NativeTabs.Trigger.Label hidden>Feed</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Label hidden>Discover</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
 
         <NativeTabs.Trigger name="plan" disableAutomaticContentInsets={MANUAL_INSETS}>
@@ -65,12 +61,12 @@ export default function TabLayout() {
           <NativeTabs.Trigger.Label hidden>Plan</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
 
-        <NativeTabs.Trigger name="activity" disableAutomaticContentInsets={MANUAL_INSETS}>
+        <NativeTabs.Trigger name="dates" disableAutomaticContentInsets={MANUAL_INSETS}>
           <NativeTabs.Trigger.Icon
             sf={{default: "calendar", selected: "calendar"}}
             md="calendar_today"
           />
-          <NativeTabs.Trigger.Label hidden>Activity</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Label hidden>Dates</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
 
         <NativeTabs.Trigger name="profile" disableAutomaticContentInsets={MANUAL_INSETS}>

@@ -1,3 +1,8 @@
+// app/(tabs)/dates.tsx
+// The Dates tab: the live date (while one's happening), what's coming up
+// (three at a time, so it never gets cluttered), the week strip to plan a
+// day, and a way to past dates. Only what exists shows.
+
 import React, {useMemo, useState} from "react";
 import {
   Animated,
@@ -28,6 +33,9 @@ import WeekStrip, {
 /** How many days the strip shows, starting today. */
 const STRIP_DAYS = 21;
 
+/** Upcoming dates shown before "Show all" */
+const UPCOMING_SHOWN = 3;
+
 const DAY_MS = 86_400_000;
 
 function daysFromToday(value: string, now = new Date()) {
@@ -52,12 +60,13 @@ function bucketByWeek(dates: Itinerary[]) {
 const planFor = (key?: string) =>
   router.push({pathname: "/(tabs)/plan", params: key ? {startsOn: key} : {}});
 
-export default function Activity() {
+export default function DatesScreen() {
   const itineraries = useItineraryStore((s) => s.itineraries);
   const status = useItineraryStore((s) => s.status);
   const error = useItineraryStore((s) => s.error);
   const reload = useItineraryStore((s) => s.reload);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const header = useTabHeader({subtitle: true});
   const refresh = useTabRefresh(reload);
 
@@ -83,7 +92,8 @@ export default function Activity() {
   const onSelectedDay = selectedDay
     ? upcoming.filter((d) => dayKey(d.starts_at) === selectedDay)
     : [];
-  const sections = bucketByWeek(upcoming);
+  const hiddenUpcoming = showAllUpcoming ? 0 : Math.max(0, upcoming.length - UPCOMING_SHOWN);
+  const sections = bucketByWeek(showAllUpcoming ? upcoming : upcoming.slice(0, UPCOMING_SHOWN));
 
   const monthLabel = (selectedDate ?? new Date()).toLocaleDateString([], {
     month: "long",
@@ -110,7 +120,7 @@ export default function Activity() {
     >
       <TabHeader
         header={header}
-        title="Upcoming"
+        title="Dates"
         subtitle={subtitle}
         refreshing={refresh.headerSpinner}
         right={
@@ -219,6 +229,18 @@ export default function Activity() {
                   </View>
                 </View>
               ))}
+              {hiddenUpcoming > 0 && (
+                <Pressable
+                  onPress={() => setShowAllUpcoming(true)}
+                  accessibilityRole="button"
+                  className="self-center flex-row items-center gap-1 px-4 py-2 rounded-full active:bg-zinc-900"
+                >
+                  <Text className="text-blue-400 font-semibold">
+                    Show all {upcoming.length} upcoming
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color="#60a5fa" />
+                </Pressable>
+              )}
             </View>
           )}
 
