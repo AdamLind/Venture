@@ -25,6 +25,7 @@ import {
   Platform,
   Alert,
   StyleSheet,
+  Share,
   useWindowDimensions,
 } from "react-native";
 import MapView, {Marker, Polyline} from "react-native-maps";
@@ -57,6 +58,7 @@ import {replanPoint, type DatePrefs} from "@/utils/replan";
 import {aheadOf} from "@/utils/liveTimeline";
 import {placedStops} from "@/src/lib/dates";
 import RestEditor from "@/components/live/RestEditor";
+import {SAFETY_DISCLAIMER, needsSafetyLine, riskLabelText, worthSharingPlan} from "@/src/lib/safety";
 import {
   Connector,
   MarkerLabel,
@@ -197,6 +199,19 @@ export default function ActiveDateScreen() {
       edgePadding: {top: 80, right: 60, bottom: 60, left: 60},
       animated: true,
     });
+
+  // Outdoors or out of signal: tell someone where you'll be (#81). The
+  // share sheet, so you pick who gets it
+  const sharePlanWorthIt = stops.some((s) => worthSharingPlan(s.activity as any));
+  const sharePlan = () => {
+    const lines = stops.map((s, i) => {
+      const venue = (s.activity as any).venues;
+      const where = venue?.name ? ` · ${venue.name}${venue.address ? `, ${venue.address}` : ""}` : "";
+      return `${i + 1}. ${clockTime(s.startTime)} ${s.activity!.title}${where}`;
+    });
+    const message = ["Our date plan:", ...lines, "", "Planned with Venture"].join("\n");
+    Share.share({message}).catch(() => {});
+  };
 
   // ─── The sheet: half or full height ───────────────────────────────────────
   // Drag it anywhere: the top part (grabber + Now card) always moves it; the
@@ -816,6 +831,15 @@ export default function ActiveDateScreen() {
                   {clockTime(slot.startTime)} – {clockTime(slot.endTime)}
                   {(slot.activity as any).venues?.name ? ` · ${(slot.activity as any).venues.name}` : ""}
                 </Text>
+                {/* Its risks (#81), so they're in mind on the day */}
+                {(slot.activity as any).risk_labels?.length ? (
+                  <View className="flex-row items-center gap-1 mt-0.5">
+                    <Ionicons name="warning-outline" size={12} color="#fbbf24" />
+                    <Text className="text-amber-300 text-xs font-semibold shrink" numberOfLines={1}>
+                      {((slot.activity as any).risk_labels as string[]).map(riskLabelText).join(" · ")}
+                    </Text>
+                  </View>
+                ) : null}
                 {(() => {
                   // Closed when you'd get there (#9)
                   const note = hoursNoteFor(slot);
@@ -847,6 +871,14 @@ export default function ActiveDateScreen() {
         <TimelineRow isLast node={<MarkerNode icon="flag" />}>
           <MarkerLabel label={goingOut ? "Ends at home" : "Ends"} time={clockTime(slots[slots.length - 1].endTime)} />
         </TimelineRow>
+      )}
+
+      {/* Outdoor or risky stops: we don't verify safety (#81) */}
+      {stops.some((s) => needsSafetyLine(s.activity as any)) && (
+        <View className="flex-row gap-2 mt-4 px-1">
+          <Ionicons name="information-circle-outline" size={14} color="#71717a" style={{marginTop: 1}} />
+          <Text className="flex-1 text-zinc-500 text-xs leading-5">{SAFETY_DISCLAIMER}</Text>
+        </View>
       )}
 
       {!allDone && !editing && (
@@ -1053,18 +1085,33 @@ export default function ActiveDateScreen() {
             <Ionicons name="chevron-down" size={24} color="white" />
           </GlassSurface>
         </Pressable>
-        {showMap && locations.length > 1 && (
-          <Pressable
-            onPress={recenter}
-            accessibilityRole="button"
-            accessibilityLabel="Show all stops"
-            className="active:opacity-70"
-          >
-            <GlassSurface style={styles.glassButton}>
-              <Ionicons name="scan-outline" size={20} color="white" />
-            </GlassSurface>
-          </Pressable>
-        )}
+        <View className="flex-row gap-2">
+          {/* Outdoors or out of signal: tell someone where you'll be (#81) */}
+          {sharePlanWorthIt && (
+            <Pressable
+              onPress={sharePlan}
+              accessibilityRole="button"
+              accessibilityLabel="Share your plan with someone"
+              className="active:opacity-70"
+            >
+              <GlassSurface style={styles.glassButton}>
+                <Ionicons name="share-outline" size={20} color="white" />
+              </GlassSurface>
+            </Pressable>
+          )}
+          {showMap && locations.length > 1 && (
+            <Pressable
+              onPress={recenter}
+              accessibilityRole="button"
+              accessibilityLabel="Show all stops"
+              className="active:opacity-70"
+            >
+              <GlassSurface style={styles.glassButton}>
+                <Ionicons name="scan-outline" size={20} color="white" />
+              </GlassSurface>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {/* THE SHEET */}

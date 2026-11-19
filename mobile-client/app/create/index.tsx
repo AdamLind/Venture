@@ -22,6 +22,7 @@ import {supabase} from "@/src/supabase";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {confirmDeleteIdea, confirmUnpublishIdea} from "@/src/lib/ideaActions";
 import {POSTER_PROMISE} from "@/src/lib/ideaGuidelines";
+import {RISK_LABELS, SAFETY_NOTE_MAX, type RiskLabel} from "@/src/lib/safety";
 import {SUSPENDED_MESSAGE, useAccountStore} from "@/src/store/useAccountStore";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {parseCoordinates} from "@/utils/itineraryEngine";
@@ -135,6 +136,9 @@ export default function CreateScreen() {
   const [minPeople, setMinPeople] = useState("2");
   const [maxPeople, setMaxPeople] = useState("2");
   const [minAge, setMinAge] = useState("");
+  // Safety (#81): what to know before going, and a short heads-up
+  const [riskLabels, setRiskLabels] = useState<RiskLabel[]>([]);
+  const [safetyNote, setSafetyNote] = useState("");
 
   // Numeric
   const [price, setPrice] = useState("");
@@ -206,6 +210,8 @@ export default function CreateScreen() {
       setMinPeople(String(data.min_people ?? 2));
       setMaxPeople(String(data.max_people ?? 2));
       setMinAge(data.min_age ? String(data.min_age) : "");
+      setRiskLabels((data.risk_labels ?? []) as RiskLabel[]);
+      setSafetyNote(data.safety_note ?? "");
       setPrice(String(data.est_price_per_person ?? ""));
       setDuration(String(data.est_duration_minutes ?? ""));
       setIsDurationVariable(!!data.is_duration_variable);
@@ -436,6 +442,8 @@ export default function CreateScreen() {
         min_people: dbMinPeople,
         max_people: dbMaxPeople,
         min_age: dbMinAge,
+        risk_labels: riskLabels,
+        safety_note: safetyNote.trim() ? safetyNote.trim().slice(0, SAFETY_NOTE_MAX) : null,
         visibility: visibility,
       };
 
@@ -971,6 +979,46 @@ export default function CreateScreen() {
           placeholderTextColor="#71717a"
           keyboardType="number-pad"
           className="bg-zinc-900 text-white p-4 rounded-2xl mb-6 border border-zinc-800"
+        />
+
+        {/* SAFETY (#81): risky but legal is fine, with a heads-up */}
+        <Text className="text-zinc-400 text-sm font-bold ml-1 mb-1">SAFETY (Optional)</Text>
+        <Text className="text-zinc-500 text-xs ml-1 mb-3">Anything people should know before they go?</Text>
+        <View className="flex-row flex-wrap gap-2 mb-3">
+          {RISK_LABELS.map((risk) => {
+            const on = riskLabels.includes(risk.value);
+            return (
+              <Pressable
+                key={risk.value}
+                onPress={() =>
+                  setRiskLabels((prev) =>
+                    on ? prev.filter((r) => r !== risk.value) : [...prev, risk.value],
+                  )
+                }
+                accessibilityRole="checkbox"
+                accessibilityState={{checked: on}}
+                accessibilityHint={risk.hint}
+                className={`flex-row items-center gap-1.5 px-3 py-2 rounded-xl border active:opacity-70 ${
+                  on ? "bg-amber-500/15 border-amber-400" : "bg-zinc-900 border-zinc-800"
+                }`}
+              >
+                <Ionicons name={risk.icon} size={15} color={on ? "#fbbf24" : "#71717a"} />
+                <Text className={`font-bold text-sm ${on ? "text-amber-200" : "text-zinc-500"}`}>
+                  {risk.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <TextInput
+          value={safetyNote}
+          onChangeText={setSafetyNote}
+          multiline
+          maxLength={SAFETY_NOTE_MAX}
+          textAlignVertical="top"
+          placeholder="e.g. The last half mile is a scramble; skip it after rain."
+          placeholderTextColor="#71717a"
+          className="bg-zinc-900 text-white p-4 pt-4 rounded-2xl mb-6 border border-zinc-800 min-h-20"
         />
 
         {/* SHARED TAGS COMPONENT */}

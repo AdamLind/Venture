@@ -56,6 +56,10 @@ export interface BaseActivity {
   moderation_note: string | null;
   /** Guidelines the last review cited (#85; ids from src/lib/ideaGuidelines.ts) */
   moderation_rules?: string[] | null;
+  /** What to know before going (#81; ids from src/lib/safety.ts) */
+  risk_labels?: string[] | null;
+  /** A short heads-up from the creator (#81) */
+  safety_note?: string | null;
 
   // ─── RELATIONAL DATA (Populated via Supabase Joins) ───
   tags?: string[]; // Flattened from activity_tags table

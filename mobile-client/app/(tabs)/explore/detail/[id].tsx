@@ -34,6 +34,7 @@ import EditPlaceSheet, {type EditablePlace} from "@/components/places/EditPlaceS
 import ReviewPanel from "@/components/moderation/ReviewPanel";
 import {useStaffStore} from "@/src/store/useStaffStore";
 import {RULE_BY_ID, isRuleId, type RuleId} from "@/src/lib/ideaGuidelines";
+import {SAFETY_DISCLAIMER, needsSafetyLine, riskLabelsOf} from "@/src/lib/safety";
 
 const {width, height} = Dimensions.get("window");
 
@@ -507,6 +508,37 @@ export default function IdeaDetailScreen() {
               {idea.description}
             </Text>
           </View>
+
+          {/* GOOD TO KNOW (#81): its risks, the creator's heads-up, and (outdoor
+              or risky ideas only) that we don't verify safety */}
+          {(riskLabelsOf(idea).length > 0 || idea.safety_note || needsSafetyLine(idea)) && (
+            <View className="bg-zinc-900/80 border border-zinc-800 rounded-3xl p-4 mb-8 gap-3">
+              <Text className="text-zinc-400 text-sm font-bold">GOOD TO KNOW</Text>
+              {riskLabelsOf(idea).length > 0 && (
+                <View className="flex-row flex-wrap gap-2">
+                  {riskLabelsOf(idea).map((risk) => (
+                    <View
+                      key={risk.value}
+                      className="flex-row items-center gap-1.5 bg-amber-500/15 rounded-full px-3 py-1.5"
+                      accessibilityLabel={`${risk.label}: ${risk.hint}`}
+                    >
+                      <Ionicons name={risk.icon} size={14} color="#fbbf24" />
+                      <Text className="text-amber-200 text-sm font-semibold">{risk.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {idea.safety_note ? (
+                <View className="flex-row gap-2.5">
+                  <Ionicons name="alert-circle-outline" size={18} color="#fbbf24" style={{marginTop: 1}} />
+                  <Text className="flex-1 text-zinc-200 text-[15px] leading-6">{idea.safety_note}</Text>
+                </View>
+              ) : null}
+              {needsSafetyLine(idea) && (
+                <Text className="text-zinc-500 text-xs leading-5">{SAFETY_DISCLAIMER}</Text>
+              )}
+            </View>
+          )}
 
           {/* VENUE & MAP */}
           {idea.modality === "GO_OUT" && idea.venues && (

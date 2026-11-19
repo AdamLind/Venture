@@ -84,7 +84,7 @@ export const RULES: Rule[] = [
     id: "safe",
     icon: "shield-checkmark",
     title: "Safe and legal",
-    body: "Nothing illegal or unpermitted, and nothing dangerous without training. Risky but legal is fine: say what to watch out for.",
+    body: "Nothing illegal or unpermitted, and nothing dangerous without training. Risky but legal is fine: add its risk labels and a safety note.",
     points: [
       "Not allowed: trespassing, closed areas, cliff jumping where it's banned, fires where they're not allowed.",
       "Fine with a heads-up: hiking, kayaking, climbing, skiing. “The last half mile is a scramble; skip it after rain.”",
@@ -161,6 +161,7 @@ export const QUICK_PICKS: Record<NoteDecision, {rule: RuleId; text: string}[]> =
     {rule: "one-activity", text: "Make this one activity. Post the others as separate ideas; they can still go on the same date."},
     {rule: "honest", text: "Check the price and how long it takes."},
     {rule: "honest", text: "Add a clear cover photo of the real place or activity."},
+    {rule: "safe", text: "Add risk labels and a safety note so people know what they're getting into."},
     {rule: "audience", text: "Check the minimum age. Anything with alcohol is 21+."},
     {rule: "no-spam", text: "Take out the phone number, social handles or promo codes."},
   ],
