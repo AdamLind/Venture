@@ -11,6 +11,7 @@ import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {useStaffStore, useStaffTools} from "@/src/store/useStaffStore";
+import {useConnectionsStore} from "@/src/store/useConnectionsStore";
 
 export type NotificationKind =
   | "IDEA_PUBLISHED"
@@ -23,7 +24,19 @@ export type NotificationKind =
   /** Your report: we took it down */
   | "REPORT_ACTIONED"
   /** Your report: we looked, and it's within the guidelines */
-  | "REPORT_DISMISSED";
+  | "REPORT_DISMISSED"
+  /** People (#35): actor is who it's about */
+  | "CONNECTION_REQUEST"
+  | "CONNECTION_ACCEPTED"
+  | "PARTNER_REQUEST"
+  | "PARTNER_ACCEPTED";
+
+/** About a person, not an idea */
+export const isPersonKind = (kind: NotificationKind) =>
+  kind === "CONNECTION_REQUEST" ||
+  kind === "CONNECTION_ACCEPTED" ||
+  kind === "PARTNER_REQUEST" ||
+  kind === "PARTNER_ACCEPTED";
 
 /** Kinds only staff get; shown while Staff tools is on */
 export const isStaffKind = (kind: NotificationKind) => kind === "IDEA_REPORTED";
@@ -38,6 +51,8 @@ export interface AppNotification {
   /** null = new (unseen) */
   seen_at: string | null;
   activities?: {image_urls: string[] | null} | null;
+  /** Who it's about (people kinds) */
+  actor?: {username: string | null; profile_image_url: string | null} | null;
 }
 
 type Status = "idle" | "loading" | "ready" | "error";
@@ -59,7 +74,8 @@ interface NotificationState {
 
 const SELECT = `
   notification_id, kind, idea_id, idea_title, note, created_at, seen_at,
-  activities ( image_urls )
+  activities ( image_urls ),
+  actor:users!notifications_actor_id_fkey ( username, profile_image_url )
 `;
 
 let channel: RealtimeChannel | null = null;
@@ -99,6 +115,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
             get().reload();
             useMyIdeasStore.getState().reload();
             useStaffStore.getState().refreshCounts();
+            useConnectionsStore.getState().reload();
           },
         )
         .subscribe();

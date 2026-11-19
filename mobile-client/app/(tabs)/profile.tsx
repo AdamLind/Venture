@@ -20,6 +20,7 @@ import {useSavedStore} from "@/src/store/useSavedStore";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {showIdeaActions} from "@/src/lib/ideaActions";
 import type {IdeaVisibility} from "@/types/ideas";
+import {useConnectionsStore} from "@/src/store/useConnectionsStore";
 
 type Tab = "past" | "bucket" | "ideas";
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -71,6 +72,57 @@ function Chip({icon, label}: {icon: IconName; label: string}) {
         {label}
       </Text>
     </View>
+  );
+}
+
+/** Your partner and connections, under your name. Opens Connections. */
+function ConnectionsRow() {
+  const router = useRouter();
+  const connections = useConnectionsStore((s) => s.connections);
+  const partner = connections.find((c) => c.is_partner) ?? null;
+  const shown = connections.slice(0, 3);
+  const waiting = useConnectionsStore((s) => s.incoming.length);
+
+  return (
+    <Pressable
+      onPress={() => router.push("/connections")}
+      accessibilityRole="button"
+      accessibilityLabel={
+        connections.length
+          ? `${connections.length} connections${waiting ? `, ${waiting} waiting` : ""}`
+          : "Add connections"
+      }
+      className="items-center gap-1.5 mt-3 active:opacity-70"
+    >
+      {partner && (
+        <View className="flex-row items-center gap-1.5">
+          <Ionicons name="heart" size={13} color="#f472b6" />
+          <Text className="text-pink-300 text-sm font-semibold">with @{partner.username}</Text>
+        </View>
+      )}
+      <View className="flex-row items-center gap-2">
+        {shown.length > 0 && (
+          <View className="flex-row">
+            {shown.map((c, i) => (
+              <View key={c.user_id} style={{marginLeft: i === 0 ? 0 : -8}}>
+                <Avatar profile={c} size={22} small />
+              </View>
+            ))}
+          </View>
+        )}
+        <Text className="text-zinc-300 text-sm font-semibold">
+          {connections.length
+            ? `${connections.length} connection${connections.length === 1 ? "" : "s"}`
+            : "Add connections"}
+        </Text>
+        {waiting > 0 && (
+          <View className="bg-blue-500 rounded-full min-w-5 h-5 px-1.5 items-center justify-center">
+            <Text className="text-white text-xs font-extrabold">{waiting}</Text>
+          </View>
+        )}
+        <Ionicons name="chevron-forward" size={14} color="#71717a" />
+      </View>
+    </Pressable>
   );
 }
 
@@ -183,6 +235,9 @@ export default function ProfileScreen() {
           <Text className="text-zinc-400 font-medium text-sm mt-1">
             @{profile.username}
           </Text>
+
+          {/* CONNECTIONS (#35): your partner, then everyone (only you see the count) */}
+          <ConnectionsRow />
 
           {/* Planning style, from saved defaults (only visible to you) */}
           <Pressable

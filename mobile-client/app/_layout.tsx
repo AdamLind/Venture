@@ -27,6 +27,7 @@ import {useBlockStore} from "@/src/store/useBlockStore";
 import {useAccountStore} from "@/src/store/useAccountStore";
 import TermsGate from "@/components/TermsGate";
 import {watchDeviceAccounts} from "@/src/store/useDeviceAccounts";
+import {useConnectionsStore} from "@/src/store/useConnectionsStore";
 import {TERMS_VERSION} from "@/src/lib/terms";
 import {signOut} from "@/src/lib/signOut";
 
@@ -141,6 +142,8 @@ function InitialLayout() {
   const loadBlocks = useBlockStore((s) => s.load);
   const accountUserId = useAccountStore((s) => s.userId);
   const loadAccount = useAccountStore((s) => s.load);
+  const connectionsUserId = useConnectionsStore((s) => s.userId);
+  const loadConnections = useConnectionsStore((s) => s.load);
   useEffect(() => {
     if (!userId || !onboarded || profileStatus !== "ready") return;
     if (savedUserId !== userId) loadSaved(userId);
@@ -150,6 +153,7 @@ function InitialLayout() {
     if (staffUserId !== userId) loadStaff(userId);
     if (blockUserId !== userId) loadBlocks(userId);
     if (accountUserId !== userId) loadAccount(userId);
+    if (connectionsUserId !== userId) loadConnections(userId);
   }, [
     userId,
     onboarded,
@@ -168,6 +172,8 @@ function InitialLayout() {
     loadBlocks,
     accountUserId,
     loadAccount,
+    connectionsUserId,
+    loadConnections,
   ]);
 
   // The Reactive Auth Routing Logic
@@ -292,6 +298,11 @@ function InitialLayout() {
           name="settings/hidden-ideas"
           options={{headerShown: false}}
         />
+        {/* CONNECTIONS (#35): the list, Add someone, and opening someone's link */}
+        <Stack.Screen name="connections" options={{headerShown: false}} />
+        <Stack.Screen name="connections/add" options={{headerShown: false}} />
+        <Stack.Screen name="connect/[code]" options={{headerShown: false, animation: "fade"}} />
+
         {/* TERMS OF USE (Settings › Help) */}
         <Stack.Screen name="terms" options={{headerShown: false}} />
 

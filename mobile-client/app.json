@@ -36,7 +36,14 @@
       "expo-web-browser",
       "@react-native-community/datetimepicker",
       "expo-image",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Venture uses the camera to scan a friend's code so you can connect. Nothing is recorded.",
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

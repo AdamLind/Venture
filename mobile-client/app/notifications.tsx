@@ -12,8 +12,10 @@ import {Ionicons} from "@expo/vector-icons";
 
 import ScreenHeader from "@/components/ui/ScreenHeader";
 import {openIdea} from "@/components/ideas/IdeaRows";
+import Avatar from "@/components/profile/Avatar";
 import {ideaImage} from "@/src/lib/ideas";
 import {
+  isPersonKind,
   useNotificationStore,
   useVisibleNotifications,
   type AppNotification,
@@ -66,6 +68,30 @@ const KIND: Record<
     title: "Thanks for your report",
     body: (n) => `We took "${n.idea_title ?? "that idea"}" out of Discover.`,
   },
+  CONNECTION_REQUEST: {
+    icon: "person-add",
+    color: "#60a5fa",
+    title: "Connection request",
+    body: (n) => `${who(n)} wants to connect.`,
+  },
+  CONNECTION_ACCEPTED: {
+    icon: "people",
+    color: "#34d399",
+    title: "You're connected",
+    body: (n) => `You and ${who(n)} are connected.`,
+  },
+  PARTNER_REQUEST: {
+    icon: "heart",
+    color: "#f472b6",
+    title: "Partner request",
+    body: (n) => `${who(n)} asked to be your partner.`,
+  },
+  PARTNER_ACCEPTED: {
+    icon: "heart",
+    color: "#f472b6",
+    title: "You're partners",
+    body: (n) => `You and ${who(n)} are now partners.`,
+  },
   REPORT_DISMISSED: {
     icon: "shield-checkmark",
     color: "#a1a1aa",
@@ -75,9 +101,16 @@ const KIND: Record<
   },
 };
 
-/** Where a notification goes: staff alerts open the review; a report that
- *  was acted on goes nowhere (the idea's gone) */
+/** "@sam", or "Someone" once you can't see them (a declined request) */
+const who = (n: AppNotification) => (n.actor?.username ? `@${n.actor.username}` : "Someone");
+
+/** Where a notification goes: people go to Connections, staff alerts open
+ *  the review; a report that was acted on goes nowhere (the idea's gone) */
 function openNotification(n: AppNotification) {
+  if (isPersonKind(n.kind)) {
+    router.push("/connections");
+    return;
+  }
   if (!n.idea_id || n.kind === "REPORT_ACTIONED") return;
   if (n.kind === "IDEA_REPORTED") {
     router.push({pathname: "/idea/[id]", params: {id: String(n.idea_id), review: "1"}});
@@ -103,17 +136,29 @@ function NotificationRow({item, isNew}: {item: AppNotification; isNew: boolean})
   return (
     <Pressable
       onPress={() => openNotification(item)}
-      disabled={!item.idea_id || item.kind === "REPORT_ACTIONED"}
+      disabled={!isPersonKind(item.kind) && (!item.idea_id || item.kind === "REPORT_ACTIONED")}
       className={`flex-row items-start gap-3 p-3 rounded-3xl active:opacity-80 ${
         isNew ? "bg-zinc-900 border border-zinc-800" : ""
       }`}
     >
       <View>
-        <Image
-          source={{uri: ideaImage({image_urls: item.activities?.image_urls ?? null})}}
-          style={{width: 52, height: 52, borderRadius: 14}}
-          contentFit="cover"
-        />
+        {isPersonKind(item.kind) ? (
+          <Avatar
+            profile={
+              item.actor?.username
+                ? {username: item.actor.username, profile_image_url: item.actor.profile_image_url}
+                : null
+            }
+            size={52}
+            small
+          />
+        ) : (
+          <Image
+            source={{uri: ideaImage({image_urls: item.activities?.image_urls ?? null})}}
+            style={{width: 52, height: 52, borderRadius: 14}}
+            contentFit="cover"
+          />
+        )}
         <View className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-black items-center justify-center">
           <Ionicons name={kind.icon} size={18} color={kind.color} />
         </View>
