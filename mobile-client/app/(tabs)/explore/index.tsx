@@ -436,11 +436,7 @@ export default function ExploreScreen() {
                   </Text>
                 </View>
               </View>
-
-              <View className="flex-row items-center gap-1 px-2 py-1">
-                <Ionicons name="star" size={12} color="#FF9D0A" />
-                <Text className="text-white font-bold text-xs">4.8</Text>
-              </View>
+              {/* No star rating until there are real ones (#19) */}
             </View>
           </View>
         </View>
@@ -702,15 +698,10 @@ export default function ExploreScreen() {
                       {selectedIdea.title}
                     </Text>
 
-                    <View className="flex-row items-center gap-1">
-                      <Ionicons name="star" size={12} color="#FF9D0A" />
-                      <Text className="text-zinc-300 text-xs font-semibold">
-                        4.8
-                      </Text>
-                      <Text className="text-zinc-500 text-xs ml-1">
-                        {selectedIdea.creator_username ? `@${selectedIdea.creator_username}` : "A Venture member"}
-                      </Text>
-                    </View>
+                    {/* No star rating until there are real ones (#19) */}
+                    <Text className="text-zinc-500 text-xs">
+                      {selectedIdea.creator_username ? `@${selectedIdea.creator_username}` : "A Venture member"}
+                    </Text>
                   </View>
 
                   <Pressable
