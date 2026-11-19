@@ -36,10 +36,9 @@ export interface UserPreferences {
 }
 
 /** What other people can see of a user (an idea's creator, someone on your date). */
-export type PublicProfile = Pick<
-  UserProfile,
-  "username" | "first_name" | "last_name" | "profile_image_url"
->;
+export type PublicProfile = Pick<UserProfile, "username" | "profile_image_url"> &
+  // Names are private (#28): only ever your own
+  Partial<Pick<UserProfile, "first_name" | "last_name">>;
 
 /** Columns the app is allowed to update on public.users. */
 export type ProfileUpdate = Partial<

@@ -1,16 +1,15 @@
 // src/app/builder.tsx
 import * as Haptics from "expo-haptics";
-import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
-import {BuilderActivity, TimeSlot} from "@/types/itinerary";
+import {IMAGE_SIZE} from "@/src/lib/images";
+import {TimeSlot} from "@/types/itinerary";
 import {
-  PlacedActivity,
   deriveSequentialTimeline,
   queryCandidates,
   fetchActivityForPlan,
   preferenceScore,
   evaluateContextAt,
 } from "@/utils/itineraryEngine";
-import {useFocusEffect, useLocalSearchParams, router} from "expo-router";
+import {useFocusEffect, router} from "expo-router";
 import {useCallback, useState, useEffect, useMemo, useRef} from "react";
 import {
   View,
@@ -63,9 +62,6 @@ import {
   stopMinutes,
   suggestedMinutes,
 } from "@/utils/timeline";
-
-/** How far out an open-ended date's timeline runs (it never fills up) */
-const OPEN_ENDED_ROOM_MS = 48 * 3_600_000;
 import StopLengthSheet from "@/components/builder/StopLengthSheet";
 import SmartOrderCard from "@/components/builder/SmartOrderCard";
 import PickerSheet from "@/components/builder/PickerSheet";
@@ -74,6 +70,9 @@ import type {WeatherLookup} from "@/src/lib/weatherRules";
 import WeatherStrip from "@/components/builder/WeatherStrip";
 import Reanimated from "react-native-reanimated";
 import {GestureDetector} from "react-native-gesture-handler";
+
+/** How far out an open-ended date's timeline runs (it never fills up) */
+const OPEN_ENDED_ROOM_MS = 48 * 3_600_000;
 
 export default function BuilderScreen() {
   const scrollViewRef = useRef<ScrollViewInstance>(null);
@@ -91,7 +90,9 @@ export default function BuilderScreen() {
     {hour: "numeric", minute: "2-digit"},
   );
 
-  const startMs = new Date(userPrefs.startDate || Date.now()).getTime();
+  // No start time set: now, as of opening the builder (read once, not every render)
+  const [openedAt] = useState(() => Date.now());
+  const startMs = new Date(userPrefs.startDate || openedAt).getTime();
   const endMs = new Date(userPrefs.endDate || startMs + 4 * 3600000).getTime();
 
   // ─── Source of Truth ──────────────────────────────────────────────────────────
@@ -285,6 +286,7 @@ export default function BuilderScreen() {
     isInfinite,
     placed,
     userPrefs,
+    headCount,
     evaluation.score,
     rankWeather,
   ]);
@@ -344,6 +346,8 @@ export default function BuilderScreen() {
     // "Plan a date with this": the idea goes in as the first stop
     const startWith = usePlanSeedStore.getState().take();
     if (startWith && placed.length === 0) {
+      // Loading on open: the loaders show a spinner while they fetch
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       startWithIdea(startWith.idea_id);
       return;
     }

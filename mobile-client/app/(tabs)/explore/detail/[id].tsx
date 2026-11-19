@@ -8,7 +8,6 @@ import {
   StatusBar,
   Animated,
   Modal,
-  Dimensions,
   StyleSheet,
 } from "react-native";
 import {Image} from "expo-image";
@@ -35,8 +34,6 @@ import ReviewPanel from "@/components/moderation/ReviewPanel";
 import {useStaffStore} from "@/src/store/useStaffStore";
 import {RULE_BY_ID, isRuleId, type RuleId} from "@/src/lib/ideaGuidelines";
 import {SAFETY_DISCLAIMER, needsSafetyLine, riskLabelsOf} from "@/src/lib/safety";
-
-const {width, height} = Dimensions.get("window");
 
 export default function IdeaDetailScreen() {
   const router = useRouter();
@@ -317,12 +314,13 @@ export default function IdeaDetailScreen() {
               {idea.title}
             </Text>
 
-            <Text className="text-zinc-400 text-base font-medium">
-              Curated by{" "}
-              <Text className="text-white font-bold">
-                @{idea.users?.username || "local_expert"}
+            {idea.users?.username ? (
+              <Text className="text-zinc-400 text-base font-medium">
+                Curated by <Text className="text-white font-bold">@{idea.users.username}</Text>
               </Text>
-            </Text>
+            ) : (
+              <Text className="text-zinc-400 text-base font-medium">Shared by a Venture member</Text>
+            )}
           </View>
 
           {/* STAFF REVIEW */}

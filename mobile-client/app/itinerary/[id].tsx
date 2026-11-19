@@ -2,7 +2,7 @@
 // A saved date: its stops, plus start / end / rename / delete.
 
 import React, {useState} from "react";
-import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
+import {sizedImage} from "@/src/lib/images";
 import {
   View,
   Text,

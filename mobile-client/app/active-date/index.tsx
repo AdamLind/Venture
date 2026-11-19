@@ -15,7 +15,7 @@
 // show the same note in the plan.
 
 import React, {useEffect, useRef, useState} from "react";
-import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
+import {IMAGE_SIZE} from "@/src/lib/images";
 import {
   View,
   Text,

@@ -24,7 +24,6 @@ import {Image} from "expo-image";
 import {ActivityLocation} from "@/types/itinerary";
 import {SimpleLocation} from "@/types/activities";
 import {usePrefsStore} from "@/src/store/usePrefsStore";
-import {useActiveDateStore} from "@/src/store/activeDateStore";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
@@ -47,7 +46,6 @@ import {
 export default function PlanScreen() {
   const router = useRouter();
   const {prefs, setPrefs, resetPrefs, draftUpdatedAt} = usePrefsStore();
-  const timeline = useActiveDateStore((state) => state.timeline);
   const clearBuilder = useBuilderStore((state) => state.clearBuilder);
 
   // Saved planning defaults (Settings > Planning defaults) seed the form
@@ -165,7 +163,7 @@ export default function PlanScreen() {
   const [customBudget, setCustomBudget] = useState<number | null>(
     defaultIsTier ? null : defaults.default_budget,
   );
-  const budgetRef = useRef<TextInput | null>(null);
+  const budgetRef = useRef<React.ComponentRef<typeof TextInput> | null>(null);
 
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [resetKey, setResetKey] = useState<number>(0);

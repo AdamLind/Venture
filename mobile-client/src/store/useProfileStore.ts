@@ -32,8 +32,11 @@ interface ProfileState {
   clear: () => void;
 }
 
-const PROFILE_COLUMNS =
-  "user_id, username, first_name, last_name, profile_image_url, created_at";
+// Everyone can read these; your own first and last name come from my_name()
+// (other people never see them, #28)
+const PROFILE_COLUMNS = "user_id, username, profile_image_url, created_at";
+
+type Names = {first_name: string | null; last_name: string | null};
 
 const AVATAR_PATH_MARKER = "/storage/v1/object/public/avatars/";
 
@@ -51,7 +54,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   load: async (userId) => {
     set({userId, status: "loading", error: null});
 
-    const [profileRes, prefsRes] = await Promise.all([
+    const [profileRes, prefsRes, namesRes] = await Promise.all([
       supabase
         .from("users")
         .select(PROFILE_COLUMNS)
@@ -62,12 +65,13 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         .select("*")
         .eq("user_id", userId)
         .maybeSingle(),
+      supabase.rpc("my_name"),
     ]);
 
     // The user signed out or switched accounts while we were loading
     if (get().userId !== userId) return;
 
-    const error = profileRes.error ?? prefsRes.error;
+    const error = profileRes.error ?? prefsRes.error ?? namesRes.error;
     if (error || !profileRes.data || !prefsRes.data) {
       if (error) console.error("Profile load failed:", error);
       set({
@@ -79,8 +83,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       return;
     }
 
+    const names = ((namesRes.data as Names[] | null)?.[0] ?? {first_name: null, last_name: null}) as Names;
     set({
-      profile: profileRes.data as UserProfile,
+      profile: {...(profileRes.data as Omit<UserProfile, keyof Names>), ...names},
       preferences: prefsRes.data as UserPreferences,
       status: "ready",
       error: null,
@@ -104,7 +109,15 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       .single();
 
     if (error) throw new Error(friendlyError(error));
-    set({profile: data as UserProfile});
+    // The names aren't readable back: keep what was just saved, or what we had
+    const prev = get().profile;
+    set({
+      profile: {
+        ...(data as Omit<UserProfile, keyof Names>),
+        first_name: "first_name" in changes ? (changes.first_name ?? null) : (prev?.first_name ?? null),
+        last_name: "last_name" in changes ? (changes.last_name ?? null) : (prev?.last_name ?? null),
+      },
+    });
   },
 
   updatePreferences: async (changes) => {

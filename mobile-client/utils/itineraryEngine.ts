@@ -1,5 +1,5 @@
 // src/utils/itineraryEngine.ts
-import {ScoredActivity, TimeSlot} from "@/types/itinerary";
+import {ScoredActivity} from "@/types/itinerary";
 import {BaseActivity} from "@/types/activities";
 import {UserPrefs} from "@/src/store/usePrefsStore";
 import {supabase} from "@/src/supabase";

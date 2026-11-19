@@ -239,7 +239,7 @@ export default function ExploreScreen() {
         `
         *,
         venues ( name, address, coordinates ),
-        users!activities_user_id_fkey ( username, first_name, last_name, profile_image_url )
+        users!activities_user_id_fkey ( username, profile_image_url )
       `,
       )
       // Everyone's published ideas, plus all of yours except the ones that
@@ -432,7 +432,7 @@ export default function ExploreScreen() {
                 <View className="flex-row items-center gap-1.5">
                   <Avatar profile={item.creator} size={24} small />
                   <Text className="text-zinc-300 text-sm font-medium">
-                    By @{item.creator_username || "local_expert"}
+                    {item.creator_username ? `By @${item.creator_username}` : "Shared by a Venture member"}
                   </Text>
                 </View>
               </View>
@@ -708,7 +708,7 @@ export default function ExploreScreen() {
                         4.8
                       </Text>
                       <Text className="text-zinc-500 text-xs ml-1">
-                        @{selectedIdea.creator_username || "local_expert"}
+                        {selectedIdea.creator_username ? `@${selectedIdea.creator_username}` : "A Venture member"}
                       </Text>
                     </View>
                   </View>

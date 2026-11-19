@@ -12,7 +12,7 @@ export default function ActivityTagsSelector({
 }: {
   mode?: "plan" | "publish";
   taxonomy: Record<string, string[]>;
-  classes: Array<{
+  classes: {
     id: number;
     name: string;
     icon: string;
@@ -20,7 +20,7 @@ export default function ActivityTagsSelector({
     border: string;
     text: string;
     rawColor: string;
-  }>;
+  }[];
   initialActiveTags?: string[];
   onTagsChange: (tags: string[]) => void;
 }) {

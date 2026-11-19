@@ -8,7 +8,7 @@ export default function BudgetCountInput({
 }: {
   budget: number | null;
   setBudget: Dispatch<SetStateAction<number | null>>;
-  ref: React.RefObject<TextInput | null>;
+  ref: React.RefObject<React.ComponentRef<typeof TextInput> | null>;
 }) {
   const [isEditingBudget, setIsEditingBudget] = useState(false);
   const [rawBudget, setRawBudget] = useState<string>("");
