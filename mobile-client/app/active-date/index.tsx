@@ -50,7 +50,7 @@ import Toast from "react-native-toast-message";
 
 import type {TimeSlot} from "@/types/itinerary";
 import {useActiveDateStore, useLiveTimeline} from "@/src/store/activeDateStore";
-import {useItineraryStore} from "@/src/store/useItineraryStore";
+import {canEditDate, useItineraryStore} from "@/src/store/useItineraryStore";
 import GlassSurface from "@/components/ui/GlassSurface";
 import {homeOf} from "@/utils/timeline";
 import {checkHours, hoursMessage} from "@/utils/openingHours";
@@ -158,7 +158,10 @@ export default function ActiveDateScreen() {
   const notStarted = !!focus && focusIndex === 0 && !arrived && now < dateStart;
   // Stops still ahead (not started): two or more can be reordered (#63)
   const aheadCount = stops.filter((s) => !isDone(s) && !isArrived(s)).length;
-  const canReorder = itineraryId != null && aheadCount >= 2;
+  // A shared date (#36): everyone going follows it live; only the owner and
+  // editors change the plan (reorder, skip, move up, end it)
+  const canEdit = itineraryId == null || canEditDate(itinerary);
+  const canReorder = canEdit && itineraryId != null && aheadCount >= 2;
 
   const goingOut = userPrefs?.modality === "GO_OUT";
   const headCount = Number(userPrefs?.headCount) || 1;
@@ -404,10 +407,11 @@ export default function ActiveDateScreen() {
   const finishDate = async () => {
     setFinishing(true);
     try {
-      if (itineraryId != null) {
+      if (itineraryId != null && canEdit) {
         // Marks it COMPLETED (Past Dates) and clears this live view
         await completeDate(itineraryId);
       } else {
+        // Someone else's date: just close the live view here
         endActiveDate();
       }
       router.replace("/");
@@ -496,7 +500,7 @@ export default function ActiveDateScreen() {
     const title = focus.activity!.title;
     const buttons: Parameters<typeof Alert.alert>[2] = [];
     if (canReorder) buttons.push({text: "Reorder the rest", onPress: startEditing});
-    if (!arrived && stops.length > 1 && itineraryId != null) {
+    if (canEdit && !arrived && stops.length > 1 && itineraryId != null) {
       buttons.push({
         text: "Skip this stop",
         style: "destructive",
@@ -517,7 +521,7 @@ export default function ActiveDateScreen() {
   // a reorder in the same order); later stops never move earlier by
   // themselves (utils/liveTimeline.ts)
   const ahead =
-    !allDone && !notStarted && itineraryId != null
+    canEdit && !allDone && !notStarted && itineraryId != null
       ? aheadOf(slots, now, (s) => !isDone(s) && !isArrived(s))
       : null;
   const moveRestUp = async () => {
@@ -881,7 +885,7 @@ export default function ActiveDateScreen() {
         </View>
       )}
 
-      {!allDone && !editing && (
+      {!allDone && !editing && canEdit && (
         <Pressable
           onPress={() => setWrapping(true)}
           className="self-center mt-4 px-5 py-2.5 rounded-full active:bg-zinc-900"

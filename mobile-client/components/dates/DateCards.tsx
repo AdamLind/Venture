@@ -1,9 +1,9 @@
 // components/dates/DateCards.tsx
 // Cards for saved dates, shared by the Profile and Activity tabs.
 
-import React from "react";
+import React, {useState} from "react";
 import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
-import {View, Text, Pressable} from "react-native";
+import {View, Text, Pressable, ActivityIndicator, Alert} from "react-native";
 import {Image} from "expo-image";
 import {Ionicons} from "@expo/vector-icons";
 import {router} from "expo-router";
@@ -14,9 +14,42 @@ import {
   coverImage,
   formatShortDate,
   formatTimeOfDay,
+  formatWhen,
   stopCountLabel,
   stopProgress,
 } from "@/src/lib/dates";
+
+/** "with @sam" / "with @sam +2" for a shared date (people who said yes) */
+function withLabel(itinerary: Itinerary) {
+  const going = itinerary.people.filter((p) => p.invite_status === "ACCEPTED");
+  if (!going.length) return null;
+  const first = going[0].username ? `@${going[0].username}` : "someone";
+  return going.length > 1 ? `with ${first} +${going.length - 1}` : `with ${first}`;
+}
+
+/** Shared dates: who's going and how many comments (#36) */
+function SharedLine({itinerary}: {itinerary: Itinerary}) {
+  const label = withLabel(itinerary);
+  if (!label && !itinerary.comment_count) return null;
+  return (
+    <View className="flex-row items-center gap-3 mt-1">
+      {label && (
+        <View className="flex-row items-center gap-1">
+          <Ionicons name="people" size={13} color="#e4e4e7" />
+          <Text className="text-zinc-200 text-sm font-medium" numberOfLines={1}>
+            {label}
+          </Text>
+        </View>
+      )}
+      {itinerary.comment_count > 0 && (
+        <View className="flex-row items-center gap-1">
+          <Ionicons name="chatbubble" size={12} color="#e4e4e7" />
+          <Text className="text-zinc-200 text-sm font-medium">{itinerary.comment_count}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
 
 const openDate = (itinerary: Itinerary) =>
   router.push({
@@ -138,7 +171,73 @@ export function UpcomingDateCard({itinerary}: {itinerary: Itinerary}) {
           <Text className="text-zinc-200 text-sm font-medium mt-1">
             {stopCountLabel(itinerary)}
           </Text>
+          <SharedLine itinerary={itinerary} />
         </View>
+      </View>
+    </Pressable>
+  );
+}
+
+/** Dates tab: an invite you haven't answered (#36). Tap for the details. */
+export function InviteCard({
+  itinerary,
+  onAnswer,
+}: {
+  itinerary: Itinerary;
+  /** Throws a readable Error */
+  onAnswer: (accept: boolean) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState<"yes" | "no" | null>(null);
+  const owner = itinerary.people.find((p) => p.role === "OWNER");
+  const from = owner?.username ? `@${owner.username}` : "Someone";
+
+  const answer = async (accept: boolean) => {
+    setBusy(accept ? "yes" : "no");
+    try {
+      await onAnswer(accept);
+    } catch (e) {
+      Alert.alert("Couldn't answer", e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Pressable
+      onPress={() => openDate(itinerary)}
+      className="bg-zinc-900 border border-blue-500/40 rounded-3xl p-3 gap-3 active:opacity-90"
+    >
+      <View className="flex-row items-center gap-3">
+        <Image
+          source={{uri: coverImage(itinerary)}}
+          style={{width: 56, height: 56, borderRadius: 14}}
+          contentFit="cover"
+        />
+        <View className="flex-1">
+          <Text className="text-blue-300 text-xs font-bold">{from} invited you</Text>
+          <Text className="text-white font-bold text-base" numberOfLines={1}>
+            {itinerary.title}
+          </Text>
+          <Text className="text-zinc-400 text-sm" numberOfLines={1}>
+            {formatWhen(itinerary.starts_at)}
+          </Text>
+        </View>
+      </View>
+      <View className="flex-row gap-2">
+        <Pressable
+          onPress={() => answer(false)}
+          disabled={!!busy}
+          className="flex-1 h-10 rounded-2xl bg-zinc-800 items-center justify-center active:opacity-80"
+        >
+          {busy === "no" ? <ActivityIndicator color="white" /> : <Text className="text-zinc-200 font-bold">Decline</Text>}
+        </Pressable>
+        <Pressable
+          onPress={() => answer(true)}
+          disabled={!!busy}
+          className="flex-1 h-10 rounded-2xl bg-white items-center justify-center active:opacity-80"
+        >
+          {busy === "yes" ? <ActivityIndicator color="black" /> : <Text className="text-black font-bold">I&apos;m in</Text>}
+        </Pressable>
       </View>
     </Pressable>
   );

@@ -8,19 +8,17 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  Animated,
   Platform,
   Pressable,
-  RefreshControl,
-  ScrollView,
   Text,
   View,
 } from "react-native";
-import {SafeAreaView} from "react-native-safe-area-context";
 import {useFocusEffect, useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 
-import ScreenHeader from "@/components/ui/ScreenHeader";
+import TabHeader, {HeaderIconButton, useTabHeader, useTabRefresh} from "@/components/ui/TabHeader";
 import Avatar from "@/components/profile/Avatar";
 import {
   type Connection,
@@ -48,8 +46,10 @@ export default function ConnectionsScreen() {
   const status = useConnectionsStore((s) => s.status);
   const error = useConnectionsStore((s) => s.error);
   const reload = useConnectionsStore((s) => s.reload);
-  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  // The tabs' header: large title, glass buttons, blur as it collapses
+  const header = useTabHeader({back: true, subtitle: true});
+  const refresh = useTabRefresh(reload);
 
   useFocusEffect(
     useCallback(() => {
@@ -73,12 +73,6 @@ export default function ConnectionsScreen() {
     } finally {
       setBusy(null);
     }
-  };
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await reload();
-    setRefreshing(false);
   };
 
   const confirmForget = (c: Connection) => {
@@ -167,26 +161,37 @@ export default function ConnectionsScreen() {
 
   const firstLoad = status === "loading" && connections.length === 0 && incoming.length === 0;
   const nothing = connections.length === 0 && incoming.length === 0 && outgoing.length === 0;
+  const subtitle = connections.length
+    ? `${connections.length} connection${connections.length === 1 ? "" : "s"}${
+        incoming.length ? ` · ${incoming.length} waiting` : ""
+      }`
+    : incoming.length
+      ? `${incoming.length} waiting`
+      : "The people you plan dates with";
 
   return (
-    <SafeAreaView edges={["top"]} style={{flex: 1, backgroundColor: "#000"}}>
-      <ScreenHeader
+    // The scroll view is the screen's root, like the tabs (see TabHeader.tsx)
+    <Animated.ScrollView
+      {...header.scrollProps}
+      style={{flex: 1, backgroundColor: "#000"}}
+      contentContainerStyle={{paddingBottom: 40}}
+      showsVerticalScrollIndicator={false}
+      refreshControl={refresh.control}
+    >
+      <TabHeader
+        header={header}
         title="Connections"
+        subtitle={subtitle}
+        refreshing={refresh.headerSpinner}
         right={
-          <Pressable
+          <HeaderIconButton
+            icon="person-add-outline"
+            label="Add someone"
             onPress={() => router.push("/connections/add")}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Add someone"
-          >
-            <Ionicons name="person-add-outline" size={22} color="white" />
-          </Pressable>
+          />
         }
       />
-      <ScrollView
-        contentContainerClassName="px-5 pt-2 pb-16 gap-7"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="white" />}
-      >
+      <View className="px-5 pt-2 gap-7">
         {firstLoad ? (
           <ActivityIndicator color="white" style={{marginTop: 40}} />
         ) : status === "error" && nothing ? (
@@ -303,17 +308,16 @@ export default function ConnectionsScreen() {
                     </Pressable>
                   ))}
                 </View>
+                {/* Only until there's a partner: after that it's just for forgetting */}
                 {!partner && !outgoingPartner && (
-                  <Text className="text-zinc-500 text-xs px-2">
-                    Tap someone to ask them to be your partner.
-                  </Text>
+                  <Text className="text-zinc-500 text-xs px-2">Tap someone to see options.</Text>
                 )}
               </View>
             )}
           </>
         )}
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </Animated.ScrollView>
   );
 }
 

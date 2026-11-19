@@ -12,6 +12,7 @@ import {friendlyError} from "@/src/lib/profile";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {useStaffStore, useStaffTools} from "@/src/store/useStaffStore";
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
+import {useItineraryStore} from "@/src/store/useItineraryStore";
 
 export type NotificationKind =
   | "IDEA_PUBLISHED"
@@ -29,7 +30,15 @@ export type NotificationKind =
   | "CONNECTION_REQUEST"
   | "CONNECTION_ACCEPTED"
   | "PARTNER_REQUEST"
-  | "PARTNER_ACCEPTED";
+  | "PARTNER_ACCEPTED"
+  /** Dates (#36): itinerary_id is the date, actor who did it */
+  | "DATE_INVITE"
+  | "DATE_INVITE_ACCEPTED"
+  | "DATE_COMMENT";
+
+/** About a shared date */
+export const isDateKind = (kind: NotificationKind) =>
+  kind === "DATE_INVITE" || kind === "DATE_INVITE_ACCEPTED" || kind === "DATE_COMMENT";
 
 /** About a person, not an idea */
 export const isPersonKind = (kind: NotificationKind) =>
@@ -45,6 +54,8 @@ export interface AppNotification {
   notification_id: number;
   kind: NotificationKind;
   idea_id: number | null;
+  /** The date it's about (date kinds); its title is in idea_title */
+  itinerary_id?: number | null;
   idea_title: string | null;
   note: string | null;
   created_at: string;
@@ -73,7 +84,7 @@ interface NotificationState {
 }
 
 const SELECT = `
-  notification_id, kind, idea_id, idea_title, note, created_at, seen_at,
+  notification_id, kind, idea_id, itinerary_id, idea_title, note, created_at, seen_at,
   activities ( image_urls ),
   actor:users!notifications_actor_id_fkey ( username, profile_image_url )
 `;
@@ -116,6 +127,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
             useMyIdeasStore.getState().reload();
             useStaffStore.getState().refreshCounts();
             useConnectionsStore.getState().reload();
+            // An invite or a comment on a date: the Dates tab picks it up
+            useItineraryStore.getState().reload();
           },
         )
         .subscribe();

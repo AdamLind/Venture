@@ -15,6 +15,7 @@ import {openIdea} from "@/components/ideas/IdeaRows";
 import Avatar from "@/components/profile/Avatar";
 import {ideaImage} from "@/src/lib/ideas";
 import {
+  isDateKind,
   isPersonKind,
   useNotificationStore,
   useVisibleNotifications,
@@ -92,6 +93,24 @@ const KIND: Record<
     title: "You're partners",
     body: (n) => `You and ${who(n)} are now partners.`,
   },
+  DATE_INVITE: {
+    icon: "calendar",
+    color: "#60a5fa",
+    title: "You're invited",
+    body: (n) => `${who(n)} invited you to "${n.idea_title ?? "a date"}".`,
+  },
+  DATE_INVITE_ACCEPTED: {
+    icon: "checkmark-circle",
+    color: "#34d399",
+    title: "They're in",
+    body: (n) => `${who(n)} is in for "${n.idea_title ?? "your date"}".`,
+  },
+  DATE_COMMENT: {
+    icon: "chatbubbles",
+    color: "#60a5fa",
+    title: "New comments",
+    body: (n) => `"${n.idea_title ?? "Your date"}" · ${who(n)}: ${n.note ?? ""}`,
+  },
   REPORT_DISMISSED: {
     icon: "shield-checkmark",
     color: "#a1a1aa",
@@ -109,6 +128,10 @@ const who = (n: AppNotification) => (n.actor?.username ? `@${n.actor.username}` 
 function openNotification(n: AppNotification) {
   if (isPersonKind(n.kind)) {
     router.push("/connections");
+    return;
+  }
+  if (isDateKind(n.kind)) {
+    if (n.itinerary_id) router.push({pathname: "/itinerary/[id]", params: {id: String(n.itinerary_id)}});
     return;
   }
   if (!n.idea_id || n.kind === "REPORT_ACTIONED") return;
@@ -136,13 +159,17 @@ function NotificationRow({item, isNew}: {item: AppNotification; isNew: boolean})
   return (
     <Pressable
       onPress={() => openNotification(item)}
-      disabled={!isPersonKind(item.kind) && (!item.idea_id || item.kind === "REPORT_ACTIONED")}
+      disabled={
+        isDateKind(item.kind)
+          ? !item.itinerary_id
+          : !isPersonKind(item.kind) && (!item.idea_id || item.kind === "REPORT_ACTIONED")
+      }
       className={`flex-row items-start gap-3 p-3 rounded-3xl active:opacity-80 ${
         isNew ? "bg-zinc-900 border border-zinc-800" : ""
       }`}
     >
       <View>
-        {isPersonKind(item.kind) ? (
+        {isPersonKind(item.kind) || isDateKind(item.kind) ? (
           <Avatar
             profile={
               item.actor?.username

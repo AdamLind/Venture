@@ -11,6 +11,9 @@ import type {PlacedActivity} from "@/utils/timeline";
 import {parseCoordinates} from "@/utils/itineraryEngine";
 import {useActiveDateStore} from "@/src/store/activeDateStore";
 import type {
+  DatePerson,
+  DateRole,
+  InviteStatus,
   Itinerary,
   ItineraryStatus,
   ItineraryStop,
@@ -22,7 +25,10 @@ type Status = "idle" | "loading" | "ready" | "error";
 
 interface ItineraryState {
   userId: string | null;
+  /** Your dates and the ones you've said yes to */
   itineraries: Itinerary[];
+  /** Dates you're invited to and haven't answered (#36) */
+  invites: Itinerary[];
   status: Status;
   error: string | null;
 
@@ -50,11 +56,20 @@ interface ItineraryState {
   skipStop: (itineraryId: number, point: ReplanPoint, ideaId: number) => Promise<void>;
   rename: (itineraryId: number, title: string) => Promise<void>;
   remove: (itineraryId: number) => Promise<void>;
+  /** Accept or decline an invite to a date (#36). Throws a readable Error. */
+  respondToInvite: (itineraryId: number, accept: boolean) => Promise<void>;
   clear: () => void;
 }
 
+/** The owner and editors can change a date; commenters and viewers can't */
+export const canEditDate = (i: Pick<Itinerary, "my_role"> | null | undefined) =>
+  i?.my_role === "OWNER" || i?.my_role === "EDITOR";
+
 const SELECT = `
   itinerary_id, title, starts_at, ends_at, status, prefs_snapshot, created_at,
+  created_by, default_role,
+  itinerary_users ( user_id, role, invite_status, users ( username, profile_image_url ) ),
+  itinerary_comments ( count ),
   itinerary_activities (
     stop_id, sort_order, starts_at, ends_at,
     activities ( *, venues ( name, address, coordinates, opening_hours ) )
@@ -73,7 +88,7 @@ function toStopActivity(row: any): StopActivity {
   };
 }
 
-function toItinerary(row: any): Itinerary {
+function toItinerary(row: any, me: string | null): Itinerary {
   const stops: ItineraryStop[] = (row.itinerary_activities ?? [])
     .map((s: any) => ({
       stop_id: s.stop_id,
@@ -93,6 +108,30 @@ function toItinerary(row: any): Itinerary {
     prefs_snapshot: row.prefs_snapshot ?? null,
     created_at: row.created_at ?? null,
     stops,
+    ...sharing(row, me),
+  };
+}
+
+/** Your role and status, the other people on it, and its comment count */
+function sharing(row: any, me: string | null) {
+  const members: any[] = row.itinerary_users ?? [];
+  const mine = members.find((m) => m.user_id === me);
+  const roleOf = (m: any): DateRole => (m.role ?? row.default_role ?? "COMMENTER") as DateRole;
+  const people: DatePerson[] = members
+    .filter((m) => m.user_id !== me && m.invite_status !== "DECLINED")
+    .map((m) => ({
+      user_id: m.user_id,
+      username: m.users?.username ?? null,
+      profile_image_url: m.users?.profile_image_url ?? null,
+      role: roleOf(m),
+      invite_status: m.invite_status as InviteStatus,
+    }));
+  return {
+    created_by: row.created_by ?? null,
+    my_role: mine ? roleOf(mine) : null,
+    my_status: (mine?.invite_status ?? null) as InviteStatus | null,
+    people,
+    comment_count: row.itinerary_comments?.[0]?.count ?? 0,
   };
 }
 
@@ -114,6 +153,7 @@ function syncActiveDate(itineraries: Itinerary[]) {
 const initialState = {
   userId: null,
   itineraries: [] as Itinerary[],
+  invites: [] as Itinerary[],
   status: "idle" as Status,
   error: null,
 };
@@ -150,13 +190,21 @@ export const useItineraryStore = create<ItineraryState>((set, get) => {
         return;
       }
 
-      set({itineraries: (data ?? []).map(toItinerary), status: "ready"});
+      // Yours and accepted ones are your dates; unanswered invites wait apart
+      const all = (data ?? []).map((row) => toItinerary(row, userId));
+      set({
+        itineraries: all.filter((i) => i.my_status === "ACCEPTED"),
+        invites: all.filter((i) => i.my_status === "PENDING"),
+        status: "ready",
+      });
 
       // Dates that ended a while ago are finished, even if nobody tapped End
+      // (only the ones you can change)
       const cutoff = Date.now() - AUTO_COMPLETE_AFTER_MS;
       const stale = get()
         .itineraries.filter(
           (i) =>
+            canEditDate(i) &&
             (i.status === "PLANNED" || i.status === "ACTIVE") &&
             new Date(i.ends_at).getTime() < cutoff,
         )
@@ -310,6 +358,15 @@ export const useItineraryStore = create<ItineraryState>((set, get) => {
       const snapshot: DatePrefs = {...prefs, replans};
       const live = useActiveDateStore.getState();
       if (live.itineraryId === itineraryId) live.replaceTimeline(timeline, snapshot);
+      await get().reload();
+    },
+
+    respondToInvite: async (itineraryId, accept) => {
+      const {error} = await supabase.rpc("respond_to_date_invite", {
+        p_itinerary_id: itineraryId,
+        p_accept: accept,
+      });
+      if (error) throw new Error(error.message || friendlyError(error));
       await get().reload();
     },
 

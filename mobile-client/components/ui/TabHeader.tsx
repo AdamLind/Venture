@@ -24,6 +24,10 @@
 // Screens without a scroll view (e.g. Discover's map) can render
 // <TabHeader floating collapsed /> over their content instead.
 //
+// Pushed screens (Connections, Add someone) use the same header with a back
+// button: useTabHeader({back: true}). The glass back button sits in the bar,
+// the large title below it, and the title shrinks into the bar beside it.
+//
 // Animated.ScrollView isn't mapped by NativeWind, so give it style /
 // contentContainerStyle rather than className / contentContainerClassName.
 
@@ -43,6 +47,7 @@ import {LinearGradient} from "expo-linear-gradient";
 import RNMaskedView from "@react-native-masked-view/masked-view";
 import {Ionicons} from "@expo/vector-icons";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
+import {router} from "expo-router";
 
 import GlassSurface, {useReduceTransparency} from "@/components/ui/GlassSurface";
 
@@ -68,22 +73,27 @@ const MIN_COLLAPSE = 32;
 /** How far below the bar the blur keeps fading out. */
 const FADE = 28;
 const BUTTON_SIZE = 40;
+/** With a back button: where the collapsed title starts (beside it) */
+const BACK_TITLE_SHIFT = BUTTON_SIZE + 8;
 
 export type TabHeaderState = ReturnType<typeof useTabHeader>;
 
 export function useTabHeader({
   eyebrow = false,
   subtitle = false,
+  back = false,
 }: {
   /** The header shows a small line above the title. */
   eyebrow?: boolean;
   /** The header shows a line under the title. */
   subtitle?: boolean;
+  /** A pushed screen: a back button in the bar, the large title below it. */
+  back?: boolean;
 } = {}) {
   const insets = useSafeAreaInsets();
   const ios = Platform.OS === "ios";
 
-  const titleTop = PAD_TOP + (eyebrow ? EYEBROW_HEIGHT : 0);
+  const titleTop = (back ? BAR_HEIGHT : PAD_TOP) + (eyebrow ? EYEBROW_HEIGHT : 0);
   const expanded =
     titleTop + TITLE_LINE + (subtitle ? SUBTITLE_HEIGHT : 0) + PAD_BOTTOM;
   const height = insets.top + expanded;
@@ -107,6 +117,7 @@ export function useTabHeader({
   return {
     height,
     titleTop,
+    back,
     collapseDistance,
     progress,
     reset,
@@ -260,6 +271,7 @@ export default function TabHeader({
   collapsed = false,
   floating = false,
   refreshing = false,
+  onBack,
 }: {
   header: TabHeaderState;
   title: string;
@@ -278,9 +290,11 @@ export default function TabHeader({
    * spinner sits in the gap above the header, mostly behind the status bar.
    */
   refreshing?: boolean;
+  /** With useTabHeader({back: true}): what the back button does (default: go back) */
+  onBack?: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const {titleTop, collapseDistance: d} = header;
+  const {titleTop, collapseDistance: d, back} = header;
 
   // When forced collapsed, drive everything from a value parked at the end
   // (wrapped in add() so it's the same Animated type as header.progress)
@@ -300,6 +314,12 @@ export default function TabHeader({
     outputRange: [0, smallTop - titleTop],
     extrapolate: "clamp",
   });
+  // With a back button, the small title sits beside it
+  const titleShiftX = p.interpolate({
+    inputRange: [0, d],
+    outputRange: [0, back ? BACK_TITLE_SHIFT : 0],
+    extrapolate: "clamp",
+  });
 
   // Lines above/below the title ride up with the content and fade out
   const extrasOpacity = p.interpolate({
@@ -314,10 +334,12 @@ export default function TabHeader({
   });
 
   // Buttons start level with the large title and end centered in the bar
-  const buttonsTop = titleTop + TITLE_LINE / 2 - BUTTON_SIZE / 2;
+  // (with a back button they stay in the bar, across from it)
+  const barButtonsTop = (BAR_HEIGHT - BUTTON_SIZE) / 2;
+  const buttonsTop = back ? barButtonsTop : titleTop + TITLE_LINE / 2 - BUTTON_SIZE / 2;
   const buttonsShift = p.interpolate({
     inputRange: [0, d],
-    outputRange: [0, (BAR_HEIGHT - BUTTON_SIZE) / 2 - buttonsTop],
+    outputRange: [0, back ? 0 : barButtonsTop - buttonsTop],
     extrapolate: "clamp",
   });
 
@@ -357,7 +379,7 @@ export default function TabHeader({
             styles.title,
             {
               top: titleTop,
-              transform: [{translateY: titleShift}, {scale: titleScale}],
+              transform: [{translateX: titleShiftX}, {translateY: titleShift}, {scale: titleScale}],
             },
           ]}
           numberOfLines={1}
@@ -382,6 +404,16 @@ export default function TabHeader({
           >
             {subtitle}
           </Animated.Text>
+        ) : null}
+
+        {back ? (
+          <View style={[styles.back, {top: barButtonsTop}]}>
+            <HeaderIconButton
+              icon="chevron-back"
+              label="Back"
+              onPress={onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/")))}
+            />
+          </View>
         ) : null}
 
         {right || refreshing ? (
@@ -450,6 +482,10 @@ const styles = StyleSheet.create({
     color: "#a1a1aa",
     fontSize: 16,
     lineHeight: 22,
+  },
+  back: {
+    position: "absolute",
+    left: 16,
   },
   right: {
     position: "absolute",

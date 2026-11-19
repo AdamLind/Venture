@@ -1,7 +1,9 @@
 // app/itinerary/[id].tsx
-// A saved date: its stops, plus start / end / rename / delete.
+// A saved date: its stops, who's on it and comments (#36), plus start / end /
+// rename / delete. What you can do depends on your role: the owner and
+// editors change it; commenters comment; an invite waits for your answer.
 
-import React, {useState} from "react";
+import React, {useCallback, useRef, useState} from "react";
 import {sizedImage} from "@/src/lib/images";
 import {
   View,
@@ -13,12 +15,27 @@ import {
   ActivityIndicator,
 } from "react-native";
 import {SafeAreaView} from "react-native-safe-area-context";
-import {useLocalSearchParams, router} from "expo-router";
+import {useFocusEffect, useLocalSearchParams, router} from "expo-router";
 import {Image} from "expo-image";
 import {Ionicons} from "@expo/vector-icons";
 
 import ScreenHeader from "@/components/ui/ScreenHeader";
-import {useItineraryStore} from "@/src/store/useItineraryStore";
+import {canEditDate, useItineraryStore} from "@/src/store/useItineraryStore";
+import {useProfileStore} from "@/src/store/useProfileStore";
+import DatePeople from "@/components/dates/DatePeople";
+import {useRevealAboveKeyboard} from "@/hooks/useRevealAboveKeyboard";
+import DateComments, {CommentThread} from "@/components/dates/DateComments";
+import {
+  type DateComment,
+  type DateMember,
+  fetchComments,
+  fetchMembers,
+  fetchReads,
+  markRead,
+  memberName,
+  removeFromDate,
+  threadKey,
+} from "@/src/lib/sharedDates";
 import {
   coverImage,
   formatTimeOfDay,
@@ -27,7 +44,7 @@ import {
 } from "@/src/lib/dates";
 import type {ItineraryStatus} from "@/types/dates";
 
-type Busy = null | "start" | "end" | "delete" | "rename";
+type Busy = null | "start" | "end" | "delete" | "rename" | "accept" | "decline" | "leave";
 
 const STATUS_BADGE: Record<
   ItineraryStatus,
@@ -61,9 +78,15 @@ export default function ItineraryDetailScreen() {
   const {id} = useLocalSearchParams<{id: string}>();
   const itineraryId = Number(id);
 
-  const itinerary = useItineraryStore((s) =>
-    s.itineraries.find((i) => i.itinerary_id === itineraryId),
+  // Yours or accepted, or an invite you haven't answered
+  const itinerary = useItineraryStore(
+    (s) =>
+      s.itineraries.find((i) => i.itinerary_id === itineraryId) ??
+      s.invites.find((i) => i.itinerary_id === itineraryId),
   );
+  const respondToInvite = useItineraryStore((s) => s.respondToInvite);
+  const reloadDates = useItineraryStore((s) => s.reload);
+  const myUserId = useProfileStore((s) => s.userId);
   const loadStatus = useItineraryStore((s) => s.status);
   const startDate = useItineraryStore((s) => s.startDate);
   const completeDate = useItineraryStore((s) => s.completeDate);
@@ -71,8 +94,84 @@ export default function ItineraryDetailScreen() {
   const remove = useItineraryStore((s) => s.remove);
 
   const [busy, setBusy] = useState<Busy>(null);
+  // Comment boxes are low on the page: scroll them above the keyboard
+  const {scrollRef, onScroll: trackScroll, reveal: revealInput} = useRevealAboveKeyboard();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+
+  // Who's on it, and its comments (#36)
+  const [members, setMembers] = useState<DateMember[] | null>(null);
+  const [comments, setComments] = useState<DateComment[] | null>(null);
+  // The newest comment you've seen in each thread (0: the whole date)
+  const [reads, setReads] = useState<Map<number, number>>(new Map());
+  // Stops whose comment thread is open (the ref: for marking them seen on load)
+  const [openThreads, setOpenThreads] = useState<Set<number>>(new Set());
+  const openThreadsRef = useRef<Set<number>>(new Set());
+  const accepted = itinerary?.my_status === "ACCEPTED";
+  const loadSharing = useCallback(async () => {
+    try {
+      setMembers(await fetchMembers(itineraryId));
+      // Comments open once you've said yes
+      if (accepted) {
+        const [all, seen] = await Promise.all([fetchComments(itineraryId), fetchReads(itineraryId)]);
+        // Threads in view (the whole date, and any you've opened) are seen
+        // as they load, including new comments that arrived meanwhile
+        const updated = new Map(seen);
+        for (const key of [0, ...openThreadsRef.current]) {
+          const thread = all.filter((c) => threadKey(c.stop_id) === key);
+          const newest = thread.length ? Math.max(...thread.map((c) => c.comment_id)) : 0;
+          const unseen = thread.some((c) => c.user_id !== myUserId && c.comment_id > (seen.get(key) ?? 0));
+          if (unseen) {
+            updated.set(key, newest);
+            markRead(itineraryId, key || null, newest).catch((e) => console.warn("Couldn't mark comments read:", e));
+          }
+        }
+        setComments(all);
+        setReads(updated);
+      } else {
+        setComments([]);
+      }
+    } catch (e) {
+      console.warn("Couldn't load who's on this date:", e);
+      setMembers((m) => m ?? []);
+      setComments((c) => c ?? []);
+    }
+  }, [itineraryId, accepted, myUserId]);
+  useFocusEffect(
+    useCallback(() => {
+      loadSharing();
+    }, [loadSharing]),
+  );
+  const onSharingChanged = () => {
+    loadSharing();
+    reloadDates();
+  };
+
+  // ─── Comment threads (the whole date, and each stop) ───────────────────────
+  const threadOf = (stopId: number | null) =>
+    (comments ?? []).filter((c) => threadKey(c.stop_id) === threadKey(stopId));
+  /** Someone else commented since you last looked */
+  const hasUnseen = (stopId: number | null) => {
+    const seen = reads.get(threadKey(stopId)) ?? 0;
+    return threadOf(stopId).some((c) => c.user_id !== myUserId && c.comment_id > seen);
+  };
+  // Looking at a thread: you've seen it, up to its newest comment
+  const seeThread = (stopId: number | null) => {
+    const thread = threadOf(stopId);
+    if (!thread.length || !hasUnseen(stopId)) return;
+    const newest = Math.max(...thread.map((c) => c.comment_id));
+    setReads((prev) => new Map(prev).set(threadKey(stopId), newest));
+    markRead(itineraryId, stopId, newest).catch((e) => console.warn("Couldn't mark comments read:", e));
+  };
+  const toggleThread = (stopId: number) => {
+    const next = new Set(openThreads);
+    const opening = !next.has(stopId);
+    if (opening) next.add(stopId);
+    else next.delete(stopId);
+    openThreadsRef.current = next;
+    setOpenThreads(next);
+    if (opening) seeThread(stopId);
+  };
 
   if (!itinerary) {
     return (
@@ -124,7 +223,7 @@ export default function ItineraryDetailScreen() {
   const onDelete = () =>
     Alert.alert(
       "Delete this date?",
-      "It will be removed from your dates. This can't be undone.",
+      "It's removed for everyone on it. This can't be undone.",
       [
         {text: "Cancel", style: "cancel"},
         {
@@ -139,6 +238,37 @@ export default function ItineraryDetailScreen() {
       ],
     );
 
+  const isOwner = itinerary.my_role === "OWNER";
+  // Comment threads show on dates shared with someone, once you've said yes
+  const showComments = accepted && (members?.length ?? 0) > 1;
+  const canEdit = canEditDate(itinerary);
+  const canComment = canEdit || itinerary.my_role === "COMMENTER";
+  const pending = itinerary.my_status === "PENDING";
+  const owner = members?.find((m) => m.role === "OWNER") ?? null;
+  const ownerName = owner ? memberName(owner) : "Someone";
+
+  const onAnswer = (accept: boolean) =>
+    run(accept ? "accept" : "decline", async () => {
+      await respondToInvite(itineraryId, accept);
+      if (!accept) router.back();
+    });
+
+  const onLeave = () =>
+    Alert.alert("Leave this date?", "You won't see it anymore. The owner can invite you again.", [
+      {text: "Cancel", style: "cancel"},
+      {
+        text: "Leave",
+        style: "destructive",
+        onPress: () =>
+          run("leave", async () => {
+            if (!myUserId) return;
+            await removeFromDate(itineraryId, myUserId);
+            await reloadDates();
+            router.back();
+          }),
+      },
+    ]);
+
   const saveTitle = () =>
     run("rename", async () => {
       await rename(itineraryId, titleDraft);
@@ -151,8 +281,15 @@ export default function ItineraryDetailScreen() {
     <SafeAreaView edges={["top"]} style={screenStyle}>
       <ScreenHeader title="Date" />
       <ScrollView
+        ref={scrollRef}
+        onScroll={trackScroll}
+        scrollEventThrottle={16}
         contentContainerClassName="px-5 pt-2 pb-16"
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        showsVerticalScrollIndicator={false}
+        // Room for the keyboard, so a comment box can scroll above it
+        automaticallyAdjustKeyboardInsets
       >
         {/* --- HERO --- */}
         <View className="h-44 rounded-3xl overflow-hidden border border-zinc-800 mb-5">
@@ -170,6 +307,37 @@ export default function ItineraryDetailScreen() {
             </Text>
           </View>
         </View>
+
+        {/* --- AN INVITE, waiting for your answer --- */}
+        {pending && (
+          <View className="bg-blue-500/10 border border-blue-500/40 rounded-3xl p-4 mb-5 gap-3">
+            <Text className="text-white font-bold text-base">{ownerName} invited you to this date</Text>
+            <View className="flex-row gap-2">
+              <Pressable
+                onPress={() => onAnswer(false)}
+                disabled={busy !== null}
+                className="flex-1 h-11 rounded-2xl bg-zinc-800 items-center justify-center active:opacity-80"
+              >
+                {busy === "decline" ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="text-zinc-200 font-bold">Decline</Text>
+                )}
+              </Pressable>
+              <Pressable
+                onPress={() => onAnswer(true)}
+                disabled={busy !== null}
+                className="flex-1 h-11 rounded-2xl bg-white items-center justify-center active:opacity-80"
+              >
+                {busy === "accept" ? (
+                  <ActivityIndicator color="black" />
+                ) : (
+                  <Text className="text-black font-bold">I&apos;m in</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* --- TITLE --- */}
         {editingTitle ? (
@@ -203,25 +371,38 @@ export default function ItineraryDetailScreen() {
               setTitleDraft(itinerary.title);
               setEditingTitle(true);
             }}
-            accessibilityLabel="Rename date"
+            disabled={!canEdit}
+            accessibilityLabel={canEdit ? "Rename date" : undefined}
             className="flex-row items-center gap-2 mb-1"
           >
             <Text className="text-white font-extrabold text-2xl tracking-tight flex-shrink">
               {itinerary.title}
             </Text>
-            <Ionicons name="pencil" size={16} color="#71717a" />
+            {canEdit && <Ionicons name="pencil" size={16} color="#71717a" />}
           </Pressable>
         )}
         <Text className="text-zinc-400 text-base">
           {formatWhen(itinerary.starts_at)} • {stopCountLabel(itinerary)}
         </Text>
 
-        {/* --- STOPS --- */}
+        {/* --- STOPS: tap one for its idea page; the bubble opens its comments --- */}
         <View className="mt-6 gap-3">
-          {itinerary.stops.map((stop, index) => (
-            <View
-              key={stop.stop_id}
-              className="flex-row items-center bg-zinc-900 border border-zinc-800 rounded-2xl p-3"
+          {itinerary.stops.map((stop, index) => {
+            const thread = threadOf(stop.stop_id);
+            const unseen = hasUnseen(stop.stop_id);
+            const open = openThreads.has(stop.stop_id);
+            return (
+            <View key={stop.stop_id}>
+            <Pressable
+              onPress={() =>
+                stop.activity &&
+                router.push({pathname: "/idea/[id]", params: {id: String(stop.activity.idea_id)}})
+              }
+              disabled={!stop.activity}
+              accessibilityRole="button"
+              className={`flex-row items-center bg-zinc-900 border border-zinc-800 p-3 active:opacity-80 ${
+                open ? "rounded-t-2xl border-b-0" : "rounded-2xl"
+              }`}
             >
               <View className="w-8 h-8 rounded-full bg-zinc-800 items-center justify-center mr-3">
                 <Text className="text-white font-bold">{index + 1}</Text>
@@ -256,13 +437,76 @@ export default function ItineraryDetailScreen() {
                   </Text>
                 )}
               </View>
+              {/* Its comments: the count, lit up when there's something new */}
+              {showComments && (
+                <Pressable
+                  onPress={() => toggleThread(stop.stop_id)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${thread.length} comment${thread.length === 1 ? "" : "s"}${
+                    unseen ? ", new" : ""
+                  }. ${open ? "Hide" : "Show"} comments`}
+                  className={`flex-row items-center gap-1 ml-2 px-2.5 h-8 rounded-full ${
+                    unseen ? "bg-blue-500" : open ? "bg-zinc-700" : "bg-zinc-800"
+                  }`}
+                >
+                  <Ionicons
+                    name={thread.length ? "chatbubble" : "chatbubble-outline"}
+                    size={14}
+                    color={unseen ? "white" : "#a1a1aa"}
+                  />
+                  {thread.length > 0 && (
+                    <Text className={`text-xs font-bold ${unseen ? "text-white" : "text-zinc-300"}`}>
+                      {thread.length}
+                    </Text>
+                  )}
+                </Pressable>
+              )}
+            </Pressable>
+            {open && (
+              <View className="bg-zinc-900/60 border border-zinc-800 border-t-zinc-800/60 rounded-b-2xl overflow-hidden">
+                <CommentThread
+                  itineraryId={itineraryId}
+                  stopId={stop.stop_id}
+                  comments={thread}
+                  members={members}
+                  myUserId={myUserId}
+                  canComment={canComment}
+                  isOwner={isOwner}
+                  onChanged={loadSharing}
+                  onInputFocus={revealInput}
+                />
+              </View>
+            )}
             </View>
-          ))}
+            );
+          })}
         </View>
+
+        {/* --- COMMENTS ON THE WHOLE DATE, THEN WHO'S ON IT (#36) --- */}
+        {showComments && (
+          <DateComments
+            itinerary={itinerary}
+            members={members}
+            comments={comments}
+            myUserId={myUserId}
+            canComment={canComment}
+            isOwner={isOwner}
+            onChanged={loadSharing}
+            onInputFocus={revealInput}
+          />
+        )}
+        <DatePeople
+          itineraryId={itineraryId}
+          isOwner={isOwner}
+          myUserId={myUserId}
+          members={members}
+          onChanged={onSharingChanged}
+        />
 
         {/* --- ACTIONS --- */}
         <View className="mt-8 gap-3">
-          {itinerary.status === "PLANNED" && (
+          {canEdit && itinerary.status === "PLANNED" && (
             <Pressable
               onPress={onStart}
               disabled={busy !== null}
@@ -278,7 +522,7 @@ export default function ItineraryDetailScreen() {
             </Pressable>
           )}
 
-          {itinerary.status === "ACTIVE" && (
+          {accepted && itinerary.status === "ACTIVE" && (
             <>
               <Pressable
                 onPress={() => router.push("/active-date")}
@@ -288,33 +532,50 @@ export default function ItineraryDetailScreen() {
                   Open live view
                 </Text>
               </Pressable>
-              <Pressable
-                onPress={onEnd}
-                disabled={busy !== null}
-                className="bg-zinc-900 border border-zinc-800 rounded-2xl h-14 items-center justify-center active:bg-zinc-800"
-              >
-                {busy === "end" ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text className="text-white font-bold text-base">
-                    End date
-                  </Text>
-                )}
-              </Pressable>
+              {canEdit && (
+                <Pressable
+                  onPress={onEnd}
+                  disabled={busy !== null}
+                  className="bg-zinc-900 border border-zinc-800 rounded-2xl h-14 items-center justify-center active:bg-zinc-800"
+                >
+                  {busy === "end" ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text className="text-white font-bold text-base">
+                      End date
+                    </Text>
+                  )}
+                </Pressable>
+              )}
             </>
           )}
 
-          <Pressable
-            onPress={onDelete}
-            disabled={busy !== null}
-            className="h-12 items-center justify-center"
-          >
-            {busy === "delete" ? (
-              <ActivityIndicator color="#f87171" />
-            ) : (
-              <Text className="text-red-400 font-semibold">Delete date</Text>
-            )}
-          </Pressable>
+          {/* The owner deletes it for everyone; anyone else just leaves */}
+          {isOwner ? (
+            <Pressable
+              onPress={onDelete}
+              disabled={busy !== null}
+              className="h-12 items-center justify-center"
+            >
+              {busy === "delete" ? (
+                <ActivityIndicator color="#f87171" />
+              ) : (
+                <Text className="text-red-400 font-semibold">Delete date</Text>
+              )}
+            </Pressable>
+          ) : accepted ? (
+            <Pressable
+              onPress={onLeave}
+              disabled={busy !== null}
+              className="h-12 items-center justify-center"
+            >
+              {busy === "leave" ? (
+                <ActivityIndicator color="#f87171" />
+              ) : (
+                <Text className="text-red-400 font-semibold">Leave this date</Text>
+              )}
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>

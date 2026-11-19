@@ -18,7 +18,7 @@ import type {Itinerary} from "@/types/dates";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {countdownLabel, groupItineraries} from "@/src/lib/dates";
 import {parseLocalDate} from "@/src/lib/profile";
-import {LiveDateCard, UpcomingDateCard} from "@/components/dates/DateCards";
+import {InviteCard, LiveDateCard, UpcomingDateCard} from "@/components/dates/DateCards";
 import TabHeader, {
   HeaderIconButton,
   useTabHeader,
@@ -62,6 +62,9 @@ const planFor = (key?: string) =>
 
 export default function DatesScreen() {
   const itineraries = useItineraryStore((s) => s.itineraries);
+  // Dates you're invited to and haven't answered (#36)
+  const invites = useItineraryStore((s) => s.invites);
+  const respondToInvite = useItineraryStore((s) => s.respondToInvite);
   const status = useItineraryStore((s) => s.status);
   const error = useItineraryStore((s) => s.error);
   const reload = useItineraryStore((s) => s.reload);
@@ -86,7 +89,7 @@ export default function DatesScreen() {
   }, [upcoming, active]);
 
   const firstLoad = status === "loading" && itineraries.length === 0;
-  const hasAnything = !!active || upcoming.length > 0;
+  const hasAnything = !!active || upcoming.length > 0 || invites.length > 0;
 
   const selectedDate = selectedDay ? parseLocalDate(selectedDay) : null;
   const onSelectedDay = selectedDay
@@ -167,6 +170,22 @@ export default function DatesScreen() {
               <Text className="text-red-200/70 mt-1">
                 Pull down to try again.
               </Text>
+            </View>
+          )}
+
+          {/* --- INVITATIONS (#36): answer here, or tap for the details --- */}
+          {!firstLoad && !selectedDay && invites.length > 0 && (
+            <View className="mb-8">
+              <SectionTitle title="Invitations" count={invites.length} />
+              <View className="gap-3">
+                {invites.map((invite) => (
+                  <InviteCard
+                    key={invite.itinerary_id}
+                    itinerary={invite}
+                    onAnswer={(accept) => respondToInvite(invite.itinerary_id, accept)}
+                  />
+                ))}
+              </View>
             </View>
           )}
 

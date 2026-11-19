@@ -3,27 +3,30 @@
 // camera), your link to send, scanning their code, or typing it. Every way
 // sends a request they accept. Resetting your code stops old ones working.
 
-import React, {useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
+  Animated,
+  Keyboard,
   Modal,
   Pressable,
-  ScrollView,
+  type ScrollView,
   Share,
   Text,
   TextInput,
   View,
 } from "react-native";
-import {SafeAreaView, useSafeAreaInsets} from "react-native-safe-area-context";
+import {useSafeAreaInsets} from "react-native-safe-area-context";
+import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
 import {useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
 import {CameraView, useCameraPermissions} from "expo-camera";
 import QRCode from "react-native-qrcode-svg";
 import Toast from "react-native-toast-message";
 
-import ScreenHeader from "@/components/ui/ScreenHeader";
+import TabHeader, {useTabHeader} from "@/components/ui/TabHeader";
 import {connectLink, formatCode, parseCode, resetProfileCode} from "@/src/lib/connections";
 import {connectWithCode} from "@/src/lib/connectWithCode";
 import {useProfileStore} from "@/src/store/useProfileStore";
@@ -39,8 +42,29 @@ export default function AddConnectionScreen() {
   const [typing, setTyping] = useState(false);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
+  // The tabs' header: large title, glass back button, blur as it collapses
+  const header = useTabHeader({back: true});
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
+
+  // Typing a code: once the keyboard's up, scroll to the bottom so the box
+  // and Connect sit comfortably above it
+  useEffect(() => {
+    if (!typing) return;
+    const sub = Keyboard.addListener("keyboardDidShow", () =>
+      scrollRef.current?.scrollToEnd({animated: true}),
+    );
+    return () => sub.remove();
+  }, [typing]);
 
   const link = code ? connectLink(code) : null;
+
+  // The code is random letters: copy it rather than read it out
+  const copyCode = async () => {
+    if (!code) return;
+    await Clipboard.setStringAsync(code);
+    if (process.env.EXPO_OS === "ios") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Toast.show({type: "success", text1: "Code copied", position: "bottom"});
+  };
 
   const shareLink = () => {
     if (!link) return;
@@ -83,10 +107,20 @@ export default function AddConnectionScreen() {
     );
 
   return (
-    <SafeAreaView edges={["top"]} style={{flex: 1, backgroundColor: "#000"}}>
-      <ScreenHeader title="Add someone" />
-      <KeyboardAvoidingView className="flex-1" behavior={process.env.EXPO_OS === "ios" ? "padding" : undefined}>
-        <ScrollView contentContainerClassName="px-6 pt-4 pb-16 items-center" keyboardShouldPersistTaps="handled">
+    // The scroll view is the screen's root, like the tabs (see TabHeader.tsx)
+    <Animated.ScrollView
+      ref={scrollRef}
+      {...header.scrollProps}
+      style={{flex: 1, backgroundColor: "#000"}}
+      contentContainerStyle={{paddingBottom: 48}}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      showsVerticalScrollIndicator={false}
+      // Room for the keyboard, so the code box can scroll above it
+      automaticallyAdjustKeyboardInsets
+    >
+      <TabHeader header={header} title="Add someone" />
+      <View className="px-6 pt-4 items-center">
           {/* YOUR CODE */}
           <View className="bg-white rounded-[32px] p-6 items-center" style={{width: 280}}>
             {link ? (
@@ -102,9 +136,17 @@ export default function AddConnectionScreen() {
             Have them scan this with Venture or their phone&apos;s camera. You&apos;ll connect once you both say yes.
           </Text>
           {code && (
-            <Text className="text-zinc-500 text-xs mt-2" selectable>
-              Your code: {formatCode(code)}
-            </Text>
+            <Pressable
+              onPress={copyCode}
+              accessibilityRole="button"
+              accessibilityLabel="Copy your code"
+              hitSlop={6}
+              className="flex-row items-center gap-1.5 mt-3 bg-zinc-900 border border-zinc-800 rounded-full px-3.5 py-1.5 active:opacity-70"
+            >
+              <Text className="text-zinc-400 text-xs">Your code</Text>
+              <Text className="text-white text-sm font-semibold tracking-wider">{formatCode(code)}</Text>
+              <Ionicons name="copy-outline" size={14} color="#a1a1aa" />
+            </Pressable>
           )}
 
           {/* WAYS IN */}
@@ -141,6 +183,8 @@ export default function AddConnectionScreen() {
                 placeholderTextColor="#71717a"
                 returnKeyType="go"
                 onSubmitEditing={submitTyped}
+                // Already focused when the keyboard was up: still bring it into view
+                onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({animated: true}), 300)}
                 className="bg-zinc-900 text-white px-4 py-3.5 rounded-2xl border border-zinc-800"
                 style={INPUT_TEXT}
               />
@@ -165,8 +209,7 @@ export default function AddConnectionScreen() {
           <Pressable onPress={confirmReset} hitSlop={8} className="mt-10 py-2 active:opacity-60">
             <Text className="text-zinc-600 text-sm">Get a new code</Text>
           </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
 
       <Scanner
         visible={scanning}
@@ -177,7 +220,7 @@ export default function AddConnectionScreen() {
           if (ok) router.back();
         }}
       />
-    </SafeAreaView>
+    </Animated.ScrollView>
   );
 }
 
