@@ -3,6 +3,7 @@
 // creator sees it on their idea, so it's written to them. Quick picks fill
 // in common reasons and cite the guideline they come from (#85); the creator's
 // note links to the cited guidelines. Both can be edited before sending.
+// Also the reason for suspending a creator (#76), which they see too.
 
 import React, {useState} from "react";
 import {
@@ -23,7 +24,19 @@ const NOTE_MAX = 1000;
 /** Font size only (a line height pushes text off centre on iOS) */
 const INPUT_TEXT = {fontSize: 16};
 
-const COPY: Record<NoteDecision, {title: string; hint: string; send: string; color: string}> = {
+/** What the note is for: sending an idea back, rejecting it, or suspending its creator */
+export type NoteKind = NoteDecision | "SUSPEND";
+
+/** Quick reasons for a suspension (no guideline chips: it's about the account) */
+const SUSPEND_PICKS = [
+  "Repeatedly broke the idea guidelines.",
+  "Posted spam or ads.",
+  "Posted something unsafe or illegal.",
+  "Posted sexual, hateful or degrading content.",
+  "Harassed or targeted someone.",
+];
+
+const COPY: Record<NoteKind, {title: string; hint: string; send: string; color: string}> = {
   REQUEST_CHANGES: {
     title: "Request changes",
     hint: "Tell them what to change. They can edit it and send it back.",
@@ -36,32 +49,57 @@ const COPY: Record<NoteDecision, {title: string; hint: string; send: string; col
     send: "Reject",
     color: "#f87171",
   },
+  SUSPEND: {
+    title: "Suspend",
+    hint: "For repeat offenders. They can't publish or report, and their ideas leave Discover; they can still plan privately. They'll see this reason, and it's logged.",
+    send: "Suspend",
+    color: "#f87171",
+  },
 };
 
 export default function ReviewNoteSheet({
   decision,
+  title,
+  hint,
   onClose,
   onSend,
 }: {
   /** null: closed */
-  decision: NoteDecision | null;
+  decision: NoteKind | null;
+  /** Instead of the usual title ("Suspend @sam") */
+  title?: string;
+  /** Instead of the usual explanation */
+  hint?: string;
   onClose: () => void;
   /** Resolves when sent; throws to keep the sheet open */
   onSend: (note: string, rules: RuleId[]) => Promise<void>;
 }) {
   return (
     <Modal visible={!!decision} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      {decision && <NoteForm key={decision} decision={decision} onClose={onClose} onSend={onSend} />}
+      {decision && (
+        <NoteForm
+          key={decision}
+          decision={decision}
+          title={title}
+          hint={hint}
+          onClose={onClose}
+          onSend={onSend}
+        />
+      )}
     </Modal>
   );
 }
 
 function NoteForm({
   decision,
+  title,
+  hint,
   onClose,
   onSend,
 }: {
-  decision: NoteDecision;
+  decision: NoteKind;
+  title?: string;
+  hint?: string;
   onClose: () => void;
   onSend: (note: string, rules: RuleId[]) => Promise<void>;
 }) {
@@ -73,13 +111,16 @@ function NoteForm({
   const [sending, setSending] = useState(false);
   const canSend = note.trim().length > 0 && !sending;
 
-  const pick = ({text, rule}: {text: string; rule: RuleId}) => {
+  const picks: {text: string; rule: RuleId | null}[] =
+    decision === "SUSPEND" ? SUSPEND_PICKS.map((text) => ({text, rule: null})) : QUICK_PICKS[decision];
+
+  const pick = ({text, rule}: {text: string; rule: RuleId | null}) => {
     setNote((prev) => {
       if (prev.includes(text)) return prev;
       const joined = prev.trim() ? `${prev.trim()} ${text}` : text;
       return joined.slice(0, NOTE_MAX);
     });
-    setRules((prev) => (prev.includes(rule) ? prev : [...prev, rule]));
+    if (rule) setRules((prev) => (prev.includes(rule) ? prev : [...prev, rule]));
   };
   const toggleRule = (rule: RuleId) =>
     setRules((prev) => (prev.includes(rule) ? prev.filter((r) => r !== rule) : [...prev, rule]));
@@ -111,7 +152,7 @@ function NoteForm({
           </Pressable>
         </View>
         <Text className="text-white font-bold text-base" numberOfLines={1}>
-          {copy.title}
+          {title ?? copy.title}
         </Text>
         <View className="flex-1 items-end">
           <Pressable onPress={send} hitSlop={10} disabled={!canSend} accessibilityRole="button">
@@ -136,7 +177,7 @@ function NoteForm({
         contentContainerClassName="px-5 pt-5 gap-5"
         contentContainerStyle={{paddingBottom: insets.bottom + 32}}
       >
-        <Text className="text-zinc-400 text-sm">{copy.hint}</Text>
+        <Text className="text-zinc-400 text-sm">{hint ?? copy.hint}</Text>
 
         <View className="gap-2">
           <View className="flex-row items-baseline justify-between mx-1">
@@ -159,7 +200,7 @@ function NoteForm({
 
         <View className="gap-2">
           <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider mx-1">Quick picks</Text>
-          {QUICK_PICKS[decision].map((p) => (
+          {picks.map((p) => (
             <Pressable
               key={p.text}
               onPress={() => pick(p)}
@@ -172,33 +213,35 @@ function NoteForm({
         </View>
 
         {/* Linked from their note, so they can read the rule itself */}
-        <View className="gap-2">
-          <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider mx-1">
-            Guidelines it breaks
-          </Text>
-          <View className="flex-row flex-wrap gap-2">
-            {RULES.map((rule) => {
-              const on = rules.includes(rule.id);
-              return (
-                <Pressable
-                  key={rule.id}
-                  onPress={() => toggleRule(rule.id)}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{checked: on}}
-                  className="rounded-full px-3 py-1.5 border active:opacity-70"
-                  style={{
-                    backgroundColor: on ? `${copy.color}22` : "#18181b",
-                    borderColor: on ? copy.color : "#27272a",
-                  }}
-                >
-                  <Text className="text-sm font-semibold" style={{color: on ? copy.color : "#a1a1aa"}}>
-                    {rule.title}
-                  </Text>
-                </Pressable>
-              );
-            })}
+        {decision !== "SUSPEND" && (
+          <View className="gap-2">
+            <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider mx-1">
+              Guidelines it breaks
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {RULES.map((rule) => {
+                const on = rules.includes(rule.id);
+                return (
+                  <Pressable
+                    key={rule.id}
+                    onPress={() => toggleRule(rule.id)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{checked: on}}
+                    className="rounded-full px-3 py-1.5 border active:opacity-70"
+                    style={{
+                      backgroundColor: on ? `${copy.color}22` : "#18181b",
+                      borderColor: on ? copy.color : "#27272a",
+                    }}
+                  >
+                    <Text className="text-sm font-semibold" style={{color: on ? copy.color : "#a1a1aa"}}>
+                      {rule.title}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
-        </View>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );

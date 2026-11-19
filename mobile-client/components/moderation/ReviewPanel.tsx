@@ -4,14 +4,14 @@
 // The database checks every decision (review_idea / resolve_reports).
 
 import React, {useCallback, useEffect, useState} from "react";
-import {ActivityIndicator, Alert, Platform, Pressable, Text, View} from "react-native";
+import {ActivityIndicator, Alert, Pressable, Text, View} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
 import {useRouter} from "expo-router";
 import * as Haptics from "expo-haptics";
 import Toast from "react-native-toast-message";
 
 import {StatusChip} from "@/components/ideas/IdeaRows";
-import ReviewNoteSheet from "@/components/moderation/ReviewNoteSheet";
+import ReviewNoteSheet, {type NoteKind} from "@/components/moderation/ReviewNoteSheet";
 import type {NoteDecision, RuleId} from "@/src/lib/ideaGuidelines";
 import {
   REPORT_REASON_LABEL,
@@ -69,7 +69,8 @@ export default function ReviewPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Decision | "DISMISS" | "SUSPEND" | null>(null);
   const [creatorSuspended, setCreatorSuspended] = useState(false);
-  const [noteFor, setNoteFor] = useState<NoteDecision | null>(null);
+  // The note sheet: sending back, rejecting, or suspending the creator
+  const [noteFor, setNoteFor] = useState<NoteKind | null>(null);
 
   // Bumped to reload after a decision
   const [version, setVersion] = useState(0);
@@ -163,6 +164,7 @@ export default function ReviewPanel({
   const creatorName = idea.users?.username ? `@${idea.users.username}` : "the creator";
   // Suspending from here rejects this idea too (unless it already is)
   const rejectsIdea = idea.visibility !== "REJECTED" && idea.visibility !== "PRIVATE";
+  /** Throws (after saying so) when it fails, so the note sheet stays open */
   const runSuspension = async (suspend: boolean, note: string | null) => {
     if (!idea.user_id) return;
     setBusy("SUSPEND");
@@ -174,10 +176,12 @@ export default function ReviewPanel({
         text2: suspend && rejectsIdea ? "This idea was rejected too." : undefined,
         position: "bottom",
       });
+      setNoteFor(null);
       if (suspend && rejectsIdea) onDecided("REJECTED", note?.trim() || null, null);
       load();
     } catch (e) {
       Alert.alert("Couldn't save that", e instanceof Error ? e.message : "Please try again.");
+      throw e;
     } finally {
       setBusy(null);
     }
@@ -186,35 +190,16 @@ export default function ReviewPanel({
     if (creatorSuspended) {
       Alert.alert(`Lift the suspension on ${creatorName}?`, "They can publish and report again.", [
         {text: "Cancel", style: "cancel"},
-        {text: "Lift it", onPress: () => runSuspension(false, null)},
+        {text: "Lift it", onPress: () => runSuspension(false, null).catch(() => {})},
       ]);
       return;
     }
-    const body = `For repeat offenders. ${
-      rejectsIdea ? "This idea is rejected, and they" : "They"
-    } can't publish or report; their other ideas leave Discover. They can still plan privately.`;
-    if (Platform.OS === "ios") {
-      Alert.prompt(
-        `Suspend ${creatorName}?`,
-        `${body} Add the reason (it's logged).`,
-        [
-          {text: "Cancel", style: "cancel"},
-          {text: "Suspend", style: "destructive", onPress: (text?: string) => runSuspension(true, text ?? "")},
-        ],
-        "plain-text",
-        "Repeatedly broke the idea guidelines",
-      );
-    } else {
-      Alert.alert(`Suspend ${creatorName}?`, body, [
-        {text: "Cancel", style: "cancel"},
-        {
-          text: "Suspend",
-          style: "destructive",
-          onPress: () => runSuspension(true, "Repeatedly broke the idea guidelines"),
-        },
-      ]);
-    }
+    // The reason goes in the note sheet (room to write it, quick picks)
+    setNoteFor("SUSPEND");
   };
+  const suspendHint = `For repeat offenders. ${
+    rejectsIdea ? "This idea is rejected too, and they" : "They"
+  } can't publish or report; their other ideas leave Discover. They can still plan privately. They'll see this reason, and it's logged.`;
 
   // Reasons with counts: "Spam or misleading ×2"
   const reasonCounts = new Map<string, number>();
@@ -340,13 +325,15 @@ export default function ReviewPanel({
         </Text>
       )}
 
-      {/* THE CREATOR: suspend repeat offenders (not your own ideas) */}
+      {/* THE CREATOR: suspend repeat offenders (not your own ideas). Rare,
+          so a small link rather than another big button */}
       {canDecide && !ownIdea && idea.user_id && (
         <Pressable
           onPress={onSuspend}
           disabled={!!busy}
+          hitSlop={8}
           accessibilityRole="button"
-          className="flex-row items-center justify-center gap-1.5 h-10 rounded-2xl border border-zinc-800 active:opacity-80"
+          className="self-end flex-row items-center gap-1 -mt-1 active:opacity-60"
         >
           {busy === "SUSPEND" ? (
             <ActivityIndicator color="#a1a1aa" size="small" />
@@ -354,10 +341,10 @@ export default function ReviewPanel({
             <>
               <Ionicons
                 name={creatorSuspended ? "lock-open-outline" : "ban-outline"}
-                size={15}
-                color={creatorSuspended ? "#a1a1aa" : "#f87171"}
+                size={12}
+                color={creatorSuspended ? "#a1a1aa" : "#71717a"}
               />
-              <Text className={`text-sm font-semibold ${creatorSuspended ? "text-zinc-300" : "text-red-400"}`}>
+              <Text className="text-xs font-semibold text-zinc-500">
                 {creatorSuspended ? `${creatorName} is suspended · Lift it` : `Suspend ${creatorName}`}
               </Text>
             </>
@@ -381,8 +368,12 @@ export default function ReviewPanel({
 
       <ReviewNoteSheet
         decision={noteFor}
+        title={noteFor === "SUSPEND" ? `Suspend ${creatorName}` : undefined}
+        hint={noteFor === "SUSPEND" ? suspendHint : undefined}
         onClose={() => setNoteFor(null)}
-        onSend={(note, rules) => decide(noteFor!, note, rules)}
+        onSend={(note, rules) =>
+          noteFor === "SUSPEND" ? runSuspension(true, note) : decide(noteFor as NoteDecision, note, rules)
+        }
       />
     </View>
   );
