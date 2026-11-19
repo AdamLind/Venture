@@ -28,6 +28,8 @@ import {useBuilderStore} from "@/src/store/useBuilderStore";
 import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
 import {useBlockStore} from "@/src/store/useBlockStore";
+import {usePartner} from "@/src/store/useConnectionsStore";
+import SurpriseRow from "@/components/dates/SurpriseRow";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {START_NOW_WINDOW_MS, autoTitle, formatWhen} from "@/src/lib/dates";
 import {SafeAreaView, useSafeAreaInsets} from "react-native-safe-area-context";
@@ -77,6 +79,7 @@ const OPEN_ENDED_ROOM_MS = 48 * 3_600_000;
 export default function BuilderScreen() {
   const scrollViewRef = useRef<ScrollViewInstance>(null);
   const {prefs: userPrefs, resetPrefs, setPrefs} = usePrefsStore();
+  const partner = usePartner();
   const clearBuilder = useBuilderStore((state) => state.clearBuilder);
   const headCount = userPrefs.headCount;
 
@@ -782,6 +785,16 @@ export default function BuilderScreen() {
           {dayLabel} · {timeRange} · {goingOut ? "Going out" : "Staying in"}
         </Text>
       </View>
+      {/* A surprise for your partner (#35): set in Plan or on the review */}
+      {partner && userPrefs.surprise && (
+        <View
+          className="self-start flex-row items-center gap-1 bg-pink-500/15 rounded-full px-2.5 py-1 mt-1.5 ml-2"
+          accessibilityLabel={`Surprise for ${partner.username}. Hidden from them until you invite them or it's over`}
+        >
+          <Ionicons name="gift" size={13} color="#f472b6" />
+          <Text className="text-pink-300 text-xs font-bold">Surprise</Text>
+        </View>
+      )}
     </View>
   );
 
@@ -1084,6 +1097,17 @@ export default function BuilderScreen() {
             </View>
 
             {timelineView(false)}
+
+            {/* A surprise for your partner (#35): saved hidden from them */}
+            {partner && (
+              <View className="mx-5 mt-6 bg-zinc-900 border border-zinc-800 rounded-3xl px-3 py-3">
+                <SurpriseRow
+                  partnerName={partner.username}
+                  value={!!userPrefs.surprise}
+                  onChange={(on) => setPrefs({surprise: on})}
+                />
+              </View>
+            )}
 
             <View className="px-5 mt-6 gap-2">
               <Pressable

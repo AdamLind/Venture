@@ -53,6 +53,8 @@ export interface Itinerary {
   /** Everyone else on it (not declined) */
   people: DatePerson[];
   comment_count: number;
+  /** Hidden from the owner's partner until they're invited or it's over (#35) */
+  is_surprise: boolean;
 }
 
 export interface NewItinerary {

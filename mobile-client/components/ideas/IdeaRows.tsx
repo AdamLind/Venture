@@ -28,7 +28,19 @@ export function IdeaMeta({idea}: {idea: IdeaSummary}) {
 }
 
 /** Bucket List row: photo, title, price and time, and the bookmark. */
-export function SavedIdeaRow({idea}: {idea: IdeaSummary}) {
+export function SavedIdeaRow({
+  idea,
+  label,
+  labelColor,
+  privacy,
+}: {
+  idea: IdeaSummary;
+  /** Who saved it, on a shared Bucket List (#35) */
+  label?: string;
+  labelColor?: string;
+  /** Your save, with a partner: shared or private, and the switch */
+  privacy?: {shared: boolean; onToggle: () => void};
+}) {
   return (
     <Pressable
       onPress={() => openIdea(idea.idea_id)}
@@ -44,8 +56,29 @@ export function SavedIdeaRow({idea}: {idea: IdeaSummary}) {
           {idea.title}
         </Text>
         <IdeaMeta idea={idea} />
+        {label ? (
+          <Text className="text-xs font-semibold mt-0.5" style={{color: labelColor ?? "#a1a1aa"}} numberOfLines={1}>
+            {label}
+          </Text>
+        ) : null}
       </View>
+      {privacy && <PrivacyButton shared={privacy.shared} onToggle={privacy.onToggle} />}
       <SaveButton ideaId={idea.idea_id} variant="plain" size={40} />
+    </Pressable>
+  );
+}
+
+/** On your saves with a partner: shared (people) or private (lock) */
+function PrivacyButton({shared, onToggle}: {shared: boolean; onToggle: () => void}) {
+  return (
+    <Pressable
+      onPress={onToggle}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={shared ? "Shared with your partner. Keep it private" : "Private. Share with your partner"}
+      className="w-9 h-9 rounded-full items-center justify-center bg-zinc-800 active:opacity-70"
+    >
+      <Ionicons name={shared ? "people" : "lock-closed"} size={16} color={shared ? "#f472b6" : "#a1a1aa"} />
     </Pressable>
   );
 }

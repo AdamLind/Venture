@@ -19,6 +19,9 @@ export interface UserPrefs {
   budget: number;
   vibes: string[] | null;
   headCount: number;
+  /** Hidden from your partner until you invite them or it's over (#35). The
+   *  server reads this from the date's saved prefs as it's created. */
+  surprise?: boolean;
 }
 
 interface PrefsState {
@@ -40,6 +43,7 @@ const defaultPrefs: UserPrefs = {
   budget: 50,
   vibes: [],
   headCount: 2,
+  surprise: false,
 };
 
 export const usePrefsStore = create<PrefsState>((set) => ({

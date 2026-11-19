@@ -3,7 +3,7 @@
 // (three at a time, so it never gets cluttered), the week strip to plan a
 // day, and a way to past dates. Only what exists shows.
 
-import React, {useMemo, useState} from "react";
+import React, {useCallback, useMemo, useState} from "react";
 import {
   Animated,
   View,
@@ -12,13 +12,14 @@ import {
   ActivityIndicator,
 } from "react-native";
 import {Ionicons} from "@expo/vector-icons";
-import {router} from "expo-router";
+import {router, useFocusEffect} from "expo-router";
 
 import type {Itinerary} from "@/types/dates";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {countdownLabel, groupItineraries} from "@/src/lib/dates";
 import {parseLocalDate} from "@/src/lib/profile";
 import {InviteCard, LiveDateCard, UpcomingDateCard} from "@/components/dates/DateCards";
+import {usePartner} from "@/src/store/useConnectionsStore";
 import TabHeader, {
   HeaderIconButton,
   useTabHeader,
@@ -57,6 +58,13 @@ function bucketByWeek(dates: Itinerary[]) {
   return buckets.filter((b) => b.items.length > 0);
 }
 
+/** Your partner's dates still to come (planned or happening, not over) */
+function stillToCome(dates: Itinerary[], now = Date.now()) {
+  return dates
+    .filter((d) => (d.status === "PLANNED" || d.status === "ACTIVE") && new Date(d.ends_at).getTime() > now)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+}
+
 const planFor = (key?: string) =>
   router.push({pathname: "/(tabs)/plan", params: key ? {startsOn: key} : {}});
 
@@ -65,6 +73,9 @@ export default function DatesScreen() {
   // Dates you're invited to and haven't answered (#36)
   const invites = useItineraryStore((s) => s.invites);
   const respondToInvite = useItineraryStore((s) => s.respondToInvite);
+  // Your partner's dates (#35): view only, not surprises
+  const partnerDates = useItineraryStore((s) => s.partnerDates);
+  const partner = usePartner();
   const status = useItineraryStore((s) => s.status);
   const error = useItineraryStore((s) => s.error);
   const reload = useItineraryStore((s) => s.reload);
@@ -72,6 +83,12 @@ export default function DatesScreen() {
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const header = useTabHeader({subtitle: true});
   const refresh = useTabRefresh(reload);
+  // Coming back to the tab: pick up new invites and your partner's new dates
+  useFocusEffect(
+    useCallback(() => {
+      reload();
+    }, [reload]),
+  );
 
   const {active, upcoming, past} = useMemo(
     () => groupItineraries(itineraries),
@@ -81,15 +98,19 @@ export default function DatesScreen() {
   // Rebuilt with the itineraries so the strip rolls over after midnight on refresh
   const days = useMemo(() => upcomingDays(STRIP_DAYS), [itineraries]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Your partner's coming up (not over yet)
+  const partnerUpcoming = useMemo(() => stillToCome(partnerDates), [partnerDates]);
+
   const marks = useMemo(() => {
     const result: Record<string, DayMark> = {};
+    for (const date of partnerUpcoming) result[dayKey(date.starts_at)] = "planned";
     for (const date of upcoming) result[dayKey(date.starts_at)] = "planned";
     if (active) result[dayKey(active.starts_at)] = "live";
     return result;
-  }, [upcoming, active]);
+  }, [upcoming, active, partnerUpcoming]);
 
   const firstLoad = status === "loading" && itineraries.length === 0;
-  const hasAnything = !!active || upcoming.length > 0 || invites.length > 0;
+  const hasAnything = !!active || upcoming.length > 0 || invites.length > 0 || partnerUpcoming.length > 0;
 
   const selectedDate = selectedDay ? parseLocalDate(selectedDay) : null;
   const onSelectedDay = selectedDay
@@ -260,6 +281,21 @@ export default function DatesScreen() {
                   <Ionicons name="chevron-down" size={16} color="#60a5fa" />
                 </Pressable>
               )}
+            </View>
+          )}
+
+          {/* --- YOUR PARTNER'S (#35): view only --- */}
+          {!firstLoad && !selectedDay && partnerUpcoming.length > 0 && (
+            <View className="mt-8">
+              <SectionTitle
+                title={partner ? `Planned by @${partner.username}` : "Your partner's dates"}
+                count={partnerUpcoming.length}
+              />
+              <View className="gap-5">
+                {partnerUpcoming.map((itinerary) => (
+                  <UpcomingDateCard key={itinerary.itinerary_id} itinerary={itinerary} />
+                ))}
+              </View>
             </View>
           )}
 

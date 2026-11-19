@@ -26,6 +26,7 @@ import {useStaffStore} from "@/src/store/useStaffStore";
 import {useBlockStore} from "@/src/store/useBlockStore";
 import {useAccountStore} from "@/src/store/useAccountStore";
 import TermsGate from "@/components/TermsGate";
+import SaveTip from "@/components/ideas/SaveTip";
 import {watchDeviceAccounts} from "@/src/store/useDeviceAccounts";
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
 import {TERMS_VERSION} from "@/src/lib/terms";
@@ -73,7 +74,8 @@ const toastConfig: ToastConfig = {
  * bottom bars (the tab bar, the builder's action bar, an idea's "Plan a date
  * with this"), which all end about this high above the safe area.
  */
-const TOAST_ABOVE_BARS = 84;
+// (84 left a ~25pt gap above the tab bar)
+const TOAST_ABOVE_BARS = 60;
 
 function InitialLayout() {
   const insets = useSafeAreaInsets();
@@ -360,6 +362,9 @@ function InitialLayout() {
       {/* Terms of use (#76): accepted once you're set up, and again when
           they change */}
       {showTermsGate && <TermsGate updated={!!acceptedTermsVersion} />}
+
+      {/* The first save with a partner: tap vs press and hold (#35) */}
+      <SaveTip />
 
       <StatusBar style="light" />
       {/* Bottom toasts ("Tap to undo") sit above the bottom bars, not on them */}

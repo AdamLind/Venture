@@ -13,6 +13,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Switch,
 } from "react-native";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {useFocusEffect, useLocalSearchParams, router} from "expo-router";
@@ -22,6 +23,7 @@ import {Ionicons} from "@expo/vector-icons";
 import ScreenHeader from "@/components/ui/ScreenHeader";
 import {canEditDate, useItineraryStore} from "@/src/store/useItineraryStore";
 import {useProfileStore} from "@/src/store/useProfileStore";
+import {usePartner} from "@/src/store/useConnectionsStore";
 import DatePeople from "@/components/dates/DatePeople";
 import {useRevealAboveKeyboard} from "@/hooks/useRevealAboveKeyboard";
 import DateComments, {CommentThread} from "@/components/dates/DateComments";
@@ -78,12 +80,15 @@ export default function ItineraryDetailScreen() {
   const {id} = useLocalSearchParams<{id: string}>();
   const itineraryId = Number(id);
 
-  // Yours or accepted, or an invite you haven't answered
+  // Yours or accepted, an invite you haven't answered, or your partner's
   const itinerary = useItineraryStore(
     (s) =>
       s.itineraries.find((i) => i.itinerary_id === itineraryId) ??
-      s.invites.find((i) => i.itinerary_id === itineraryId),
+      s.invites.find((i) => i.itinerary_id === itineraryId) ??
+      s.partnerDates.find((i) => i.itinerary_id === itineraryId),
   );
+  const setSurprise = useItineraryStore((s) => s.setSurprise);
+  const partner = usePartner();
   const respondToInvite = useItineraryStore((s) => s.respondToInvite);
   const reloadDates = useItineraryStore((s) => s.reload);
   const myUserId = useProfileStore((s) => s.userId);
@@ -244,6 +249,15 @@ export default function ItineraryDetailScreen() {
   const canEdit = canEditDate(itinerary);
   const canComment = canEdit || itinerary.my_role === "COMMENTER";
   const pending = itinerary.my_status === "PENDING";
+  // Your partner's date: you see it because you're partners (#35)
+  const partnersDate = itinerary.my_status === null;
+  // The owner can hide it from their partner, unless they're on it already
+  const partnerOnIt = !!partner && (members ?? []).some((m) => m.user_id === partner.user_id);
+  const canSurprise = isOwner && !!partner && !partnerOnIt && itinerary.status !== "COMPLETED";
+  const toggleSurprise = (on: boolean) =>
+    run(null, async () => {
+      await setSurprise(itineraryId, on);
+    });
   const owner = members?.find((m) => m.role === "OWNER") ?? null;
   const ownerName = owner ? memberName(owner) : "Someone";
 
@@ -307,6 +321,17 @@ export default function ItineraryDetailScreen() {
             </Text>
           </View>
         </View>
+
+        {/* --- YOUR PARTNER'S DATE (view only) --- */}
+        {partnersDate && (
+          <View className="flex-row items-center gap-2 bg-pink-500/10 border border-pink-500/30 rounded-2xl px-4 py-3 mb-5">
+            <Ionicons name="heart" size={16} color="#f472b6" />
+            <Text className="text-pink-100/90 text-sm flex-1">
+              Planned by {partner ? `@${partner.username}` : "your partner"}. You can see it because you&apos;re
+              partners.
+            </Text>
+          </View>
+        )}
 
         {/* --- AN INVITE, waiting for your answer --- */}
         {pending && (
@@ -482,6 +507,30 @@ export default function ItineraryDetailScreen() {
             );
           })}
         </View>
+
+        {/* --- A SURPRISE: hidden from your partner (#35) --- */}
+        {canSurprise && (
+          <View className="mt-8 gap-2">
+            <View className="flex-row items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-3xl px-4 py-3">
+              <Ionicons name="gift-outline" size={20} color={itinerary.is_surprise ? "#f472b6" : "white"} />
+              <View className="flex-1">
+                <Text className="text-white font-semibold text-base">Surprise for @{partner!.username}</Text>
+                <Text className="text-zinc-500 text-xs">
+                  {itinerary.is_surprise
+                    ? "Hidden from them until you invite them or it's over"
+                    : "They can see this date"}
+                </Text>
+              </View>
+              <Switch
+                value={itinerary.is_surprise}
+                onValueChange={toggleSurprise}
+                disabled={busy !== null}
+                trackColor={{true: "#f472b6"}}
+                accessibilityLabel={`Surprise for ${partner!.username}`}
+              />
+            </View>
+          </View>
+        )}
 
         {/* --- COMMENTS ON THE WHOLE DATE, THEN WHO'S ON IT (#36) --- */}
         {showComments && (

@@ -254,6 +254,7 @@ export default function SettingsScreen() {
 
         <StaffSection />
 
+
         <Section title="Profile">
           <Row
             icon="person-outline"

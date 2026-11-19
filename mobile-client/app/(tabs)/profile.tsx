@@ -1,7 +1,7 @@
-import React, {useMemo, useState} from "react";
+import React, {useCallback, useMemo, useState} from "react";
 import {View, Text, Pressable, ActivityIndicator, Animated} from "react-native";
 import {SafeAreaView} from "react-native-safe-area-context";
-import {useRouter} from "expo-router";
+import {useFocusEffect, useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
 
 import Avatar from "@/components/profile/Avatar";
@@ -15,7 +15,8 @@ import {budgetLabel, displayName, hasHomeArea} from "@/src/lib/profile";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {groupItineraries} from "@/src/lib/dates";
 import {PastDateCard, UpNextCard} from "@/components/dates/DateCards";
-import {MyIdeaRow, SavedIdeaRow} from "@/components/ideas/IdeaRows";
+import {MyIdeaRow} from "@/components/ideas/IdeaRows";
+import BucketList from "@/components/ideas/BucketList";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {showIdeaActions} from "@/src/lib/ideaActions";
@@ -138,6 +139,8 @@ export default function ProfileScreen() {
   const header = useTabHeader();
   const reloadDates = useItineraryStore((s) => s.reload);
   const savedItems = useSavedStore((s) => s.items);
+  // Your partner's shared saves count too (#35)
+  const partnerSaves = useSavedStore((s) => s.partnerItems.length);
   const toggleSaved = useSavedStore((s) => s.toggle);
   const reloadSaved = useSavedStore((s) => s.reload);
   const myIdeas = useMyIdeasStore((s) => s.ideas);
@@ -145,6 +148,12 @@ export default function ProfileScreen() {
     (idea) => idea.visibility === "NEEDS_REVISION" || idea.visibility === "REJECTED",
   ).length;
   const reloadMyIdeas = useMyIdeasStore((s) => s.reload);
+  // Coming back to Profile: your partner's newly shared saves (#35)
+  useFocusEffect(
+    useCallback(() => {
+      reloadSaved();
+    }, [reloadSaved]),
+  );
   const refresh = useTabRefresh(() =>
     Promise.all([reload(), reloadDates(), reloadSaved(), reloadMyIdeas()]),
   );
@@ -367,12 +376,8 @@ export default function ProfileScreen() {
               <PastDateCard key={itinerary.itinerary_id} itinerary={itinerary} />
             ))}
           </View>
-        ) : activeTab === "bucket" && savedIdeas.length > 0 ? (
-          <View className="gap-3">
-            {savedIdeas.map((idea) => (
-              <SavedIdeaRow key={idea.idea_id} idea={idea} />
-            ))}
-          </View>
+        ) : activeTab === "bucket" && (savedIdeas.length > 0 || partnerSaves > 0) ? (
+          <BucketList />
         ) : activeTab === "ideas" && myIdeas.length > 0 ? (
           <View className="gap-6">
             {/* NEEDS YOUR ATTENTION: highlighted, grouped by verdict */}

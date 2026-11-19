@@ -29,6 +29,8 @@ interface ItineraryState {
   itineraries: Itinerary[];
   /** Dates you're invited to and haven't answered (#36) */
   invites: Itinerary[];
+  /** Your partner's dates, view only (#35): you're not on them, they're not surprises */
+  partnerDates: Itinerary[];
   status: Status;
   error: string | null;
 
@@ -56,6 +58,8 @@ interface ItineraryState {
   skipStop: (itineraryId: number, point: ReplanPoint, ideaId: number) => Promise<void>;
   rename: (itineraryId: number, title: string) => Promise<void>;
   remove: (itineraryId: number) => Promise<void>;
+  /** Mark a date a surprise for your partner, or not (#35). Throws a readable Error. */
+  setSurprise: (itineraryId: number, surprise: boolean) => Promise<void>;
   /** Accept or decline an invite to a date (#36). Throws a readable Error. */
   respondToInvite: (itineraryId: number, accept: boolean) => Promise<void>;
   clear: () => void;
@@ -67,7 +71,7 @@ export const canEditDate = (i: Pick<Itinerary, "my_role"> | null | undefined) =>
 
 const SELECT = `
   itinerary_id, title, starts_at, ends_at, status, prefs_snapshot, created_at,
-  created_by, default_role,
+  created_by, default_role, is_surprise,
   itinerary_users ( user_id, role, invite_status, users ( username, profile_image_url ) ),
   itinerary_comments ( count ),
   itinerary_activities (
@@ -128,6 +132,7 @@ function sharing(row: any, me: string | null) {
     }));
   return {
     created_by: row.created_by ?? null,
+    is_surprise: !!row.is_surprise,
     my_role: mine ? roleOf(mine) : null,
     my_status: (mine?.invite_status ?? null) as InviteStatus | null,
     people,
@@ -154,6 +159,7 @@ const initialState = {
   userId: null,
   itineraries: [] as Itinerary[],
   invites: [] as Itinerary[],
+  partnerDates: [] as Itinerary[],
   status: "idle" as Status,
   error: null,
 };
@@ -195,6 +201,8 @@ export const useItineraryStore = create<ItineraryState>((set, get) => {
       set({
         itineraries: all.filter((i) => i.my_status === "ACCEPTED"),
         invites: all.filter((i) => i.my_status === "PENDING"),
+        // Not on it at all: your partner's (the database only shows you those)
+        partnerDates: all.filter((i) => i.my_status === null),
         status: "ready",
       });
 
@@ -359,6 +367,19 @@ export const useItineraryStore = create<ItineraryState>((set, get) => {
       const live = useActiveDateStore.getState();
       if (live.itineraryId === itineraryId) live.replaceTimeline(timeline, snapshot);
       await get().reload();
+    },
+
+    setSurprise: async (itineraryId, surprise) => {
+      const {error} = await supabase
+        .from("itineraries")
+        .update({is_surprise: surprise})
+        .eq("itinerary_id", itineraryId);
+      if (error) throw new Error(friendlyError(error));
+      set({
+        itineraries: get().itineraries.map((i) =>
+          i.itinerary_id === itineraryId ? {...i, is_surprise: surprise} : i,
+        ),
+      });
     },
 
     respondToInvite: async (itineraryId, accept) => {

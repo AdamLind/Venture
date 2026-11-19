@@ -1,6 +1,8 @@
 // components/ideas/SaveButton.tsx
 // Bookmark toggle for an idea. Reads and writes the Bucket List store, so
-// every card showing the same idea stays in sync.
+// every card showing the same idea stays in sync. With a partner (#35): a
+// new save is shared with them (the toast offers "keep private"), and a
+// long press saves privately, or switches a save between shared and private.
 
 import React from "react";
 import {Pressable, View, StyleSheet} from "react-native";
@@ -11,8 +13,13 @@ import Toast from "react-native-toast-message";
 import GlassSurface from "@/components/ui/GlassSurface";
 
 import {useSavedStore} from "@/src/store/useSavedStore";
+import {useSaveTipStore} from "@/src/store/useSaveTipStore";
+import {usePartner} from "@/src/store/useConnectionsStore";
 
 export const SAVED_COLOR = "#FF9D0A";
+/** A private save (with a partner, #35): a light bookmark with a lock */
+export const PRIVATE_SAVED_COLOR = "#e4e4e7";
+const LOCK_COLOR = "#f472b6";
 
 export default function SaveButton({
   ideaId,
@@ -30,6 +37,31 @@ export default function SaveButton({
 }) {
   const saved = useSavedStore((s) => s.ids.has(ideaId));
   const toggle = useSavedStore((s) => s.toggle);
+  const partner = usePartner();
+  const partnerName = partner ? `@${partner.username}` : null;
+  // Only different with a partner (otherwise everything's just yours)
+  const savedPrivately = useSavedStore((s) => s.privateIds.has(ideaId)) && !!partnerName;
+
+  /** Say who sees it, with a one-tap way to switch */
+  const announce = (shared: boolean) => {
+    if (!partnerName) return;
+    Toast.show({
+      type: "success",
+      text1: shared ? `Saved · shared with ${partnerName}` : "Saved privately",
+      text2: shared ? "Tap to keep it private" : `${partnerName} won't see it`,
+      position: "bottom",
+      onPress: shared
+        ? () => {
+            Toast.hide();
+            useSavedStore
+              .getState()
+              .setShared(ideaId, false)
+              .then(() => Toast.show({type: "success", text1: "Kept private", position: "bottom"}))
+              .catch(() => {});
+          }
+        : undefined,
+    });
+  };
 
   const onPress = async () => {
     if (process.env.EXPO_OS === "ios") {
@@ -38,7 +70,12 @@ export default function SaveButton({
       );
     }
     try {
-      await toggle(ideaId);
+      const nowSaved = await toggle(ideaId);
+      if (nowSaved) {
+        // The first save with a partner: how tap and long-press differ
+        if (partnerName && (await useSaveTipStore.getState().showOnce(ideaId))) return;
+        announce(true);
+      }
     } catch (e) {
       Toast.show({
         type: "error",
@@ -49,20 +86,74 @@ export default function SaveButton({
     }
   };
 
+  // Long press (with a partner): save privately, or switch shared / private
+  const onLongPress = async () => {
+    if (!partnerName) return;
+    if (process.env.EXPO_OS === "ios") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    const store = useSavedStore.getState();
+    try {
+      if (!saved) {
+        await store.toggle(ideaId, {shared: false});
+        announce(false);
+        return;
+      }
+      const shared = store.items.find((i) => i.activity_id === ideaId)?.shared ?? false;
+      await store.setShared(ideaId, !shared);
+      Toast.show({
+        type: "success",
+        text1: shared ? "Kept private" : `Shared with ${partnerName}`,
+        position: "bottom",
+      });
+    } catch (e) {
+      Toast.show({
+        type: "error",
+        text1: "Couldn't change that",
+        text2: e instanceof Error ? e.message : undefined,
+        position: "bottom",
+      });
+    }
+  };
+
+  const iconSize = Math.round(size * 0.5);
+  // Whole pixels, so the lock sits dead centre in its circle
+  const lockBox = Math.round(iconSize * 0.62);
+  const lockIcon = Math.round(lockBox * 0.62);
   const icon = (
-    <Ionicons
-      name={saved ? "bookmark" : "bookmark-outline"}
-      size={Math.round(size * 0.5)}
-      color={saved ? SAVED_COLOR : "white"}
-    />
+    <View>
+      <Ionicons
+        name={saved ? "bookmark" : "bookmark-outline"}
+        size={iconSize}
+        color={saved ? (savedPrivately ? PRIVATE_SAVED_COLOR : SAVED_COLOR) : "white"}
+      />
+      {/* Private: a small lock on the bookmark's corner */}
+      {saved && savedPrivately && (
+        <View style={[styles.lock, {width: lockBox, height: lockBox, borderRadius: lockBox / 2}]}>
+          <Ionicons
+            name="lock-closed"
+            size={lockIcon}
+            color="white"
+            // The icon font's line box sits the glyph low: pin it to a square
+            style={{width: lockIcon, height: lockIcon, lineHeight: lockIcon, textAlign: "center"}}
+          />
+        </View>
+      )}
+    </View>
   );
 
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={partnerName ? onLongPress : undefined}
       hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel={saved ? "Remove from bucket list" : "Save to bucket list"}
+      accessibilityLabel={
+        saved
+          ? savedPrivately
+            ? "Saved privately. Remove from bucket list"
+            : "Remove from bucket list"
+          : "Save to bucket list"
+      }
+      accessibilityHint={partnerName ? "Press and hold to save privately, or switch shared and private" : undefined}
       accessibilityState={{selected: saved}}
       className="active:opacity-70"
     >
@@ -90,6 +181,14 @@ export default function SaveButton({
 
 const styles = StyleSheet.create({
   center: {alignItems: "center", justifyContent: "center"},
+  lock: {
+    position: "absolute",
+    right: -5,
+    bottom: -3,
+    backgroundColor: LOCK_COLOR,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   overlay: {
     alignItems: "center",
     justifyContent: "center",

@@ -151,9 +151,18 @@ export function UpcomingDateCard({itinerary}: {itinerary: Itinerary}) {
             </Text>
           </View>
         </View>
-        <Text className="text-zinc-300 font-bold text-sm bg-zinc-700/50 px-2 py-1 rounded-md overflow-hidden">
-          {countdownLabel(start)}
-        </Text>
+        <View className="flex-row items-center gap-1.5">
+          {/* Yours, hidden from your partner (#35) */}
+          {itinerary.is_surprise && itinerary.my_role === "OWNER" && (
+            <View className="flex-row items-center gap-1 bg-pink-500/15 px-2 py-1 rounded-md">
+              <Ionicons name="gift" size={12} color="#f472b6" />
+              <Text className="text-pink-300 font-bold text-xs">Surprise</Text>
+            </View>
+          )}
+          <Text className="text-zinc-300 font-bold text-sm bg-zinc-700/50 px-2 py-1 rounded-md overflow-hidden">
+            {countdownLabel(start)}
+          </Text>
+        </View>
       </View>
 
       {/* Image + details */}

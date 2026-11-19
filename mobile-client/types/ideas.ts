@@ -27,6 +27,8 @@ export interface IdeaSummary {
 export interface SavedIdea {
   activity_id: number;
   saved_at: string;
+  /** Shared with your partner (#35), or private */
+  shared: boolean;
   /** null when the idea was unpublished or deleted since you saved it */
   idea: IdeaSummary | null;
 }

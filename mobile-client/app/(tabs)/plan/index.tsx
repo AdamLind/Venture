@@ -27,6 +27,8 @@ import {usePrefsStore} from "@/src/store/usePrefsStore";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
+import {usePartner} from "@/src/store/useConnectionsStore";
+import SurpriseRow from "@/components/dates/SurpriseRow";
 import {ideaDuration} from "@/src/lib/ideas";
 import {bestTimeLabel, isGoodTime, nextGoodStart} from "@/src/lib/timeOfDay";
 import TabHeader, {useTabHeader, useTabRefresh} from "@/components/ui/TabHeader";
@@ -89,6 +91,9 @@ export default function PlanScreen() {
 
   // --- LOCAL FORM STATE ---
   const [socialType, setSocialType] = useState("Date");
+  // A surprise for your partner (#35): the date is hidden from them
+  const [surprise, setSurprise] = useState(false);
+  const partner = usePartner();
   const [modality, setModality] = useState<ActivityLocation>(defaultModality);
   const [location, setLocation] = useState<SimpleLocation | null>(null);
 
@@ -171,6 +176,7 @@ export default function PlanScreen() {
   const resetLocalForm = () => {
     const roundedNow = getRoundedDate(new Date());
     setSocialType("Date");
+    setSurprise(false);
     setModality(defaultModality);
     setLocation(null);
     setStartDate(roundedNow);
@@ -331,6 +337,7 @@ export default function PlanScreen() {
       budget: finalBudget,
       vibes: selectedTags,
       headCount: computedHeadCount,
+      surprise: !!partner && surprise,
     });
 
     resetLocalForm();
@@ -467,6 +474,7 @@ export default function PlanScreen() {
           {/* --- WHO --- */}
           <Section icon="people-outline" title="Who's coming">
             <SocialSelector type={socialType} setType={setSocialType} />
+            {partner && <SurpriseRow partnerName={partner.username} value={surprise} onChange={setSurprise} />}
           </Section>
 
           {/* --- WHERE --- */}
