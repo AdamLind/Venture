@@ -7,7 +7,8 @@ import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
 import {AUTO_COMPLETE_AFTER_MS, buildTimeline, placedStops} from "@/src/lib/dates";
 import {applyReplan, type DatePrefs, type ReplanPoint} from "@/utils/replan";
-import type {PlacedActivity} from "@/utils/timeline";
+import {type PlacedActivity, deriveSequentialTimeline} from "@/utils/timeline";
+import {endOfTimeline} from "@/utils/editDate";
 import {parseCoordinates} from "@/utils/itineraryEngine";
 import {useActiveDateStore} from "@/src/store/activeDateStore";
 import type {
@@ -58,6 +59,12 @@ interface ItineraryState {
   skipStop: (itineraryId: number, point: ReplanPoint, ideaId: number) => Promise<void>;
   rename: (itineraryId: number, title: string) => Promise<void>;
   remove: (itineraryId: number) => Promise<void>;
+  /**
+   * A planned date's stops after an edit (#36): in order, each an existing
+   * stop (stopId) or a new idea. Laid out again with the date's prefs and
+   * saved; stops left out are removed. Throws a readable Error.
+   */
+  editStops: (itineraryId: number, stops: {stopId?: number; placed: PlacedActivity}[]) => Promise<void>;
   /** Mark a date a surprise for your partner, or not (#35). Throws a readable Error. */
   setSurprise: (itineraryId: number, surprise: boolean) => Promise<void>;
   /** Accept or decline an invite to a date (#36). Throws a readable Error. */
@@ -366,6 +373,30 @@ export const useItineraryStore = create<ItineraryState>((set, get) => {
       const snapshot: DatePrefs = {...prefs, replans};
       const live = useActiveDateStore.getState();
       if (live.itineraryId === itineraryId) live.replaceTimeline(timeline, snapshot);
+      await get().reload();
+    },
+
+    editStops: async (itineraryId, stops) => {
+      const itinerary = get().itineraries.find((i) => i.itinerary_id === itineraryId);
+      if (!itinerary?.prefs_snapshot) throw new Error("This date can't be edited.");
+      if (stops.length === 0) throw new Error("A date needs at least one stop. Delete the date instead.");
+      const prefs = itinerary.prefs_snapshot as DatePrefs;
+
+      // The builder's timeline for the new stops: their times, and the end
+      const timeline = deriveSequentialTimeline(stops.map((s) => s.placed), prefs);
+      const slots = timeline.filter((slot) => slot.activity);
+      const payload = stops.map((s, i) => ({
+        ...(s.stopId != null ? {stop_id: s.stopId} : {activity_id: s.placed.activity.idea_id}),
+        starts_at: new Date(slots[i].startTime).toISOString(),
+        ends_at: new Date(slots[i].endTime).toISOString(),
+      }));
+
+      const {error} = await supabase.rpc("edit_itinerary_stops", {
+        p_itinerary_id: itineraryId,
+        p_stops: payload,
+        p_ends_at: new Date(endOfTimeline(timeline)).toISOString(),
+      });
+      if (error) throw new Error(error.message || friendlyError(error));
       await get().reload();
     },
 

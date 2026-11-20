@@ -3,7 +3,7 @@
 // rename / delete. What you can do depends on your role: the owner and
 // editors change it; commenters comment; an invite waits for your answer.
 
-import React, {useCallback, useRef, useState} from "react";
+import React, {useCallback, useMemo, useRef, useState} from "react";
 import {sizedImage} from "@/src/lib/images";
 import {
   View,
@@ -42,11 +42,27 @@ import {
   coverImage,
   formatTimeOfDay,
   formatWhen,
+  buildTimeline,
+  placedStops,
   stopCountLabel,
 } from "@/src/lib/dates";
 import type {ItineraryStatus} from "@/types/dates";
+import Toast from "react-native-toast-message";
+import ReplaceSheet from "@/components/dates/ReplaceSheet";
+import {
+  checkEdit,
+  clashMessage,
+  clashWith,
+  endOfTimeline,
+  startOfTimeline,
+  type Replacement,
+} from "@/utils/editDate";
+import {evaluatePlan, warningsByStop, type PlanIssue} from "@/utils/planEvaluator";
+import {smartOrderSummary} from "@/utils/smartOrder";
+import type {PlacedActivity} from "@/utils/timeline";
+import type {UserPrefs} from "@/src/store/usePrefsStore";
 
-type Busy = null | "start" | "end" | "delete" | "rename" | "accept" | "decline" | "leave";
+type Busy = null | "start" | "end" | "delete" | "rename" | "accept" | "decline" | "leave" | "edit";
 
 const STATUS_BADGE: Record<
   ItineraryStatus,
@@ -88,6 +104,36 @@ export default function ItineraryDetailScreen() {
       s.partnerDates.find((i) => i.itinerary_id === itineraryId),
   );
   const setSurprise = useItineraryStore((s) => s.setSurprise);
+  const editStops = useItineraryStore((s) => s.editStops);
+  // Your other dates, to catch one running into another
+  const myDates = useItineraryStore((s) => s.itineraries);
+
+  // ─── What's off with the plan (the builder's checks), before it starts ───
+  // A stop that's closed when you'd get there, the date running late, …
+  // shown on the stops; and the date running into another of yours
+  const planCheck = useMemo(() => {
+    if (!itinerary?.prefs_snapshot || itinerary.status !== "PLANNED") return null;
+    const timeline = buildTimeline(itinerary);
+    if (!timeline) return null;
+    const evaluation = evaluatePlan(
+      placedStops(itinerary).map((s) => s.placed),
+      itinerary.prefs_snapshot as UserPrefs,
+      timeline,
+    );
+    const clash = clashWith(
+      itinerary.itinerary_id,
+      new Date(itinerary.starts_at).getTime(),
+      new Date(itinerary.ends_at).getTime(),
+      myDates,
+    );
+    return {
+      byStop: warningsByStop(evaluation),
+      notes: [
+        ...(clash ? [clashMessage(clash)] : []),
+        ...evaluation.issues.filter((i) => i.stopId == null).map((i) => i.message),
+      ],
+    };
+  }, [itinerary, myDates]);
   const partner = usePartner();
   const respondToInvite = useItineraryStore((s) => s.respondToInvite);
   const reloadDates = useItineraryStore((s) => s.reload);
@@ -99,6 +145,9 @@ export default function ItineraryDetailScreen() {
   const remove = useItineraryStore((s) => s.remove);
 
   const [busy, setBusy] = useState<Busy>(null);
+  // Editing the stops (#36): Replace / Remove under each, and the sheet
+  const [editing, setEditing] = useState(false);
+  const [replacing, setReplacing] = useState<number | null>(null);
   // Comment boxes are low on the page: scroll them above the keyboard
   const {scrollRef, onScroll: trackScroll, reveal: revealInput} = useRevealAboveKeyboard();
   const [editingTitle, setEditingTitle] = useState(false);
@@ -254,6 +303,87 @@ export default function ItineraryDetailScreen() {
   // The owner can hide it from their partner, unless they're on it already
   const partnerOnIt = !!partner && (members ?? []).some((m) => m.user_id === partner.user_id);
   const canSurprise = isOwner && !!partner && !partnerOnIt && itinerary.status !== "COMPLETED";
+  // ─── Editing the stops (#36) ──────────────────────────────────────────────
+  // Before it starts, the owner and editors can replace or remove a stop;
+  // the rest is laid out again with the date's own prefs
+  const canEditStops = canEdit && itinerary.status === "PLANNED" && !!itinerary.prefs_snapshot;
+  type Entry = {stopId?: number; placed: PlacedActivity};
+  const entriesNow = (): Entry[] => placedStops(itinerary);
+
+  /** Save a change, first saying what it'd break (and offering a reorder that fixes it) */
+  const applyEdit = (entries: Entry[], done: string) => {
+    const prefs = itinerary.prefs_snapshot as UserPrefs;
+    const check = checkEdit(entries.map((e) => e.placed), prefs);
+    // Running longer could run into another of your dates
+    const clash = clashWith(itineraryId, startOfTimeline(check.timeline), endOfTimeline(check.timeline), myDates);
+    if (clash) {
+      check.problems.unshift({
+        kind: "PAST_END",
+        severity: "hard",
+        stopId: null,
+        relatedIds: [],
+        message: clashMessage(clash),
+        penalty: 0,
+      } as PlanIssue);
+    }
+    const save = (list: Entry[]) =>
+      run("edit", async () => {
+        await editStops(itineraryId, list);
+        Toast.show({type: "success", text1: done, position: "bottom"});
+      });
+    if (check.problems.length === 0) {
+      save(entries);
+      return;
+    }
+    const what = check.problems
+      .slice(0, 2)
+      .map((p) => `• ${p.message}`)
+      .join("\n");
+    if (check.reorder) {
+      const byIdea = new Map(entries.map((e) => [e.placed.activity.idea_id, e]));
+      const reordered = check.reorder.order.map((p) => byIdea.get(p.activity.idea_id)!);
+      Alert.alert(
+        "This causes a problem",
+        `${what}\n\n${smartOrderSummary(check.reorder) ?? "A new order fixes it"}.`,
+        [
+          {text: "Cancel", style: "cancel"},
+          {text: "Keep this order", onPress: () => save(entries)},
+          {text: "Reorder", onPress: () => save(reordered)},
+        ],
+      );
+    } else {
+      Alert.alert("Heads up", what, [
+        {text: "Cancel", style: "cancel"},
+        {text: "Save anyway", onPress: () => save(entries)},
+      ]);
+    }
+  };
+
+  const removeStop = (i: number) => {
+    const entries = entriesNow();
+    const title = entries[i]?.placed.activity.title ?? "this stop";
+    if (entries.length <= 1) {
+      Alert.alert("This is the only stop", "A date needs at least one stop. Replace it, or delete the date.");
+      return;
+    }
+    Alert.alert(`Remove ${title}?`, "The rest of the date moves up to fill the time.", [
+      {text: "Cancel", style: "cancel"},
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => applyEdit(entries.filter((_, j) => j !== i), `Removed ${title}`),
+      },
+    ]);
+  };
+
+  const replaceStop = (i: number, replacement: Replacement) => {
+    setReplacing(null);
+    const entries = entriesNow();
+    const before = entries[i]?.placed.activity.title ?? "it";
+    const next = entries.map((e, j) => (j === i ? {placed: {activity: replacement}} : e));
+    applyEdit(next, `Swapped ${before} for ${replacement.title}`);
+  };
+
   const toggleSurprise = (on: boolean) =>
     run(null, async () => {
       await setSurprise(itineraryId, on);
@@ -410,9 +540,50 @@ export default function ItineraryDetailScreen() {
           {formatWhen(itinerary.starts_at)} • {stopCountLabel(itinerary)}
         </Text>
 
+        {/* --- HEADS UP: the whole date (running late, into another date, …) --- */}
+        {planCheck && planCheck.notes.length > 0 && (
+          <View className="mt-6 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 gap-1.5">
+            <View className="flex-row items-center gap-1.5">
+              <Ionicons name="alert-circle" size={15} color="#fbbf24" />
+              <Text className="text-amber-200 font-bold text-sm">Heads up</Text>
+            </View>
+            {planCheck.notes.map((note) => (
+              <Text key={note} className="text-amber-100/80 text-sm">
+                {note}
+              </Text>
+            ))}
+            {canEditStops && (
+              <Text className="text-amber-100/50 text-xs mt-0.5">Tap Edit to replace or remove a stop.</Text>
+            )}
+          </View>
+        )}
+
         {/* --- STOPS: tap one for its idea page; the bubble opens its comments --- */}
-        <View className="mt-6 gap-3">
+        {canEditStops && (
+          <View className="flex-row items-center justify-between mt-6 px-1">
+            <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Stops</Text>
+            <Pressable
+              onPress={() => setEditing((e) => !e)}
+              disabled={busy === "edit"}
+              hitSlop={8}
+              accessibilityRole="button"
+              className="flex-row items-center gap-1 active:opacity-60"
+            >
+              {busy === "edit" ? (
+                <ActivityIndicator color="#60a5fa" size="small" />
+              ) : (
+                <>
+                  <Ionicons name={editing ? "checkmark" : "create-outline"} size={15} color="#60a5fa" />
+                  <Text className="text-blue-400 font-semibold text-sm">{editing ? "Done" : "Edit"}</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        )}
+        <View className={`${canEditStops ? "mt-2" : "mt-6"} gap-3`}>
           {itinerary.stops.map((stop, index) => {
+            // Its place among the stops you can see (what editing works on)
+            const visibleIndex = itinerary.stops.slice(0, index).filter((s) => s.activity).length;
             const thread = threadOf(stop.stop_id);
             const unseen = hasUnseen(stop.stop_id);
             const open = openThreads.has(stop.stop_id);
@@ -426,7 +597,7 @@ export default function ItineraryDetailScreen() {
               disabled={!stop.activity}
               accessibilityRole="button"
               className={`flex-row items-center bg-zinc-900 border border-zinc-800 p-3 active:opacity-80 ${
-                open ? "rounded-t-2xl border-b-0" : "rounded-2xl"
+                open && !editing ? "rounded-t-2xl border-b-0" : "rounded-2xl"
               }`}
             >
               <View className="w-8 h-8 rounded-full bg-zinc-800 items-center justify-center mr-3">
@@ -455,6 +626,23 @@ export default function ItineraryDetailScreen() {
                         .filter(Boolean)
                         .join(" • ")}
                     </Text>
+                    {/* What's off at this stop (the builder's check), e.g. closed then */}
+                    {(() => {
+                      const warning = planCheck?.byStop.get(stop.activity.idea_id);
+                      if (!warning) return null;
+                      const hard = warning.severity === "hard";
+                      return (
+                        <View className="flex-row items-center gap-1 mt-0.5">
+                          <Ionicons name="alert-circle-outline" size={12} color={hard ? "#fb923c" : "#fbbf24"} />
+                          <Text
+                            className={`text-xs font-semibold shrink ${hard ? "text-orange-400" : "text-amber-300"}`}
+                            numberOfLines={2}
+                          >
+                            {warning.message}
+                          </Text>
+                        </View>
+                      );
+                    })()}
                   </>
                 ) : (
                   <Text className="text-zinc-500 italic">
@@ -463,7 +651,7 @@ export default function ItineraryDetailScreen() {
                 )}
               </View>
               {/* Its comments: the count, lit up when there's something new */}
-              {showComments && (
+              {showComments && !editing && (
                 <Pressable
                   onPress={() => toggleThread(stop.stop_id)}
                   hitSlop={8}
@@ -488,7 +676,32 @@ export default function ItineraryDetailScreen() {
                 </Pressable>
               )}
             </Pressable>
-            {open && (
+            {/* Editing: replace or remove this stop */}
+            {editing && stop.activity && (
+              <View className="flex-row gap-2 mt-2">
+                <Pressable
+                  onPress={() => setReplacing(visibleIndex)}
+                  disabled={busy !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Replace ${stop.activity.title}`}
+                  className="flex-1 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex-row items-center justify-center gap-1.5 active:opacity-80"
+                >
+                  <Ionicons name="swap-horizontal" size={16} color="#60a5fa" />
+                  <Text className="text-blue-400 font-bold text-sm">Replace</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => removeStop(visibleIndex)}
+                  disabled={busy !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${stop.activity.title}`}
+                  className="flex-1 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex-row items-center justify-center gap-1.5 active:opacity-80"
+                >
+                  <Ionicons name="trash-outline" size={15} color="#f87171" />
+                  <Text className="text-red-400 font-bold text-sm">Remove</Text>
+                </Pressable>
+              </View>
+            )}
+            {open && !editing && (
               <View className="bg-zinc-900/60 border border-zinc-800 border-t-zinc-800/60 rounded-b-2xl overflow-hidden">
                 <CommentThread
                   itineraryId={itineraryId}
@@ -627,6 +840,12 @@ export default function ItineraryDetailScreen() {
           ) : null}
         </View>
       </ScrollView>
+      <ReplaceSheet
+        itinerary={itinerary}
+        index={replacing}
+        onClose={() => setReplacing(null)}
+        onPick={(replacement) => replacing != null && replaceStop(replacing, replacement)}
+      />
     </SafeAreaView>
   );
 }
