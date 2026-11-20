@@ -64,6 +64,11 @@ export const PENALTY = {
   // opening a little late or closing a little early is a nudge
   closed: 80, // hard
   partClosed: 25,
+  // The date's arc: it warms up, then winds down. A lively stop (climbing,
+  // a sweaty class) after a calm, close one (stargazing, a spa) breaks the
+  // mood, and the end is what a date is remembered by. Below the rules about
+  // hours and meals, so it decides the order when those don't
+  windsBackUp: 15,
 };
 
 export const LIMITS = {
@@ -79,7 +84,7 @@ export const LIMITS = {
 };
 
 /** Hours (local) when a meal is unremarkable. */
-const MEAL_WINDOWS = [
+export const MEAL_WINDOWS = [
   {from: 7, to: 10.5},
   {from: 11, to: 14.5},
   {from: 17, to: 21.5},
@@ -99,6 +104,7 @@ export type PlanIssueKind =
   | "ODD_MEAL_TIME"
   | "TREAT_BEFORE_MEAL"
   | "SHORTENED"
+  | "WINDS_BACK_UP"
   | "BACKTRACK"
   // Opening hours (utils/openingHours.ts)
   | "CLOSED"
@@ -123,6 +129,8 @@ export type PlanIssue = {
 
 export type PlanEvaluation = {
   score: number;
+  /** Everything taken off (score is 100 minus this, rounded) */
+  penalties: number;
   /** Most serious first */
   issues: PlanIssue[];
   timeline: TimeSlot[];
@@ -244,6 +252,31 @@ const hourOf = (ms: number) => {
 
 const SEVERITY_ORDER = {hard: 0, soft: 1};
 
+/** Tags that make an idea calm and close (src/constants/tags.ts) */
+const CALM_TAGS = ["intimate", "quiet", "spa", "views"];
+/** Tags that make it lively (games only rule out calm: board games aren't a workout) */
+const LIVELY_TAGS = ["sweat"];
+const PLAYFUL_TAGS = ["games"];
+
+/**
+ * An idea's energy, for the date's arc: LIVELY (active, a sweat, or marked
+ * strenuous), CALM (intimate, quiet, a spa, a view, and not a game or a
+ * workout), else NEUTRAL (meals, shows, most things). From the tags for now;
+ * the tag rework (#20) should make it something every idea answers.
+ */
+export function energyOf(activity: any): "LIVELY" | "CALM" | "NEUTRAL" {
+  const tags: string[] = Array.isArray(activity?.tags) ? activity.tags : [];
+  const risks: string[] = Array.isArray(activity?.risk_labels) ? activity.risk_labels : [];
+  if (
+    activity?.activity_type === "ACTIVE" ||
+    tags.some((t) => LIVELY_TAGS.includes(t)) ||
+    risks.includes("STRENUOUS")
+  )
+    return "LIVELY";
+  if (tags.some((t) => CALM_TAGS.includes(t)) && !tags.some((t) => PLAYFUL_TAGS.includes(t))) return "CALM";
+  return "NEUTRAL";
+}
+
 // ─── The evaluator ─────────────────────────────────────────────────────────────
 
 /**
@@ -353,6 +386,24 @@ export function evaluatePlan(
           relatedIds: [idOf(stops[i - 1])],
           message: "Hard to be active right after eating",
           penalty: PENALTY.activeAfterMeal,
+        });
+      }
+    }
+
+    // The arc: a lively stop after a calm one (anywhere before it) winds the date back up
+    if (energyOf(activity) === "LIVELY") {
+      const calm = stops
+        .slice(0, i)
+        .reverse()
+        .find((s) => energyOf(s.activity) === "CALM");
+      if (calm) {
+        add({
+          kind: "WINDS_BACK_UP",
+          severity: "soft",
+          stopId: id,
+          relatedIds: [idOf(calm)],
+          message: `Better before ${calm.activity!.title}`,
+          penalty: PENALTY.windsBackUp,
         });
       }
     }
@@ -481,12 +532,13 @@ export function evaluatePlan(
   const rulePenalties = issues
     .filter((issue) => issue.kind !== "BACKTRACK")
     .reduce((sum, issue) => sum + issue.penalty, 0);
-  const score = Math.round(100 - rulePenalties - backtrackPenalty);
+  const penalties = rulePenalties + backtrackPenalty;
+  const score = Math.round(100 - penalties);
 
   issues.sort(
     (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || b.penalty - a.penalty,
   );
-  return {score, issues, timeline, routeMiles, backtrackMiles};
+  return {score, penalties, issues, timeline, routeMiles, backtrackMiles};
 }
 
 /** The most serious issue per stop, for showing one line on each stop card. */

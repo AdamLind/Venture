@@ -105,6 +105,24 @@ export function groupItineraries(itineraries: Itinerary[], now = Date.now()) {
   return {active, upcoming, past};
 }
 
+/**
+ * When you last went to each idea: idea id → the start of the latest
+ * finished date it was on (for "Been there" on Saved).
+ */
+export function beenThereOn(itineraries: Itinerary[]): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const date of itineraries) {
+    if (date.status !== "COMPLETED") continue;
+    for (const stop of date.stops) {
+      const id = stop.activity?.idea_id;
+      if (id == null) continue;
+      const prev = map.get(id);
+      if (!prev || date.starts_at > prev) map.set(id, date.starts_at);
+    }
+  }
+  return map;
+}
+
 /** The stop happening now (if any) and the next one, by scheduled time. */
 export function stopProgress(itinerary: Itinerary, now = Date.now()) {
   const stops = liveStops(itinerary);

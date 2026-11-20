@@ -38,7 +38,7 @@ export default function SaveTip() {
       <Pressable onPress={close} className="flex-1 bg-black/70 items-center justify-center px-6">
         <Pressable className="w-full bg-zinc-900 border border-zinc-800 rounded-[28px] p-6 gap-5" onPress={() => {}}>
           <View className="gap-1">
-            <Text className="text-white font-extrabold text-xl">Saved to your Bucket List</Text>
+            <Text className="text-white font-extrabold text-xl">Saved</Text>
             <Text className="text-zinc-400 text-sm">There are two ways to save:</Text>
           </View>
 

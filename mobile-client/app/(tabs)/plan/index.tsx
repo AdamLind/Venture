@@ -23,14 +23,18 @@ import {Image} from "expo-image";
 
 import {ActivityLocation} from "@/types/itinerary";
 import {SimpleLocation} from "@/types/activities";
-import {usePrefsStore} from "@/src/store/usePrefsStore";
+import {type UserPrefs, usePrefsStore} from "@/src/store/usePrefsStore";
+import {fetchActivityForPlan} from "@/utils/itineraryEngine";
+import {bestStartTime} from "@/utils/bestStart";
+import {getDateWeather, weatherLookup} from "@/src/lib/weather";
+import {homeOf} from "@/utils/timeline";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {usePartner} from "@/src/store/useConnectionsStore";
 import SurpriseRow from "@/components/dates/SurpriseRow";
 import {ideaDuration} from "@/src/lib/ideas";
-import {bestTimeLabel, isGoodTime, nextGoodStart} from "@/src/lib/timeOfDay";
+import {bestTimeLabel, nextGoodStart} from "@/src/lib/timeOfDay";
 import TabHeader, {useTabHeader, useTabRefresh} from "@/components/ui/TabHeader";
 import {
   BUDGET_TIERS,
@@ -127,25 +131,34 @@ export default function PlanScreen() {
 
   const [durationHours, setDurationHours] = useState<number | null>(4);
 
-  // "Plan a date with this" from an idea's page: show it as the first stop,
-  // and match the form to it (in or out; long enough to fit it)
-  const seed = usePlanSeedStore((state) => state.seed);
-  const setSeed = usePlanSeedStore((state) => state.setSeed);
+  // "Plan a date with this" (an idea's page) or "with these" (Saved): show
+  // them as the date's starting ideas, and match the form to them (in or
+  // out; long enough to fit them all, with time to get between them)
+  const seeds = usePlanSeedStore((state) => state.seeds);
+  const removeSeed = usePlanSeedStore((state) => state.removeSeed);
   const commitSeed = usePlanSeedStore((state) => state.commit);
-  const [appliedSeedId, setAppliedSeedId] = useState<number | null>(null);
-  if ((seed?.idea_id ?? null) !== appliedSeedId) {
+  // Which ideas (not their order: the search below puts them in the best order)
+  const seedKey = seeds
+    .map((x) => x.idea_id)
+    .sort((a, b) => a - b)
+    .join(",");
+  const [appliedSeedKey, setAppliedSeedKey] = useState("");
+  if (seedKey !== appliedSeedKey) {
     // Adjusting state during render (like startsOn above) avoids a flash
-    setAppliedSeedId(seed?.idea_id ?? null);
-    if (seed) {
+    setAppliedSeedKey(seedKey);
+    if (seeds.length) {
       setModality(
-        seed.modality === "GO_OUT" ? ActivityLocation.GoOut : ActivityLocation.StayIn,
+        seeds.some((x) => x.modality === "GO_OUT") ? ActivityLocation.GoOut : ActivityLocation.StayIn,
       );
-      const needsHours = (seed.est_duration_minutes ?? 0) / 60;
+      const needsMinutes =
+        seeds.reduce((sum, x) => sum + (x.est_duration_minutes ?? 0), 0) + 30 * (seeds.length - 1);
+      const needsHours = needsMinutes / 60;
       if (durationHours !== null && durationHours < needsHours) {
         setDurationHours([2, 4, 6].find((h) => h >= needsHours) ?? null);
       }
-      // Start when the idea is best (e.g. stargazing: the evening)
-      const goodStart = nextGoodStart(seed.time_of_day, startDate);
+      // Start when they're best (e.g. stargazing: the evening)
+      const timed = seeds.find((x) => x.time_of_day?.length);
+      const goodStart = nextGoodStart(timed?.time_of_day ?? null, startDate);
       if (goodStart.getTime() !== startDate.getTime()) {
         setStartDate(goodStart);
         setTempStartDate(goodStart);
@@ -154,10 +167,80 @@ export default function PlanScreen() {
   }
   const headCountFor = (type: string) =>
     type === "Date" ? 2 : type === "Solo" ? 1 : 4;
-  // The budget you pick is for the rest of the date, on top of this
-  const seedCost = seed ? seed.est_price_per_person * headCountFor(socialType) : 0;
-  const seedBestTime = seed ? bestTimeLabel(seed.time_of_day) : null;
-  const seedTimeOk = seed ? isGoodTime(seed.time_of_day, startDate) : true;
+  // The budget you pick is for the rest of the date, on top of these
+  const seedCost = seeds.reduce((sum, x) => sum + x.est_price_per_person * headCountFor(socialType), 0);
+
+  // The best start for the ideas you're starting with: the builder's rules
+  // over the next few days (utils/bestStart.ts). Set for you, with a note;
+  // picking a time yourself clears the note
+  // The start it picked (for the note), until you pick one yourself
+  const [timeNote, setTimeNote] = useState<Date | null>(null);
+  const [findingTime, setFindingTime] = useState(false);
+  useEffect(() => {
+    if (!seeds.length) return;
+    let active = true;
+    (async () => {
+      const hours = durationHours ?? 12;
+      const prefsNow: UserPrefs = {
+        userId: null,
+        socialType,
+        modality: modality === ActivityLocation.GoOut ? "GO_OUT" : "STAY_IN",
+        startDate: startDate.toISOString(),
+        endDate: new Date(startDate.getTime() + hours * 3_600_000).toISOString(),
+        currentLocation: location ?? homeLocation,
+        homeLocation,
+        travelDistance: defaults.default_travel_miles,
+        budget: Number.MAX_SAFE_INTEGER,
+        vibes: [],
+        headCount: headCountFor(socialType),
+      };
+      const activities = (
+        await Promise.all(seeds.map((x) => fetchActivityForPlan(x.idea_id, prefsNow)))
+      ).filter((a): a is NonNullable<typeof a> => !!a);
+      if (!active || !activities.length) return;
+      setFindingTime(true);
+      // The forecast over the days searched (no wait past a couple of
+      // seconds: without it, the search just skips the weather rules)
+      const DAYS = 3;
+      const from = new Date(startDate);
+      from.setHours(0, 0, 0, 0);
+      const weather = await Promise.race([
+        getDateWeather(homeOf(prefsNow), from.getTime(), from.getTime() + DAYS * 86_400_000 + hours * 3_600_000),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+      ]);
+      if (!active) return;
+      // Let "Finding the best time" draw before the search runs
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const best = bestStartTime({
+        activities,
+        prefs: prefsNow,
+        durationMinutes: hours * 60,
+        currentMs: startDate.getTime(),
+        nowMs: Date.now(),
+        days: DAYS,
+        weatherAt: weather ? weatherLookup(weather) : null,
+      });
+      if (!active) return;
+      setFindingTime(false);
+      // The ideas in the order that fits that time best (the builder starts from it)
+      const rank = (id: number) => best.order.indexOf(id);
+      const current = usePlanSeedStore.getState().seeds;
+      usePlanSeedStore.getState().setSeeds([...current].sort((a, b) => rank(a.idea_id) - rank(b.idea_id)));
+      if (best.changed) {
+        const start = new Date(best.startMs);
+        setStartDate(start);
+        setTempStartDate(start);
+        setTimeNote(start);
+      } else {
+        setTimeNote(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+    // The form as it is when the ideas change (not on every edit after)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedKey]);
 
   const [budgetTier, setBudgetTier] = useState<number>(
     defaultIsTier ? defaults.default_budget : 50,
@@ -239,6 +322,7 @@ export default function PlanScreen() {
       if (Platform.OS === "android") {
         setShowStartPicker(false);
         setStartDate(dateToUse);
+        setTimeNote(null);
       } else {
         setTempStartDate(dateToUse);
       }
@@ -423,51 +507,59 @@ export default function PlanScreen() {
             </View>
           )}
 
-          {/* --- STARTING WITH (from an idea's "Plan a date with this") --- */}
-          {seed && (
-            <View className="bg-zinc-900 border border-zinc-800 rounded-3xl p-3 flex-row items-center gap-3">
-              <Image
-                source={seed.image ? {uri: seed.image} : undefined}
-                style={{width: 56, height: 56, borderRadius: 16, backgroundColor: "#27272a"}}
-                contentFit="cover"
-              />
-              <View className="flex-1">
-                <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mb-0.5">
-                  Starting with
+          {/* --- STARTING WITH ("Plan a date with this / these") --- */}
+          {seeds.length > 0 && (
+            <View className="bg-zinc-900 border border-zinc-800 rounded-3xl p-3 gap-3">
+              <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest px-1">
+                {seeds.length > 1 ? `Starting with ${seeds.length} ideas` : "Starting with"}
+              </Text>
+              {seeds.map((x) => {
+                // Just when it's best: the builder judges the order and times
+                const bestTime = bestTimeLabel(x.time_of_day);
+                return (
+                  <View key={x.idea_id} className="flex-row items-center gap-3">
+                    <Image
+                      source={x.image ? {uri: x.image} : undefined}
+                      style={{width: 52, height: 52, borderRadius: 14, backgroundColor: "#27272a"}}
+                      contentFit="cover"
+                    />
+                    <View className="flex-1">
+                      <Text className="text-white font-bold text-base" numberOfLines={1}>
+                        {x.title}
+                      </Text>
+                      <Text className="text-zinc-400 text-sm" numberOfLines={1}>
+                        {[
+                          x.est_price_per_person > 0 ? `$${x.est_price_per_person}/person` : "Free",
+                          x.est_duration_minutes
+                            ? ideaDuration({est_duration_minutes: x.est_duration_minutes})
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                      {bestTime && (
+                        <Text className="text-xs mt-0.5 text-zinc-500" numberOfLines={1}>
+                          {bestTime}
+                        </Text>
+                      )}
+                    </View>
+                    <Pressable
+                      onPress={() => removeSeed(x.idea_id)}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Don't start with ${x.title}`}
+                      className="w-8 h-8 rounded-full bg-zinc-800 items-center justify-center active:opacity-70"
+                    >
+                      <Ionicons name="close" size={16} color="#a1a1aa" />
+                    </Pressable>
+                  </View>
+                );
+              })}
+              {seeds.length > 1 && (
+                <Text className="text-zinc-500 text-xs px-1">
+                  The builder puts them in the best order, then you add anything else.
                 </Text>
-                <Text className="text-white font-bold text-base" numberOfLines={1}>
-                  {seed.title}
-                </Text>
-                <Text className="text-zinc-400 text-sm" numberOfLines={1}>
-                  {[
-                    seed.est_price_per_person > 0
-                      ? `$${seed.est_price_per_person}/person`
-                      : "Free",
-                    seed.est_duration_minutes
-                      ? ideaDuration({est_duration_minutes: seed.est_duration_minutes})
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </Text>
-                {seedBestTime && (
-                  <Text
-                    className={`text-xs mt-0.5 ${seedTimeOk ? "text-zinc-500" : "text-orange-400"}`}
-                    numberOfLines={1}
-                  >
-                    {seedTimeOk ? seedBestTime : `${seedBestTime}, not at your start time`}
-                  </Text>
-                )}
-              </View>
-              <Pressable
-                onPress={() => setSeed(null)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Don't start with this idea"
-                className="w-8 h-8 rounded-full bg-zinc-800 items-center justify-center active:opacity-70"
-              >
-                <Ionicons name="close" size={16} color="#a1a1aa" />
-              </Pressable>
+              )}
             </View>
           )}
 
@@ -508,6 +600,21 @@ export default function PlanScreen() {
               </View>
               <Ionicons name="chevron-forward" size={18} color="#71717a" />
             </Pressable>
+            {/* Starting with ideas: the time that suits them best */}
+            {seeds.length > 0 && (findingTime || timeNote) && (
+              <View className="flex-row items-center gap-1.5 px-1">
+                {findingTime ? (
+                  <ActivityIndicator size="small" color="#a1a1aa" />
+                ) : (
+                  <Ionicons name="sparkles" size={13} color="#a78bfa" />
+                )}
+                <Text className="text-zinc-400 text-xs flex-1">
+                  {findingTime
+                    ? "Finding the best time for your ideas…"
+                    : `Start time set to ${formatStartDisplay(timeNote!)} for the best fit with your ideas. Change it anytime.`}
+                </Text>
+              </View>
+            )}
 
             <View className="flex-row bg-zinc-900 rounded-2xl border border-zinc-800 p-1.5">
               {[2, 4, 6, null].map((val) => {
@@ -536,7 +643,7 @@ export default function PlanScreen() {
           <Section
             icon="wallet-outline"
             title="Budget"
-            hint={seedCost > 0 ? "On top of your first stop" : "Total for the outing"}
+            hint={seedCost > 0 ? (seeds.length > 1 ? "On top of your ideas" : "On top of your first stop") : "Total for the outing"}
           >
             <View className="flex-row bg-zinc-900 rounded-2xl border border-zinc-800 p-1.5">
               {BUDGET_TIERS.map((tier) => {
@@ -585,10 +692,10 @@ export default function PlanScreen() {
                 />
               </View>
             )}
-            {seed && seedCost > 0 && (
+            {seedCost > 0 && (
               <Text className="text-zinc-500 text-xs px-1">
-                {seed.title} is ${seedCost} for {headCountFor(socialType)}. That&apos;s
-                covered, so this is for the rest of the date.
+                {seeds.length > 1 ? `Your ${seeds.length} ideas are` : `${seeds[0].title} is`} ${seedCost} for{" "}
+                {headCountFor(socialType)}. That&apos;s covered, so this is for the rest of the date.
               </Text>
             )}
           </Section>
@@ -650,6 +757,7 @@ export default function PlanScreen() {
                 <Pressable
                   onPress={() => {
                     setStartDate(tempStartDate);
+                    setTimeNote(null);
                     setShowStartPicker(false);
                   }}
                 >

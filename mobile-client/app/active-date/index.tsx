@@ -51,6 +51,7 @@ import Toast from "react-native-toast-message";
 import type {TimeSlot} from "@/types/itinerary";
 import {useActiveDateStore, useLiveTimeline} from "@/src/store/activeDateStore";
 import {canEditDate, useItineraryStore} from "@/src/store/useItineraryStore";
+import {useSavedStore} from "@/src/store/useSavedStore";
 import GlassSurface from "@/components/ui/GlassSurface";
 import {homeOf} from "@/utils/timeline";
 import {checkHours, hoursMessage} from "@/utils/openingHours";
@@ -131,6 +132,11 @@ export default function ActiveDateScreen() {
   );
 
   const [wrapping, setWrapping] = useState(false);
+  // Wrap-up: saved ideas you just did, and the ones you chose to clear off
+  const savedIds = useSavedStore((s) => s.ids);
+  const toggleSaved = useSavedStore((s) => s.toggle);
+  // Cleared off, and whether each was shared (Keep puts it back the same way)
+  const [cleared, setCleared] = useState<Map<number, boolean>>(new Map());
   const [finishing, setFinishing] = useState(false);
   // Saving "move the rest up"
   const [movingUp, setMovingUp] = useState(false);
@@ -974,6 +980,69 @@ export default function ActiveDateScreen() {
               );
             })}
           </View>
+
+          {/* On your Saved list: keep it to do again (it shows "Been there"), or clear it off */}
+          {(() => {
+            const done = visited.filter((s) => savedIds.has(idOf(s)) || cleared.has(idOf(s)));
+            if (!done.length) return null;
+            const flip = async (ideaId: number) => {
+              const removing = !cleared.has(ideaId);
+              const wasShared = removing
+                ? !useSavedStore.getState().privateIds.has(ideaId)
+                : (cleared.get(ideaId) ?? true);
+              const update = (remove: boolean) =>
+                setCleared((prev) => {
+                  const next = new Map(prev);
+                  if (remove) next.set(ideaId, wasShared);
+                  else next.delete(ideaId);
+                  return next;
+                });
+              update(removing);
+              try {
+                // Keeping it again: private stays private
+                await toggleSaved(ideaId, removing ? undefined : {shared: wasShared});
+              } catch {
+                update(!removing);
+              }
+            };
+            return (
+              <View className="gap-2">
+                <Text className="text-white font-bold text-base">On your Saved list</Text>
+                <Text className="text-zinc-400 text-sm -mt-1">
+                  Keep them to do again (they&apos;ll show Been there), or clear them off.
+                </Text>
+                {done.map((s) => {
+                  const removed = cleared.has(idOf(s));
+                  return (
+                    <View
+                      key={idOf(s)}
+                      className="flex-row items-center gap-3 bg-zinc-900/80 border border-zinc-800 rounded-2xl px-3 py-2.5"
+                    >
+                      <Ionicons
+                        name={removed ? "bookmark-outline" : "bookmark"}
+                        size={18}
+                        color={removed ? "#71717a" : "#FF9D0A"}
+                      />
+                      <Text
+                        className={`flex-1 font-semibold ${removed ? "text-zinc-500 line-through" : "text-white"}`}
+                        numberOfLines={1}
+                      >
+                        {s.activity!.title}
+                      </Text>
+                      <Pressable
+                        onPress={() => flip(idOf(s))}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        className="px-3 py-1.5 rounded-full bg-zinc-800 active:opacity-70"
+                      >
+                        <Text className="text-zinc-200 text-sm font-semibold">{removed ? "Keep" : "Remove"}</Text>
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })()}
 
           <View className="gap-3">
             <Pressable

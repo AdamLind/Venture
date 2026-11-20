@@ -16,7 +16,7 @@ import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {groupItineraries} from "@/src/lib/dates";
 import {PastDateCard, UpNextCard} from "@/components/dates/DateCards";
 import {MyIdeaRow} from "@/components/ideas/IdeaRows";
-import BucketList from "@/components/ideas/BucketList";
+import SavedList from "@/components/ideas/SavedList";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {showIdeaActions} from "@/src/lib/ideaActions";
@@ -28,7 +28,7 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 const TABS: {key: Tab; label: string}[] = [
   {key: "past", label: "Past Dates"},
-  {key: "bucket", label: "Bucket List"},
+  {key: "bucket", label: "Saved"},
   {key: "ideas", label: "My Ideas"},
 ];
 
@@ -41,8 +41,8 @@ const EMPTY_STATES: Record<Tab, {icon: IconName; title: string; body: string}> =
     },
     bucket: {
       icon: "bookmark-outline",
-      title: "Your bucket list is empty",
-      body: "Tap the bookmark on any idea in Discover to save it for later.",
+      title: "Nothing saved yet",
+      body: "Tap the bookmark on any idea in Discover to save it, whether it's a someday or a favorite.",
     },
     ideas: {
       icon: "bulb-outline",
@@ -377,7 +377,7 @@ export default function ProfileScreen() {
             ))}
           </View>
         ) : activeTab === "bucket" && (savedIdeas.length > 0 || partnerSaves > 0) ? (
-          <BucketList />
+          <SavedList />
         ) : activeTab === "ideas" && myIdeas.length > 0 ? (
           <View className="gap-6">
             {/* NEEDS YOUR ATTENTION: highlighted, grouped by verdict */}

@@ -10,7 +10,7 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 /** Columns for list rows (Bucket List, My Ideas). */
 export const IDEA_SUMMARY_COLUMNS = `
   idea_id, title, image_urls, est_price_per_person, est_duration_minutes,
-  modality, visibility, moderation_note, moderation_rules, created_at,
+  modality, visibility, moderation_note, moderation_rules, created_at, time_of_day,
   venues ( name )
 `;
 

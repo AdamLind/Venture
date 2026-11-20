@@ -149,9 +149,9 @@ export default function SaveButton({
       accessibilityLabel={
         saved
           ? savedPrivately
-            ? "Saved privately. Remove from bucket list"
-            : "Remove from bucket list"
-          : "Save to bucket list"
+            ? "Saved privately. Remove from Saved"
+            : "Remove from Saved"
+          : "Save"
       }
       accessibilityHint={partnerName ? "Press and hold to save privately, or switch shared and private" : undefined}
       accessibilityState={{selected: saved}}

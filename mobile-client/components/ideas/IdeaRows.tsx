@@ -33,6 +33,7 @@ export function SavedIdeaRow({
   label,
   labelColor,
   privacy,
+  selection,
 }: {
   idea: IdeaSummary;
   /** Who saved it, on a shared Bucket List (#35) */
@@ -40,10 +41,14 @@ export function SavedIdeaRow({
   labelColor?: string;
   /** Your save, with a partner: shared or private, and the switch */
   privacy?: {shared: boolean; onToggle: () => void};
+  /** Select mode on Saved: tap ticks it, for "Plan a date with these" */
+  selection?: {selected: boolean; onToggle: () => void};
 }) {
   return (
     <Pressable
-      onPress={() => openIdea(idea.idea_id)}
+      onPress={selection ? selection.onToggle : () => openIdea(idea.idea_id)}
+      accessibilityRole={selection ? "checkbox" : "button"}
+      accessibilityState={selection ? {checked: selection.selected} : undefined}
       className="flex-row items-center bg-zinc-900 border border-zinc-800 rounded-3xl p-3 active:opacity-80"
     >
       <Image
@@ -62,8 +67,20 @@ export function SavedIdeaRow({
           </Text>
         ) : null}
       </View>
-      {privacy && <PrivacyButton shared={privacy.shared} onToggle={privacy.onToggle} />}
-      <SaveButton ideaId={idea.idea_id} variant="plain" size={40} />
+      {selection ? (
+        <View
+          className={`w-7 h-7 mr-1.5 rounded-full border-2 items-center justify-center ${
+            selection.selected ? "bg-blue-500 border-blue-500" : "border-zinc-600"
+          }`}
+        >
+          {selection.selected && <Ionicons name="checkmark" size={17} color="white" />}
+        </View>
+      ) : (
+        <>
+          {privacy && <PrivacyButton shared={privacy.shared} onToggle={privacy.onToggle} />}
+          <SaveButton ideaId={idea.idea_id} variant="plain" size={40} />
+        </>
+      )}
     </Pressable>
   );
 }

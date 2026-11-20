@@ -32,6 +32,11 @@ const WINDOWS: Record<
 
 const ORDER = Object.keys(WINDOWS) as TimeOfDay[];
 
+/** An idea's best-time windows in hours of the day (`to` past 24 runs past midnight) */
+export function timeOfDayWindows(values: readonly string[] | null | undefined): {from: number; to: number}[] {
+  return normalizeTimeOfDay(values).map((t) => ({from: WINDOWS[t].from, to: WINDOWS[t].to}));
+}
+
 export const TIME_OF_DAY_LABEL: Record<TimeOfDay, string> = {
   EARLY_MORNING: "Early morning",
   MORNING: "Morning",

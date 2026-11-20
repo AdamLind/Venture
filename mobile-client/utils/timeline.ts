@@ -19,6 +19,8 @@ export type PlacedActivity = {
   activity: ScoredActivity;
   /** How long you plan to spend, if you changed it (else the idea's estimate) */
   durationMinutes?: number;
+  /** Minutes added past the suggestion to fit the plan better (utils/stretch.ts), until you change it */
+  stretchedBy?: number;
 };
 
 /** The idea's suggested length, on the 15-minute grid. */

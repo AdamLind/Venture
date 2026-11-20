@@ -21,6 +21,8 @@ export interface IdeaSummary {
   /** Guidelines the last review cited (#85; ids from src/lib/ideaGuidelines.ts) */
   moderation_rules?: string[] | null;
   created_at: string;
+  /** When it's best (for planning a date with it) */
+  time_of_day?: string[] | null;
   venues?: {name: string} | null;
 }
 

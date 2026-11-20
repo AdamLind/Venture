@@ -12,10 +12,13 @@
 
 import type {UserPrefs} from "@/src/store/usePrefsStore";
 import type {WeatherLookup} from "@/src/lib/weatherRules";
+import {searchOrders} from "@/utils/orderSearch";
 import type {PlacedActivity} from "./timeline";
 import {type PlanEvaluation, type PlanIssue, evaluatePlan} from "./planEvaluator";
 
-const EXACT_STOPS = 5;
+// Exact (every order, skipping ones that can't win: utils/orderSearch.ts)
+// up to this many stops; beyond, a local search
+const EXACT_STOPS = 6;
 /** A new order must beat the current one by this many points. */
 const MIN_GAIN = 3;
 /** Safety limit on improvement passes for long plans. */
@@ -54,16 +57,6 @@ const idOf = (p: PlacedActivity) => p.activity.idea_id as number;
 const sameOrder = (a: PlacedActivity[], b: PlacedActivity[]) =>
   a.length === b.length && a.every((p, i) => idOf(p) === idOf(b[i]));
 
-function permutations<T>(items: T[]): T[][] {
-  if (items.length <= 1) return [items];
-  const out: T[][] = [];
-  items.forEach((item, i) => {
-    const rest = [...items.slice(0, i), ...items.slice(i + 1)];
-    for (const perm of permutations(rest)) out.push([item, ...perm]);
-  });
-  return out;
-}
-
 /** The best order found for `placed` (and whether it beats the current one). */
 export function smartOrder(
   placed: PlacedActivity[],
@@ -80,7 +73,8 @@ export function smartOrder(
 
   let best = placed;
   let bestEval = before;
-  const consider = (order: PlacedActivity[]) => {
+  /** Scores an order, keeps it if it's the best so far, and returns its worth */
+  const consider = (order: PlacedActivity[]): number => {
     const e = evaluate(order);
     // Ties go to fewer hard problems, then less driving
     const hard = (x: PlanEvaluation) => x.issues.filter((i) => i.severity === "hard").length;
@@ -92,10 +86,17 @@ export function smartOrder(
       best = order;
       bestEval = e;
     }
+    return worth(e);
   };
 
   if (placed.length >= 2 && placed.length <= EXACT_STOPS) {
-    for (const order of permutations(placed)) if (!sameOrder(order, placed)) consider(order);
+    // Every order that could beat the current one (worth is never above the score)
+    searchOrders(
+      placed,
+      prefs,
+      (order) => (sameOrder(order, placed) ? worth(before) : consider(order)),
+      worth(before),
+    );
   } else if (placed.length > EXACT_STOPS) {
     // Local search: move one stop anywhere else, keep any move that helps
     for (let pass = 0; pass < MAX_PASSES; pass++) {

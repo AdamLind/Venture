@@ -28,6 +28,7 @@ import {useBuilderStore} from "@/src/store/useBuilderStore";
 import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
 import {useBlockStore} from "@/src/store/useBlockStore";
+import {useSavedStore} from "@/src/store/useSavedStore";
 import {usePartner} from "@/src/store/useConnectionsStore";
 import SurpriseRow from "@/components/dates/SurpriseRow";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
@@ -57,6 +58,7 @@ import {useReorderDrag} from "@/components/builder/useReorderDrag";
 import {evaluatePlan, warningsByStop} from "@/utils/planEvaluator";
 import {bestPlacement, spotLabel} from "@/utils/bestPlacement";
 import {smartOrder} from "@/utils/smartOrder";
+import {stretchToFit} from "@/utils/stretch";
 import {
   drivingMiles,
   homeOf,
@@ -75,6 +77,15 @@ import {GestureDetector} from "react-native-gesture-handler";
 
 /** How far out an open-ended date's timeline runs (it never fills up) */
 const OPEN_ENDED_ROOM_MS = 48 * 3_600_000;
+
+/**
+ * A suggestion you (or your partner) saved ranks this much higher: a tie-
+ * breaker, less than one matching vibe (15), so what you asked for this
+ * date still comes first
+ */
+const SAVED_BOOST = 10;
+/** Saved by both of you (still no more than one vibe) */
+const SAVED_BOOST_MAX = 15;
 
 export default function BuilderScreen() {
   const scrollViewRef = useRef<ScrollViewInstance>(null);
@@ -221,6 +232,19 @@ export default function BuilderScreen() {
 
   const rankWeather = useMemo(() => weatherLookup(weather), [weather]);
 
+  // Saved ideas rank higher (#17): yours, and the ones your partner shared
+  // ("Ours"), among ideas that fit about as well. Less than a vibe match or
+  // a plan problem, so what you asked for and a good plan still come first
+  const mySaved = useSavedStore((s) => s.ids);
+  const partnerSaves = useSavedStore((s) => s.partnerItems);
+  const savedBoost = useMemo(() => {
+    const theirs = new Set(partnerSaves.map((p) => p.activity_id));
+    return (ideaId: number) => {
+      const boost = (mySaved.has(ideaId) ? SAVED_BOOST : 0) + (theirs.has(ideaId) ? SAVED_BOOST : 0);
+      return Math.min(boost, SAVED_BOOST_MAX);
+    };
+  }, [mySaved, partnerSaves]);
+
   // Only while there's a list to show (the picker, or Top picks before the
   // first stop): each suggestion is tried in every slot of the plan, which
   // shouldn't run on every swap of a drag.
@@ -264,7 +288,8 @@ export default function BuilderScreen() {
         }
         const rank =
           placement.evaluation.score - evaluation.score +
-          preferenceScore(activity, userPrefs, placement.addedMiles);
+          preferenceScore(activity, userPrefs, placement.addedMiles) +
+          savedBoost(activity.idea_id);
 
         return {
           ...activity,
@@ -292,15 +317,46 @@ export default function BuilderScreen() {
     headCount,
     evaluation.score,
     rankWeather,
+    savedBoost,
   ]);
 
   // ─── Loading ideas ────────────────────────────────────────────────────────────
 
-  const startWithIdea = async (ideaId: number) => {
+  const startWithIdeas = async (ideaIds: number[]) => {
     setLoading(true);
-    const activity = await fetchActivityForPlan(ideaId, userPrefs);
-    if (activity) {
-      setPlaced([{activity}]);
+    const found = (await Promise.all(ideaIds.map((id) => fetchActivityForPlan(id, userPrefs)))).filter(
+      (a): a is NonNullable<typeof a> => !!a,
+    );
+    if (found.length) {
+      let start = found.map((activity) => ({activity}));
+      // Several: the order the evaluator likes best (hours, meals, driving),
+      // with flexible ideas a little longer where it helps what follows
+      // (lunch at its time). The order they came in is the Plan tab's pick
+      // for this start (stretches included); a reorder has to beat it.
+      if (start.length > 1) {
+        const given = stretchToFit(start, userPrefs);
+        const best = smartOrder(start, userPrefs);
+        const reordered = best.improved ? stretchToFit(best.order, userPrefs) : given;
+        start = (reordered.score > given.score ? reordered : given).placed;
+        // Too much for the time you have: say so (you can lengthen the date)
+        const late = evaluatePlan(start, userPrefs).issues.some((issue) => issue.kind === "PAST_END");
+        if (late) {
+          Toast.show({
+            type: "error",
+            text1: "These don't all fit in your time",
+            text2: "Make the date longer, or remove one.",
+            position: "bottom",
+          });
+        }
+      }
+      if (found.length < ideaIds.length) {
+        Toast.show({
+          type: "error",
+          text1: ideaIds.length - found.length === 1 ? "One idea isn't available anymore" : "Some ideas aren't available anymore",
+          position: "bottom",
+        });
+      }
+      setPlaced(start);
       setLoading(false);
     } else {
       // Gone or unavailable: start the usual way
@@ -346,12 +402,12 @@ export default function BuilderScreen() {
 
   // Runs once on open (after the loaders above are declared)
   useEffect(() => {
-    // "Plan a date with this": the idea goes in as the first stop
+    // "Plan a date with this / these": the ideas go in first, best order
     const startWith = usePlanSeedStore.getState().take();
-    if (startWith && placed.length === 0) {
+    if (startWith.length && placed.length === 0) {
       // Loading on open: the loaders show a spinner while they fetch
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      startWithIdea(startWith.idea_id);
+      startWithIdeas(startWith.map((x) => x.idea_id));
       return;
     }
     // Only load initial ideas if we don't already have a draft in progress
@@ -564,6 +620,8 @@ export default function BuilderScreen() {
               ...p,
               // Back at the suggestion counts as not changed
               durationMinutes: minutes === suggestedMinutes(p.activity) ? undefined : minutes,
+              // Your length now, not a stretch
+              stretchedBy: undefined,
             }
           : p,
       ),
@@ -852,6 +910,7 @@ export default function BuilderScreen() {
               onView={() => viewIdea(slot.activity)}
               onEditLength={editable ? () => setEditingStopId(ideaId) : undefined}
               adjusted={placed.some((p) => p.activity.idea_id === ideaId && p.durationMinutes != null)}
+              stretchedBy={placed.find((p) => p.activity.idea_id === ideaId)?.stretchedBy}
             />
           </TimelineRow>
         </DraggableStop>
@@ -889,6 +948,7 @@ export default function BuilderScreen() {
           // (looks like the card it lifted, photo badge included)
           onView={() => {}}
           adjusted={placed.some((p) => p.activity.idea_id === drag.id && p.durationMinutes != null)}
+          stretchedBy={placed.find((p) => p.activity.idea_id === drag.id)?.stretchedBy}
         />
       </TimelineRow>
     </Reanimated.View>

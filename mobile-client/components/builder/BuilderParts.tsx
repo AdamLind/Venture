@@ -147,6 +147,7 @@ function StopCardView({
   onEditLength,
   onView,
   adjusted = false,
+  stretchedBy,
 }: {
   slot: {startTime: number; endTime: number; activity?: any};
   headCount: number;
@@ -157,6 +158,8 @@ function StopCardView({
   onEditLength?: () => void;
   /** You changed its length from the idea's suggestion */
   adjusted?: boolean;
+  /** Minutes added to fit the plan better (utils/stretch.ts) */
+  stretchedBy?: number;
   /** The plan evaluator's most serious note for this stop */
   warning?: {message: string; severity: "hard" | "soft"} | null;
   /** Reordering without dragging (VoiceOver / TalkBack actions) */
@@ -180,7 +183,9 @@ function StopCardView({
         className="flex-1 flex-row items-center active:opacity-70"
         accessible
         accessibilityRole={onEditLength ? "button" : undefined}
-        accessibilityLabel={`${activity?.title ?? "Stop"}, ${timeOfDay(slot.startTime)} to ${timeOfDay(slot.endTime)}`}
+        accessibilityLabel={`${activity?.title ?? "Stop"}, ${timeOfDay(slot.startTime)} to ${timeOfDay(slot.endTime)}${
+          stretchedBy ? `, ${stretchedBy} minutes longer to fit the plan` : ""
+        }`}
         accessibilityHint={
           [onEditLength ? "Tap to change how long" : null, moveActions.length ? "hold and drag to reorder" : null]
             .filter(Boolean)
@@ -214,7 +219,14 @@ function StopCardView({
             {timeOfDay(slot.startTime)} – {timeOfDay(slot.endTime)} ·{" "}
             {formatMinutes(slotMinutes(slot))}
           </Text>
-          {adjusted && <Ionicons name="pencil" size={11} color="#a1a1aa" />}
+          {stretchedBy ? (
+            // Longer than suggested so what follows lands at a better time
+            <Text className="text-zinc-500 text-xs" numberOfLines={1}>
+              +{stretchedBy}m to fit
+            </Text>
+          ) : (
+            adjusted && <Ionicons name="pencil" size={11} color="#a1a1aa" />
+          )}
         </View>
         {warning ? (
           <View className="flex-row items-center gap-1 mt-0.5">
@@ -284,7 +296,8 @@ export const StopCard = React.memo(StopCardView, (a: StopCardProps, b: StopCardP
   !a.onMoveLater === !b.onMoveLater &&
   !a.onEditLength === !b.onEditLength &&
   !a.onView === !b.onView &&
-  a.adjusted === b.adjusted,
+  a.adjusted === b.adjusted &&
+  a.stretchedBy === b.stretchedBy,
 );
 
 /** Travel legs, flex time and the trip home, drawn slim between stop cards. */
@@ -499,9 +512,10 @@ function ActivityChips({
   );
 }
 
-/** Title with a bookmark when the idea is in your Bucket List. */
+/** Title with a bookmark when you saved it, a heart when your partner did (#35) */
 function IdeaTitle({item}: {item: any}) {
   const saved = useSavedStore((s) => s.ids.has(item.idea_id));
+  const partnerSaved = useSavedStore((s) => s.partnerItems.some((p) => p.activity_id === item.idea_id));
   return (
     <View className="flex-row items-center gap-1.5">
       {saved && (
@@ -509,8 +523,11 @@ function IdeaTitle({item}: {item: any}) {
           name="bookmark"
           size={13}
           color={SAVED_COLOR}
-          accessibilityLabel="In your bucket list"
+          accessibilityLabel="In your saved ideas"
         />
+      )}
+      {partnerSaved && (
+        <Ionicons name="heart" size={13} color="#f472b6" accessibilityLabel="Your partner saved this" />
       )}
       <Text className="text-white font-bold text-base flex-1" numberOfLines={1}>
         {item.title}
