@@ -64,11 +64,13 @@ export const PENALTY = {
   // opening a little late or closing a little early is a nudge
   closed: 80, // hard
   partClosed: 25,
-  // The date's arc: it warms up, then winds down. A lively stop (climbing,
-  // a sweaty class) after a calm, close one (stargazing, a spa) breaks the
-  // mood, and the end is what a date is remembered by. Below the rules about
-  // hours and meals, so it decides the order when those don't
-  windsBackUp: 15,
+  // The date's arc: it warms up, then winds down. Livening up after a calm,
+  // close stop (stargazing, a spa) breaks the mood, and the end is what a
+  // date is remembered by: an active stop after it (climbing) more than an
+  // upbeat one (an escape room). Below the rules about hours and meals, so
+  // it decides the order when those don't
+  windsBackUpActive: 15,
+  windsBackUpUpbeat: 10,
 };
 
 export const LIMITS = {
@@ -252,29 +254,36 @@ const hourOf = (ms: number) => {
 
 const SEVERITY_ORDER = {hard: 0, soft: 1};
 
+export type Energy = "CALM" | "UPBEAT" | "ACTIVE";
+const ENERGY_LEVEL: Record<Energy, number> = {CALM: 0, UPBEAT: 1, ACTIVE: 2};
+
+// For older ideas without an answer: a guess from what we have
 /** Tags that make an idea calm and close (src/constants/tags.ts) */
 const CALM_TAGS = ["intimate", "quiet", "spa", "views"];
-/** Tags that make it lively (games only rule out calm: board games aren't a workout) */
-const LIVELY_TAGS = ["sweat"];
+/** Tags that make it active (games only rule out calm: they can be cozy or upbeat) */
+const ACTIVE_TAGS = ["sweat"];
 const PLAYFUL_TAGS = ["games"];
 
 /**
- * An idea's energy, for the date's arc: LIVELY (active, a sweat, or marked
- * strenuous), CALM (intimate, quiet, a spa, a view, and not a game or a
- * workout), else NEUTRAL (meals, shows, most things). From the tags for now;
- * the tag rework (#20) should make it something every idea answers.
+ * An idea's energy, for the date's arc (activities.energy, #20): CALM,
+ * UPBEAT or ACTIVE. Ideas posted before it was asked get a guess: active
+ * (the Active type, a sweat, or marked strenuous), calm (intimate, quiet, a
+ * spa, a view, and not a game), else null (unknown: no arc rule for it).
  */
-export function energyOf(activity: any): "LIVELY" | "CALM" | "NEUTRAL" {
+export function energyOf(activity: any): Energy | null {
+  if (activity?.energy === "CALM" || activity?.energy === "UPBEAT" || activity?.energy === "ACTIVE") {
+    return activity.energy;
+  }
   const tags: string[] = Array.isArray(activity?.tags) ? activity.tags : [];
   const risks: string[] = Array.isArray(activity?.risk_labels) ? activity.risk_labels : [];
   if (
     activity?.activity_type === "ACTIVE" ||
-    tags.some((t) => LIVELY_TAGS.includes(t)) ||
+    tags.some((t) => ACTIVE_TAGS.includes(t)) ||
     risks.includes("STRENUOUS")
   )
-    return "LIVELY";
+    return "ACTIVE";
   if (tags.some((t) => CALM_TAGS.includes(t)) && !tags.some((t) => PLAYFUL_TAGS.includes(t))) return "CALM";
-  return "NEUTRAL";
+  return null;
 }
 
 // ─── The evaluator ─────────────────────────────────────────────────────────────
@@ -390,8 +399,9 @@ export function evaluatePlan(
       }
     }
 
-    // The arc: a lively stop after a calm one (anywhere before it) winds the date back up
-    if (energyOf(activity) === "LIVELY") {
+    // The arc: livelier than a calm stop before it (anywhere before) winds the date back up
+    const energy = energyOf(activity);
+    if (energy && ENERGY_LEVEL[energy] > ENERGY_LEVEL.CALM) {
       const calm = stops
         .slice(0, i)
         .reverse()
@@ -403,7 +413,7 @@ export function evaluatePlan(
           stopId: id,
           relatedIds: [idOf(calm)],
           message: `Better before ${calm.activity!.title}`,
-          penalty: PENALTY.windsBackUp,
+          penalty: energy === "ACTIVE" ? PENALTY.windsBackUpActive : PENALTY.windsBackUpUpbeat,
         });
       }
     }

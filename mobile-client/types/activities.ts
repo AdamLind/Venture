@@ -60,6 +60,8 @@ export interface BaseActivity {
   risk_labels?: string[] | null;
   /** A short heads-up from the creator (#81) */
   safety_note?: string | null;
+  /** How lively it feels, for the date's arc (#20); null on older ideas */
+  energy?: "CALM" | "UPBEAT" | "ACTIVE" | null;
 
   // ─── RELATIONAL DATA (Populated via Supabase Joins) ───
   tags?: string[]; // Flattened from activity_tags table

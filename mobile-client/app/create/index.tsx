@@ -26,6 +26,7 @@ import {RISK_LABELS, SAFETY_NOTE_MAX, type RiskLabel} from "@/src/lib/safety";
 import {SUSPENDED_MESSAGE, useAccountStore} from "@/src/store/useAccountStore";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {parseCoordinates} from "@/utils/itineraryEngine";
+import type {Energy} from "@/utils/planEvaluator";
 
 import PlacePicker from "@/components/places/PlacePicker";
 import {type PickedPlace, addPlace} from "@/src/lib/places";
@@ -88,6 +89,13 @@ const fieldBox = (missing: boolean) =>
 const groupBox = (missing: boolean) =>
   `-mx-2 p-2 rounded-2xl border ${missing ? "border-red-500 bg-red-950/10" : "border-transparent"}`;
 
+/** How lively it feels (#20), for the date's arc: dates warm up, then wind down */
+const ENERGY_OPTIONS: {value: Energy; label: string; hint: string}[] = [
+  {value: "CALM", label: "Calm", hint: "Quiet and close: stargazing, a spa, a view"},
+  {value: "UPBEAT", label: "Upbeat", hint: "Engaging and playful: an escape room, karaoke, a show"},
+  {value: "ACTIVE", label: "Active", hint: "Physical: climbing, a hike, a dance class"},
+];
+
 /** The idea as loaded for editing, to tell what changed on save. */
 interface EditingOriginal {
   visibility: BaseActivity["visibility"];
@@ -117,15 +125,16 @@ export default function CreateScreen() {
   const [place, setPlace] = useState<PickedPlace | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
 
-  // Enums / Selectors
+  // Enums / Selectors. Type, environment, length and energy start unanswered
+  // (null) and are required: a preset value would be saved as if it were
+  // the poster's answer (#20)
   const [modality, setModality] = useState<BaseActivity["modality"]>("GO_OUT");
-  const [activityType, setActivityType] =
-    useState<BaseActivity["activity_type"]>("OTHER");
-  const [environment, setEnvironment] =
-    useState<BaseActivity["environment"]>("MIXED");
+  const [activityType, setActivityType] = useState<BaseActivity["activity_type"] | null>(null);
+  const [environment, setEnvironment] = useState<BaseActivity["environment"] | null>(null);
   // null: the default for its environment (src/lib/weatherRules.ts)
   const [weatherNeeds, setWeatherNeeds] = useState<WeatherNeeds | null>(null);
-  const defaultWeatherNeeds: WeatherNeeds = environment === "INDOOR" ? "ANY" : "NICE";
+  const defaultWeatherNeeds: WeatherNeeds | null =
+    environment == null ? null : environment === "INDOOR" ? "ANY" : "NICE";
 
   // Multi-select Time of Day
   const [timeOfDay, setTimeOfDay] = useState<
@@ -139,11 +148,16 @@ export default function CreateScreen() {
   // Safety (#81): what to know before going, and a short heads-up
   const [riskLabels, setRiskLabels] = useState<RiskLabel[]>([]);
   const [safetyNote, setSafetyNote] = useState("");
+  // Energy (#20). Strenuous always means active, so it's set for you then
+  const [energy, setEnergy] = useState<Energy | null>(null);
+  const strenuous = riskLabels.includes("STRENUOUS");
+  const shownEnergy: Energy | null = strenuous ? "ACTIVE" : energy;
 
   // Numeric
   const [price, setPrice] = useState("");
   const [duration, setDuration] = useState("");
-  const [isDurationVariable, setIsDurationVariable] = useState(false);
+  // Flexible (stay as long as you like) or a set length (a movie, a class)
+  const [isDurationVariable, setIsDurationVariable] = useState<boolean | null>(null);
 
   // System
   const [visibility, setVisibility] =
@@ -212,6 +226,7 @@ export default function CreateScreen() {
       setMinAge(data.min_age ? String(data.min_age) : "");
       setRiskLabels((data.risk_labels ?? []) as RiskLabel[]);
       setSafetyNote(data.safety_note ?? "");
+      setEnergy((data.energy as Energy | null) ?? null);
       setPrice(String(data.est_price_per_person ?? ""));
       setDuration(String(data.est_duration_minutes ?? ""));
       setIsDurationVariable(!!data.is_duration_variable);
@@ -319,6 +334,10 @@ export default function CreateScreen() {
     if (timeOfDay.length === 0) missing.push("timeOfDay");
     if (!price) missing.push("price");
     if (!duration) missing.push("duration");
+    if (isDurationVariable === null) missing.push("flexible");
+    if (!environment) missing.push("environment");
+    if (!activityType) missing.push("type");
+    if (!shownEnergy) missing.push("energy");
     if (selectedTags.length === 0) missing.push("tags");
 
     if (missing.length > 0) {
@@ -439,6 +458,7 @@ export default function CreateScreen() {
         est_price_per_person: parseFloat(price) || 0,
         est_duration_minutes: parseInt(duration, 10),
         is_duration_variable: isDurationVariable,
+        energy: shownEnergy,
         min_people: dbMinPeople,
         max_people: dbMaxPeople,
         min_age: dbMinAge,
@@ -763,14 +783,20 @@ export default function CreateScreen() {
         </View>
 
         {/* ENVIRONMENT */}
-        <Text className="text-zinc-400 text-sm font-bold ml-1 mb-2">
-          ENVIRONMENT
-        </Text>
-        <View className="flex-row gap-2 mb-6">
+        <FieldLabel
+          label="ENVIRONMENT"
+          missing={missingFields.includes("environment")}
+          hint="Pick one"
+          className="mb-0"
+        />
+        <View className={`flex-row gap-2 mb-4 ${groupBox(missingFields.includes("environment"))}`}>
           {(["INDOOR", "OUTDOOR", "MIXED"] as const).map((e) => (
             <Pressable
               key={e}
-              onPress={() => setEnvironment(e)}
+              onPress={() => {
+                setEnvironment(e);
+                setMissingFields((prev) => prev.filter((f) => f !== "environment"));
+              }}
               className={`flex-1 py-3 rounded-xl items-center border active:opacity-70 transition-opacity ${
                 environment === e
                   ? "bg-zinc-800 border-white"
@@ -814,9 +840,11 @@ export default function CreateScreen() {
         <Text className="text-zinc-500 text-xs ml-1 mb-6">
           {weatherNeeds
             ? WEATHER_NEEDS_OPTIONS.find((o) => o.value === weatherNeeds)?.hint
-            : `Default for ${environment.toLowerCase()} ideas. ${
-                WEATHER_NEEDS_OPTIONS.find((o) => o.value === defaultWeatherNeeds)?.hint ?? ""
-              }`}
+            : environment
+              ? `Default for ${environment.toLowerCase()} ideas. ${
+                  WEATHER_NEEDS_OPTIONS.find((o) => o.value === defaultWeatherNeeds)?.hint ?? ""
+                }`
+              : "Follows the environment unless you pick one."}
         </Text>
 
         {/* TIME OF DAY */}
@@ -858,14 +886,20 @@ export default function CreateScreen() {
         </View>
 
         {/* ACTIVITY TYPE */}
-        <Text className="text-zinc-400 text-sm font-bold ml-1 mb-2">
-          ACTIVITY TYPE
-        </Text>
-        <View className="flex-row flex-wrap gap-2 mb-6">
+        <FieldLabel
+          label="ACTIVITY TYPE"
+          missing={missingFields.includes("type")}
+          hint="Pick one"
+          className="mb-0"
+        />
+        <View className={`flex-row flex-wrap gap-2 mb-4 ${groupBox(missingFields.includes("type"))}`}>
           {(["MEAL", "TREAT", "ACTIVE", "OTHER"] as const).map((t) => (
             <Pressable
               key={t}
-              onPress={() => setActivityType(t)}
+              onPress={() => {
+                setActivityType(t);
+                setMissingFields((prev) => prev.filter((f) => f !== "type"));
+              }}
               className={`px-4 py-2 rounded-xl border active:opacity-70 transition-opacity ${
                 activityType === t
                   ? "bg-zinc-800 border-white"
@@ -882,6 +916,43 @@ export default function CreateScreen() {
             </Pressable>
           ))}
         </View>
+
+        {/* ENERGY (#20): for the date's arc */}
+        <FieldLabel
+          label="ENERGY"
+          missing={missingFields.includes("energy")}
+          hint="Pick one"
+          className="mb-0"
+        />
+        <View className={`flex-row gap-2 mb-1 ${groupBox(missingFields.includes("energy"))}`}>
+          {ENERGY_OPTIONS.map((option) => {
+            const active = shownEnergy === option.value;
+            return (
+              <Pressable
+                key={option.value}
+                disabled={strenuous}
+                onPress={() => {
+                  setEnergy(option.value);
+                  setMissingFields((prev) => prev.filter((f) => f !== "energy"));
+                }}
+                accessibilityRole="button"
+                accessibilityState={{selected: active, disabled: strenuous}}
+                accessibilityHint={option.hint}
+                className={`flex-1 py-3 rounded-xl items-center border active:opacity-70 ${
+                  active ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
+                } ${strenuous && !active ? "opacity-40" : ""}`}
+              >
+                <Text className={`font-bold ${active ? "text-white" : "text-zinc-500"}`}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text className="text-zinc-500 text-xs ml-1 mb-6">
+          {strenuous
+            ? "Strenuous ideas are active."
+            : (ENERGY_OPTIONS.find((o) => o.value === shownEnergy)?.hint ??
+              "How it feels. Dates warm up, then wind down.")}
+        </Text>
 
         {/* NUMERICS (Price & Duration) */}
         <View className="flex-row gap-4 mb-3">
@@ -921,22 +992,43 @@ export default function CreateScreen() {
           </View>
         </View>
 
-        {/* DURATION FLEXIBILITY */}
-        <Pressable
-          onPress={() => setIsDurationVariable(!isDurationVariable)}
-          className="flex-row items-center ml-1 mb-6"
+        {/* DURATION FLEXIBILITY: flexible ideas can run longer to fit a date
+            (utils/stretch.ts); set lengths can't be cut */}
+        <View className={`flex-row gap-2 mb-1 ${groupBox(missingFields.includes("flexible"))}`}>
+          {([
+            {value: true, label: "Flexible"},
+            {value: false, label: "Set length"},
+          ] as const).map((option) => {
+            const active = isDurationVariable === option.value;
+            return (
+              <Pressable
+                key={option.label}
+                onPress={() => {
+                  setIsDurationVariable(option.value);
+                  setMissingFields((prev) => prev.filter((f) => f !== "flexible"));
+                }}
+                accessibilityRole="button"
+                accessibilityState={{selected: active}}
+                className={`flex-1 py-3 rounded-xl items-center border active:opacity-70 ${
+                  active ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
+                }`}
+              >
+                <Text className={`font-bold ${active ? "text-white" : "text-zinc-500"}`}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text
+          className={`text-xs ml-1 mb-6 ${missingFields.includes("flexible") ? "text-red-400 font-semibold" : "text-zinc-500"}`}
         >
-          <View
-            className={`w-5 h-5 rounded border items-center justify-center mr-2 ${
-              isDurationVariable ? "bg-white border-white" : "border-zinc-500"
-            }`}
-          >
-            {isDurationVariable && (
-              <Ionicons name="checkmark" size={14} color="black" />
-            )}
-          </View>
-          <Text className="text-zinc-400">Duration is flexible (varies)</Text>
-        </Pressable>
+          {isDurationVariable === true
+            ? "Stay as long as you like: it can run longer to fit a date."
+            : isDurationVariable === false
+              ? "It takes this long: a movie, a class, a tour."
+              : missingFields.includes("flexible")
+                ? "Is the length flexible, or set?"
+                : "Can people stay longer, or is the length set?"}
+        </Text>
 
         {/* DEMOGRAPHICS (People & Age) */}
         <View className="flex-row gap-4 mb-6">
