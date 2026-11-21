@@ -26,7 +26,7 @@ import {RISK_LABELS, SAFETY_NOTE_MAX, type RiskLabel} from "@/src/lib/safety";
 import {SUSPENDED_MESSAGE, useAccountStore} from "@/src/store/useAccountStore";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {parseCoordinates} from "@/utils/itineraryEngine";
-import type {Energy} from "@/utils/planEvaluator";
+import type {Exertion, Feel} from "@/utils/ideaTraits";
 
 import PlacePicker from "@/components/places/PlacePicker";
 import {type PickedPlace, addPlace} from "@/src/lib/places";
@@ -89,12 +89,87 @@ const fieldBox = (missing: boolean) =>
 const groupBox = (missing: boolean) =>
   `-mx-2 p-2 rounded-2xl border ${missing ? "border-red-500 bg-red-950/10" : "border-transparent"}`;
 
-/** How lively it feels (#20), for the date's arc: dates warm up, then wind down */
-const ENERGY_OPTIONS: {value: Energy; label: string; hint: string}[] = [
+type Choice<T> = {value: T; label: string; hint?: string};
+
+/** What kind it is. Older ideas may say ACTIVE: that's now "How physical" (utils/ideaTraits.ts) */
+const TYPE_OPTIONS: Choice<"MEAL" | "TREAT" | "OTHER">[] = [
+  {value: "MEAL", label: "Meal", hint: "Breakfast, lunch, dinner"},
+  {value: "TREAT", label: "Treat", hint: "Dessert, coffee, a drink"},
+  {value: "OTHER", label: "Activity", hint: "Anything you do: a hike, a show, a class"},
+];
+/** How it feels (#20), for the date's arc: dates warm up, then wind down */
+const FEEL_OPTIONS: Choice<Feel>[] = [
   {value: "CALM", label: "Calm", hint: "Quiet and close: stargazing, a spa, a view"},
   {value: "UPBEAT", label: "Upbeat", hint: "Engaging and playful: an escape room, karaoke, a show"},
-  {value: "ACTIVE", label: "Active", hint: "Physical: climbing, a hike, a dance class"},
 ];
+/** How physical it is (#20). A workout is what the Strenuous label means */
+const EXERTION_OPTIONS: Choice<Exertion>[] = [
+  {value: "NONE", label: "Not at all", hint: "Sitting or standing: a movie, a meal"},
+  {value: "LIGHT", label: "A little", hint: "Easy walking: a stroll, a market, a short trail"},
+  {value: "HARD", label: "A workout", hint: "Real effort: climbing, a hike, a dance class. Marked Strenuous under Safety."},
+];
+/** Who it's for: min and max people (dates are two or more) */
+const PEOPLE_OPTIONS: Choice<string>[] = [
+  {value: "2-2", label: "Just 2", hint: "2 people"},
+  {value: "2-4", label: "Up to 4", hint: "2 to 4 people: a double date"},
+  {value: "2-8", label: "Up to 8", hint: "2 to 8 people"},
+  {value: "2-50", label: "Any size", hint: "2 or more"},
+  {value: "CUSTOM", label: "Other"},
+];
+/** The youngest it's OK for (Venture itself is 16+, so "All ages" means anyone on it) */
+const AGE_OPTIONS: Choice<number | "OTHER">[] = [
+  {value: 0, label: "All ages"},
+  {value: 18, label: "18+"},
+  {value: 21, label: "21+"},
+  {value: "OTHER", label: "Other"},
+];
+
+/**
+ * One-tap choices for a question. `fill`: few choices sharing the row;
+ * otherwise they wrap. Outlined red (with the label) when it's missing.
+ */
+function Choices<T extends string | number>({
+  options,
+  value,
+  onPick,
+  missing,
+  fill = false,
+}: {
+  options: Choice<T>[];
+  value: T | null;
+  onPick: (value: T) => void;
+  missing: boolean;
+  fill?: boolean;
+}) {
+  return (
+    <View className={`flex-row ${fill ? "" : "flex-wrap"} gap-2 mb-1 ${groupBox(missing)}`}>
+      {options.map((option) => {
+        const active = value === option.value;
+        return (
+          <Pressable
+            key={String(option.value)}
+            onPress={() => onPick(option.value)}
+            accessibilityRole="button"
+            accessibilityState={{selected: active}}
+            accessibilityHint={option.hint}
+            className={`${fill ? "flex-1 items-center py-3" : "px-4 py-2"} rounded-xl border active:opacity-70 ${
+              active ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
+            }`}
+          >
+            <Text className={`font-bold ${active ? "text-white" : "text-zinc-500"}`} numberOfLines={1}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** The hint under a question: the picked choice's, or a prompt */
+function ChoiceHint({text}: {text: string}) {
+  return <Text className="text-zinc-500 text-xs ml-1 mb-6">{text}</Text>;
+}
 
 /** The idea as loaded for editing, to tell what changed on save. */
 interface EditingOriginal {
@@ -141,17 +216,19 @@ export default function CreateScreen() {
     NonNullable<BaseActivity["time_of_day"]>
   >([]);
 
-  // Demographics
-  const [minPeople, setMinPeople] = useState("2");
-  const [maxPeople, setMaxPeople] = useState("2");
+  // Who it's for and how young (both required: a preset would be saved as an answer)
+  const [groupSize, setGroupSize] = useState<string | null>(null);
+  const [minPeople, setMinPeople] = useState("");
+  const [maxPeople, setMaxPeople] = useState("");
+  const [ageChoice, setAgeChoice] = useState<number | "OTHER" | null>(null);
   const [minAge, setMinAge] = useState("");
   // Safety (#81): what to know before going, and a short heads-up
   const [riskLabels, setRiskLabels] = useState<RiskLabel[]>([]);
   const [safetyNote, setSafetyNote] = useState("");
-  // Energy (#20). Strenuous always means active, so it's set for you then
-  const [energy, setEnergy] = useState<Energy | null>(null);
-  const strenuous = riskLabels.includes("STRENUOUS");
-  const shownEnergy: Energy | null = strenuous ? "ACTIVE" : energy;
+  // How it feels and how physical it is (#20). A workout is what the
+  // Strenuous label means, so that label is set from it on save
+  const [feel, setFeel] = useState<Feel | null>(null);
+  const [exertion, setExertion] = useState<Exertion | null>(null);
 
   // Numeric
   const [price, setPrice] = useState("");
@@ -170,6 +247,7 @@ export default function CreateScreen() {
 
   // --- ERROR TRACKING ---
   const [missingFields, setMissingFields] = useState<string[]>([]);
+  const clearMissing = (field: string) => setMissingFields((prev) => prev.filter((f) => f !== field));
 
   // --- TAG & UI STATE ---
   const [dbTags, setDbTags] = useState<{tag_id: number; name: string}[]>([]);
@@ -217,16 +295,23 @@ export default function CreateScreen() {
       setUrl(data.url ?? "");
       setImageUri(data.image_urls?.[0] ?? null);
       setModality(data.modality);
-      setActivityType(data.activity_type);
+      // Older ideas' Active type is now "How physical" (asked again on edit)
+      setActivityType(data.activity_type === "ACTIVE" ? "OTHER" : data.activity_type);
       setEnvironment(data.environment);
       setWeatherNeeds((data.weather_needs as WeatherNeeds | null) ?? null);
       setTimeOfDay(data.time_of_day ?? []);
+      const sizeKey = `${data.min_people ?? 2}-${data.max_people ?? 2}`;
+      setGroupSize(PEOPLE_OPTIONS.some((o) => o.value === sizeKey) ? sizeKey : "CUSTOM");
       setMinPeople(String(data.min_people ?? 2));
       setMaxPeople(String(data.max_people ?? 2));
-      setMinAge(data.min_age ? String(data.min_age) : "");
-      setRiskLabels((data.risk_labels ?? []) as RiskLabel[]);
+      const age = Number(data.min_age) || 0;
+      setAgeChoice(AGE_OPTIONS.some((o) => o.value === age) ? age : "OTHER");
+      setMinAge(age ? String(age) : "");
+      const risks = (data.risk_labels ?? []) as RiskLabel[];
+      setRiskLabels(risks.filter((r) => r !== "STRENUOUS"));
+      setExertion((data.exertion as Exertion | null) ?? (risks.includes("STRENUOUS") ? "HARD" : null));
+      setFeel((data.feel as Feel | null) ?? null);
       setSafetyNote(data.safety_note ?? "");
-      setEnergy((data.energy as Energy | null) ?? null);
       setPrice(String(data.est_price_per_person ?? ""));
       setDuration(String(data.est_duration_minutes ?? ""));
       setIsDurationVariable(!!data.is_duration_variable);
@@ -337,7 +422,14 @@ export default function CreateScreen() {
     if (isDurationVariable === null) missing.push("flexible");
     if (!environment) missing.push("environment");
     if (!activityType) missing.push("type");
-    if (!shownEnergy) missing.push("energy");
+    if (!feel) missing.push("feel");
+    if (!exertion) missing.push("exertion");
+    const customMin = parseInt(minPeople, 10);
+    const customMax = parseInt(maxPeople, 10);
+    if (!groupSize || (groupSize === "CUSTOM" && !(customMin >= 1 && customMax >= customMin))) {
+      missing.push("people");
+    }
+    if (ageChoice === null || (ageChoice === "OTHER" && !(parseInt(minAge, 10) >= 0))) missing.push("age");
     if (selectedTags.length === 0) missing.push("tags");
 
     if (missing.length > 0) {
@@ -370,9 +462,15 @@ export default function CreateScreen() {
     setMissingFields([]);
     setIsSubmitting(true);
 
-    const dbMinPeople = parseInt(minPeople, 10) || 2;
-    const dbMaxPeople = parseInt(maxPeople, 10) || 2;
-    const dbMinAge = parseInt(minAge, 10) || 0;
+    const [presetMin, presetMax] = (groupSize ?? "2-2").split("-").map(Number);
+    const dbMinPeople = groupSize === "CUSTOM" ? parseInt(minPeople, 10) : presetMin;
+    const dbMaxPeople = groupSize === "CUSTOM" ? parseInt(maxPeople, 10) : presetMax;
+    const dbMinAge = ageChoice === "OTHER" ? parseInt(minAge, 10) : (ageChoice ?? 0);
+    // Strenuous is what "A workout" means
+    const dbRiskLabels: RiskLabel[] = [
+      ...riskLabels.filter((r) => r !== "STRENUOUS"),
+      ...(exertion === "HARD" ? (["STRENUOUS"] as RiskLabel[]) : []),
+    ];
 
     // 🛑 --- DRY RUN TEST BLOCK --- 🛑
     const IS_DRY_RUN = false;
@@ -458,11 +556,12 @@ export default function CreateScreen() {
         est_price_per_person: parseFloat(price) || 0,
         est_duration_minutes: parseInt(duration, 10),
         is_duration_variable: isDurationVariable,
-        energy: shownEnergy,
+        feel,
+        exertion,
         min_people: dbMinPeople,
         max_people: dbMaxPeople,
         min_age: dbMinAge,
-        risk_labels: riskLabels,
+        risk_labels: dbRiskLabels,
         safety_note: safetyNote.trim() ? safetyNote.trim().slice(0, SAFETY_NOTE_MAX) : null,
         visibility: visibility,
       };
@@ -892,67 +991,61 @@ export default function CreateScreen() {
           hint="Pick one"
           className="mb-0"
         />
-        <View className={`flex-row flex-wrap gap-2 mb-4 ${groupBox(missingFields.includes("type"))}`}>
-          {(["MEAL", "TREAT", "ACTIVE", "OTHER"] as const).map((t) => (
-            <Pressable
-              key={t}
-              onPress={() => {
-                setActivityType(t);
-                setMissingFields((prev) => prev.filter((f) => f !== "type"));
-              }}
-              className={`px-4 py-2 rounded-xl border active:opacity-70 transition-opacity ${
-                activityType === t
-                  ? "bg-zinc-800 border-white"
-                  : "bg-zinc-900 border-zinc-800"
-              }`}
-            >
-              <Text
-                className={`font-bold ${
-                  activityType === t ? "text-white" : "text-zinc-500"
-                }`}
-              >
-                {t}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        <Choices
+          fill
+          options={TYPE_OPTIONS}
+          value={activityType === "ACTIVE" ? "OTHER" : activityType}
+          onPick={(value) => {
+            setActivityType(value);
+            clearMissing("type");
+          }}
+          missing={missingFields.includes("type")}
+        />
+        <ChoiceHint
+          text={TYPE_OPTIONS.find((o) => o.value === activityType)?.hint ?? "What kind of idea is it?"}
+        />
 
-        {/* ENERGY (#20): for the date's arc */}
+        {/* HOW IT FEELS and HOW PHYSICAL (#20): for the date's arc, and
+            for the planner's rules about workouts */}
         <FieldLabel
-          label="ENERGY"
-          missing={missingFields.includes("energy")}
+          label="HOW DOES IT FEEL?"
+          missing={missingFields.includes("feel")}
           hint="Pick one"
           className="mb-0"
         />
-        <View className={`flex-row gap-2 mb-1 ${groupBox(missingFields.includes("energy"))}`}>
-          {ENERGY_OPTIONS.map((option) => {
-            const active = shownEnergy === option.value;
-            return (
-              <Pressable
-                key={option.value}
-                disabled={strenuous}
-                onPress={() => {
-                  setEnergy(option.value);
-                  setMissingFields((prev) => prev.filter((f) => f !== "energy"));
-                }}
-                accessibilityRole="button"
-                accessibilityState={{selected: active, disabled: strenuous}}
-                accessibilityHint={option.hint}
-                className={`flex-1 py-3 rounded-xl items-center border active:opacity-70 ${
-                  active ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
-                } ${strenuous && !active ? "opacity-40" : ""}`}
-              >
-                <Text className={`font-bold ${active ? "text-white" : "text-zinc-500"}`}>{option.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <Text className="text-zinc-500 text-xs ml-1 mb-6">
-          {strenuous
-            ? "Strenuous ideas are active."
-            : (ENERGY_OPTIONS.find((o) => o.value === shownEnergy)?.hint ??
-              "How it feels. Dates warm up, then wind down.")}
-        </Text>
+        <Choices
+          fill
+          options={FEEL_OPTIONS}
+          value={feel}
+          onPick={(value) => {
+            setFeel(value);
+            clearMissing("feel");
+          }}
+          missing={missingFields.includes("feel")}
+        />
+        <ChoiceHint
+          text={FEEL_OPTIONS.find((o) => o.value === feel)?.hint ?? "Dates warm up, then wind down."}
+        />
+
+        <FieldLabel
+          label="HOW PHYSICAL IS IT?"
+          missing={missingFields.includes("exertion")}
+          hint="Pick one"
+          className="mb-0"
+        />
+        <Choices
+          fill
+          options={EXERTION_OPTIONS}
+          value={exertion}
+          onPick={(value) => {
+            setExertion(value);
+            clearMissing("exertion");
+          }}
+          missing={missingFields.includes("exertion")}
+        />
+        <ChoiceHint
+          text={EXERTION_OPTIONS.find((o) => o.value === exertion)?.hint ?? "From sitting down to a real workout."}
+        />
 
         {/* NUMERICS (Price & Duration) */}
         <View className="flex-row gap-4 mb-3">
@@ -1030,54 +1123,104 @@ export default function CreateScreen() {
                 : "Can people stay longer, or is the length set?"}
         </Text>
 
-        {/* DEMOGRAPHICS (People & Age) */}
-        <View className="flex-row gap-4 mb-6">
-          <View className="flex-1">
-            <Text className="text-zinc-400 text-sm font-bold ml-1 mb-2">
-              MIN PEOPLE
-            </Text>
+        {/* WHO IT'S FOR: the planner leaves out ideas that don't fit the group */}
+        <FieldLabel
+          label="HOW MANY PEOPLE?"
+          missing={missingFields.includes("people")}
+          hint={groupSize === "CUSTOM" ? "Add both numbers" : "Pick one"}
+          className="mb-0"
+        />
+        <Choices
+          options={PEOPLE_OPTIONS}
+          value={groupSize}
+          onPick={(value) => {
+            setGroupSize(value);
+            clearMissing("people");
+          }}
+          missing={missingFields.includes("people")}
+        />
+        {groupSize === "CUSTOM" ? (
+          <View className="flex-row gap-4 mt-2 mb-6">
             <TextInput
               value={minPeople}
-              onChangeText={setMinPeople}
-              placeholder="2"
+              onChangeText={(text) => {
+                setMinPeople(text);
+                clearMissing("people");
+              }}
+              placeholder="At least"
               placeholderTextColor="#71717a"
               keyboardType="number-pad"
-              className="bg-zinc-900 text-white p-4 rounded-2xl border border-zinc-800"
+              className="flex-1 bg-zinc-900 text-white p-4 rounded-2xl border border-zinc-800"
             />
-          </View>
-          <View className="flex-1">
-            <Text className="text-zinc-400 text-sm font-bold ml-1 mb-2">
-              MAX PEOPLE
-            </Text>
             <TextInput
               value={maxPeople}
-              onChangeText={setMaxPeople}
-              placeholder="2"
+              onChangeText={(text) => {
+                setMaxPeople(text);
+                clearMissing("people");
+              }}
+              placeholder="At most"
               placeholderTextColor="#71717a"
               keyboardType="number-pad"
-              className="bg-zinc-900 text-white p-4 rounded-2xl border border-zinc-800"
+              className="flex-1 bg-zinc-900 text-white p-4 rounded-2xl border border-zinc-800"
             />
           </View>
-        </View>
+        ) : (
+          <ChoiceHint
+            text={PEOPLE_OPTIONS.find((o) => o.value === groupSize)?.hint ?? "Couples, a double date, or a group?"}
+          />
+        )}
 
-        {/* AGE RESTRICTION */}
-        <Text className="text-zinc-400 text-sm font-bold ml-1 mb-2">
-          MINIMUM AGE (Optional)
-        </Text>
-        <TextInput
-          value={minAge}
-          onChangeText={setMinAge}
-          placeholder="e.g. 0 for All Ages, 14, 21"
-          placeholderTextColor="#71717a"
-          keyboardType="number-pad"
-          className="bg-zinc-900 text-white p-4 rounded-2xl mb-6 border border-zinc-800"
+        {/* HOW YOUNG: who sees it depends on this */}
+        <FieldLabel
+          label="MINIMUM AGE"
+          missing={missingFields.includes("age")}
+          hint={ageChoice === "OTHER" ? "Add an age" : "Pick one"}
+          className="mb-0"
         />
+        <Choices
+          options={AGE_OPTIONS}
+          value={ageChoice}
+          onPick={(value) => {
+            setAgeChoice(value);
+            clearMissing("age");
+          }}
+          missing={missingFields.includes("age")}
+        />
+        {ageChoice === "OTHER" ? (
+          <TextInput
+            value={minAge}
+            onChangeText={(text) => {
+              setMinAge(text);
+              clearMissing("age");
+            }}
+            placeholder="e.g. 16"
+            placeholderTextColor="#71717a"
+            keyboardType="number-pad"
+            className="bg-zinc-900 text-white p-4 rounded-2xl mt-2 mb-6 border border-zinc-800"
+          />
+        ) : (
+          <ChoiceHint
+            text={ageChoice === 0 ? "Fine for anyone on Venture." : ageChoice ? `Only shown to people ${ageChoice} and older.` : "Who's it OK for?"}
+          />
+        )}
 
         {/* SAFETY (#81): risky but legal is fine, with a heads-up */}
         <Text className="text-zinc-400 text-sm font-bold ml-1 mb-1">SAFETY (Optional)</Text>
         <Text className="text-zinc-500 text-xs ml-1 mb-3">Anything people should know before they go?</Text>
         <View className="flex-row flex-wrap gap-2 mb-3">
-          {RISK_LABELS.map((risk) => {
+          {/* Strenuous is what "A workout" means: shown (and set) from that answer */}
+          {exertion === "HARD" && (
+            <View
+              accessible
+              accessibilityLabel="Strenuous, set by A workout"
+              className="flex-row items-center gap-1.5 px-3 py-2 rounded-xl border bg-amber-500/15 border-amber-400"
+            >
+              <Ionicons name="barbell-outline" size={15} color="#fbbf24" />
+              <Text className="font-bold text-sm text-amber-200">Strenuous</Text>
+              <Ionicons name="lock-closed" size={11} color="#fbbf24" />
+            </View>
+          )}
+          {RISK_LABELS.filter((risk) => risk.value !== "STRENUOUS").map((risk) => {
             const on = riskLabels.includes(risk.value);
             return (
               <Pressable
@@ -1102,6 +1245,9 @@ export default function CreateScreen() {
             );
           })}
         </View>
+        {exertion === "HARD" && (
+          <Text className="text-zinc-500 text-xs ml-1 mb-3">Strenuous is set by “A workout” above.</Text>
+        )}
         <TextInput
           value={safetyNote}
           onChangeText={setSafetyNote}

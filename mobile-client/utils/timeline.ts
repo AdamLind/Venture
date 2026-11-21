@@ -12,6 +12,7 @@
 import type {ScoredActivity, TimeSlot, TravelLeg} from "@/types/itinerary";
 import type {UserPrefs} from "@/src/store/usePrefsStore";
 import {getDistance} from "./geo";
+import {exertionOf} from "./ideaTraits";
 import type {WeatherLookup} from "@/src/lib/weatherRules";
 
 export type PlacedActivity = {
@@ -405,9 +406,12 @@ export const evaluateContextAt = (
       else if (type === "TREAT") satiation = Math.min(100, satiation + 40);
       else satiation -= durationMins * 0.3; // Burn calories while doing things
 
-      // 2. Process Exhaustion
-      if (type === "ACTIVE") {
+      // 2. Process Exhaustion (utils/ideaTraits.ts)
+      const exertion = exertionOf(slot.activity);
+      if (exertion === "HARD") {
         exhaustion += durationMins * 0.8; // +48 points for a 60min hike
+      } else if (exertion === "LIGHT") {
+        exhaustion += durationMins * 0.25; // a stroll: not a rest, not a workout
       } else {
         exhaustion -= durationMins * 0.5; // Resting during movies/meals
       }

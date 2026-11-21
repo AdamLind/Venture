@@ -8,6 +8,7 @@ import {useHiddenStore} from "@/src/store/useHiddenStore";
 import {bestTimeLabel, isGoodTime} from "@/src/lib/timeOfDay";
 import {weatherProblems} from "@/src/lib/weatherRules";
 import {type DayContext, parseCoordinates, safeGetDistance, stopLocation} from "./timeline";
+import {exertionOf} from "./ideaTraits";
 
 /** Stay-in ideas in a go-out plan rank a little lower ("go out" = willing to travel) */
 const STAY_IN_ON_GO_OUT_PENALTY = 10;
@@ -104,9 +105,12 @@ export const scoreActivities = ({
       // --- 1. BIOLOGICAL CONTEXT SCORING ---
       const type = item.activity_type;
 
-      if (type === "ACTIVE") {
-        // High exhaustion heavily penalizes active ideas
+      const exertion = exertionOf(item);
+      if (exertion === "HARD") {
+        // High exhaustion heavily penalizes workouts
         score -= context.exhaustion * 0.8;
+      } else if (exertion === "LIGHT") {
+        score -= context.exhaustion * 0.3;
       }
 
       if (type === "MEAL") {
@@ -121,7 +125,7 @@ export const scoreActivities = ({
         else score += 15;
       }
 
-      if (type === "OTHER") {
+      if (type !== "MEAL" && type !== "TREAT" && exertion === "NONE") {
         // If exhausted, chill activities get a nice boost
         if (context.exhaustion > 60) score += 25;
       }

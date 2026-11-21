@@ -33,6 +33,7 @@ import {
 } from "./timeline";
 import {sunsetAt} from "./sunset";
 import {checkHours, hoursMessage} from "./openingHours";
+import {feelOf, isWorkout} from "./ideaTraits";
 import {type WeatherLookup, weatherProblems} from "@/src/lib/weatherRules";
 
 // ─── Tuning ────────────────────────────────────────────────────────────────────
@@ -254,37 +255,8 @@ const hourOf = (ms: number) => {
 
 const SEVERITY_ORDER = {hard: 0, soft: 1};
 
-export type Energy = "CALM" | "UPBEAT" | "ACTIVE";
-const ENERGY_LEVEL: Record<Energy, number> = {CALM: 0, UPBEAT: 1, ACTIVE: 2};
-
-// For older ideas without an answer: a guess from what we have
-/** Tags that make an idea calm and close (src/constants/tags.ts) */
-const CALM_TAGS = ["intimate", "quiet", "spa", "views"];
-/** Tags that make it active (games only rule out calm: they can be cozy or upbeat) */
-const ACTIVE_TAGS = ["sweat"];
-const PLAYFUL_TAGS = ["games"];
-
-/**
- * An idea's energy, for the date's arc (activities.energy, #20): CALM,
- * UPBEAT or ACTIVE. Ideas posted before it was asked get a guess: active
- * (the Active type, a sweat, or marked strenuous), calm (intimate, quiet, a
- * spa, a view, and not a game), else null (unknown: no arc rule for it).
- */
-export function energyOf(activity: any): Energy | null {
-  if (activity?.energy === "CALM" || activity?.energy === "UPBEAT" || activity?.energy === "ACTIVE") {
-    return activity.energy;
-  }
-  const tags: string[] = Array.isArray(activity?.tags) ? activity.tags : [];
-  const risks: string[] = Array.isArray(activity?.risk_labels) ? activity.risk_labels : [];
-  if (
-    activity?.activity_type === "ACTIVE" ||
-    tags.some((t) => ACTIVE_TAGS.includes(t)) ||
-    risks.includes("STRENUOUS")
-  )
-    return "ACTIVE";
-  if (tags.some((t) => CALM_TAGS.includes(t)) && !tags.some((t) => PLAYFUL_TAGS.includes(t))) return "CALM";
-  return null;
-}
+/** A calm, close stop for the date's arc (utils/ideaTraits.ts): calm, and not a workout */
+const isCalmStop = (activity: any) => feelOf(activity) === "CALM" && !isWorkout(activity);
 
 // ─── The evaluator ─────────────────────────────────────────────────────────────
 
@@ -364,12 +336,12 @@ export function evaluatePlan(
       });
     }
 
-    // Active stops
-    if (type === "ACTIVE") {
+    // Workouts (a light walk isn't one: utils/ideaTraits.ts)
+    if (isWorkout(activity)) {
       const prevMinutes = i > 0 ? minutesBetween(stops[i - 1].startTime, stops[i - 1].endTime) : 0;
       const bothShort =
         minutes <= LIMITS.shortActiveMinutes && prevMinutes <= LIMITS.shortActiveMinutes;
-      if (prev?.activity_type === "ACTIVE" && !bothShort) {
+      if (prev && isWorkout(prev) && !bothShort) {
         add({
           kind: "BACK_TO_BACK_ACTIVE",
           severity: "hard",
@@ -399,13 +371,18 @@ export function evaluatePlan(
       }
     }
 
-    // The arc: livelier than a calm stop before it (anywhere before) winds the date back up
-    const energy = energyOf(activity);
-    if (energy && ENERGY_LEVEL[energy] > ENERGY_LEVEL.CALM) {
+    // The arc: a workout or an upbeat stop after a calm one (anywhere before)
+    // winds the date back up
+    const lift = isWorkout(activity)
+      ? PENALTY.windsBackUpActive
+      : feelOf(activity) === "UPBEAT"
+        ? PENALTY.windsBackUpUpbeat
+        : 0;
+    if (lift > 0) {
       const calm = stops
         .slice(0, i)
         .reverse()
-        .find((s) => energyOf(s.activity) === "CALM");
+        .find((s) => isCalmStop(s.activity));
       if (calm) {
         add({
           kind: "WINDS_BACK_UP",
@@ -413,7 +390,7 @@ export function evaluatePlan(
           stopId: id,
           relatedIds: [idOf(calm)],
           message: `Better before ${calm.activity!.title}`,
-          penalty: energy === "ACTIVE" ? PENALTY.windsBackUpActive : PENALTY.windsBackUpUpbeat,
+          penalty: lift,
         });
       }
     }

@@ -1,7 +1,13 @@
-import React, {useState} from "react";
+import React, {useRef, useState} from "react";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import {Pressable, Text, View} from "react-native";
+
+import {useProfileStore} from "@/src/store/useProfileStore";
+
+/** The one-time "hold a group" tip (Plan), per account on this device */
+const holdTipKey = (userId: string) => `venture.vibesHoldTipSeen.${userId}`;
 
 export default function ActivityTagsSelector({
   mode = "plan",
@@ -29,6 +35,23 @@ export default function ActivityTagsSelector({
   const [expandedClassId, setExpandedClassId] = useState<number | null>(
     mode === "publish" ? classes[0]?.id : null,
   );
+
+  // Holding a group to pick within it is the one gesture people might not
+  // find: after their first tap on a group (Plan), say so once
+  const userId = useProfileStore((s) => s.userId);
+  const [holdTip, setHoldTip] = useState(false);
+  const tipChecked = useRef(false);
+  const maybeShowHoldTip = async () => {
+    if (mode !== "plan" || tipChecked.current || !userId) return;
+    tipChecked.current = true;
+    try {
+      if (await AsyncStorage.getItem(holdTipKey(userId))) return;
+      await AsyncStorage.setItem(holdTipKey(userId), "1");
+    } catch {
+      return; // can't remember it: don't nag
+    }
+    setHoldTip(true);
+  };
 
   // 🔥 THE MAGIC: We calculate this dynamically instead of tracking it in state.
   // If activeTags has EVERY tag from a category, that category ID goes in here automatically!
@@ -123,6 +146,7 @@ export default function ActivityTagsSelector({
 
                 if (mode === "plan") {
                   handleKingClassChange(tagClass.id);
+                  maybeShowHoldTip();
                 } else {
                   setExpandedClassId(tagClass.id);
                 }
@@ -132,6 +156,9 @@ export default function ActivityTagsSelector({
                   ? () => {
                       if (process.env.EXPO_OS === "ios")
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
+                      // Found it: no need for the tip
+                      tipChecked.current = true;
+                      setHoldTip(false);
                       setExpandedClassId((prev) =>
                         prev === tagClass.id ? null : tagClass.id,
                       );
@@ -176,6 +203,22 @@ export default function ActivityTagsSelector({
           );
         })}
       </View>
+
+      {/* THE ONE-TIME TIP */}
+      {holdTip && !expandedClassId && (
+        <View className="flex-row items-center gap-2 mt-5 self-center bg-zinc-900 border border-zinc-800 rounded-full pl-3 pr-1.5 py-1.5">
+          <Ionicons name="finger-print-outline" size={15} color="#a1a1aa" />
+          <Text className="text-zinc-300 text-sm">Hold a group to pick within it</Text>
+          <Pressable
+            onPress={() => setHoldTip(false)}
+            hitSlop={8}
+            accessibilityLabel="Dismiss tip"
+            className="w-6 h-6 rounded-full items-center justify-center active:bg-zinc-800"
+          >
+            <Ionicons name="close" size={13} color="#71717a" />
+          </Pressable>
+        </View>
+      )}
 
       {/* BOTTOM ROW: THE EXPANDED PILLS */}
       {expandedClassId && expandedCategory && tagsToRender.length > 0 && (
