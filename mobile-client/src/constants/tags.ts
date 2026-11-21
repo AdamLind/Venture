@@ -1,14 +1,33 @@
 // src/constants/tags.ts
-
-const intimateTags = ["intimate", "quiet", "create", "views", "spa"];
+// The tags (#20): four groups, one tile each on Plan's vibes (tap a tile for
+// the whole group, hold it to pick within). Each tag is one word where it
+// can be, and never repeats a field (feel, how physical, time of year).
+// Same list as the database (supabase/migrations/20261120040000_tag_rework.sql).
+//
+// "Close" is the same for a date and a group date: a group date is couples
+// out together, and closeness is why people go on dates at all.
 
 export const TAG_TAXONOMY: Record<string, string[]> = {
-  Food: ["casual", "fancy", "sweets", "soda", "cafes"],
-  Active: ["nature", "stroll", "games", "sweat", "seasonal"],
-  Shows: ["film", "music", "comedy", "stage", "arts"],
-  Cozy: intimateTags,
-  Close: intimateTags,
+  Food: ["casual", "upscale", "cafes", "desserts", "brunch", "global"],
+  Active: ["nature", "views", "walks", "water", "adventure", "sports", "games"],
+  Shows: ["movies", "music", "comedy", "theater", "museums", "festivals"],
+  Close: ["board games", "crafts", "cooking", "spa", "romantic"],
 };
+
+/** How a tag is shown, where it isn't just the name capitalized */
+const TAG_LABELS: Record<string, string> = {
+  cafes: "Cafés",
+};
+
+/** "board games" → "Board games", "cafes" → "Cafés" */
+export const tagLabel = (tag: string) => TAG_LABELS[tag] ?? tag.charAt(0).toUpperCase() + tag.slice(1);
+
+/**
+ * The most tags an idea can have: enough for one that spans groups (a sunset
+ * picnic: casual, nature, views, romantic). It keeps tagging focused; the
+ * ranking (utils/vibes.ts) already gives padding no advantage.
+ */
+export const MAX_IDEA_TAGS = 4;
 
 export const BASE_ACTIVITY_CLASSES = [
   {
@@ -40,21 +59,11 @@ export const BASE_ACTIVITY_CLASSES = [
   },
   {
     id: 4,
-    name: "Cozy",
-    icon: "cafe-outline",
-    bg: "bg-orange-400",
-    border: "border-orange-400",
-    text: "text-orange-200",
-    rawColor: "#FB923C",
+    name: "Close",
+    icon: "heart-outline",
+    bg: "bg-pink-500",
+    border: "border-pink-500",
+    text: "text-pink-500",
+    rawColor: "#EC4899",
   },
 ];
-
-export const DATE_ACTIVITY_CLASS = {
-  id: 4,
-  name: "Close",
-  icon: "heart-outline",
-  bg: "bg-pink-500",
-  border: "border-pink-500",
-  text: "text-pink-500",
-  rawColor: "#EC4899",
-};

@@ -9,6 +9,7 @@ import {bestTimeLabel, isGoodTime} from "@/src/lib/timeOfDay";
 import {weatherProblems} from "@/src/lib/weatherRules";
 import {type DayContext, parseCoordinates, safeGetDistance, stopLocation} from "./timeline";
 import {exertionOf} from "./ideaTraits";
+import {vibeFit, wantsFood as vibesWantFood} from "./vibes";
 
 /** Stay-in ideas in a go-out plan rank a little lower ("go out" = willing to travel) */
 const STAY_IN_ON_GO_OUT_PENALTY = 10;
@@ -37,9 +38,9 @@ export type UI_Trigger = "PROMPT_DINNER" | "PROMPT_LUNCH" | null;
  */
 export const preferenceScore = (item: any, prefs: UserPrefs, miles: number): number => {
   let score = 0;
-  if (prefs.vibes && prefs.vibes.length > 0) {
-    score += prefs.vibes.filter((v) => item.tags?.includes(v)).length * 15;
-  }
+  // How well it fits the vibes (utils/vibes.ts): 15 for an idea that's
+  // exactly one thing asked for, more when it meets more of the request
+  score += vibeFit(item, prefs.vibes) * 15;
   const budgetPerPerson = (Number(prefs.budget) || 0) / (Number(prefs.headCount) || 1);
   score -= Math.abs((Number(item.est_price_per_person) || 0) - budgetPerPerson) * 1.5;
   if (prefs.modality === "GO_OUT") {
@@ -57,9 +58,7 @@ export const deriveInitialContext = (prefs: UserPrefs): DayContext => {
   const startHour = new Date(prefs.startDate || Date.now()).getHours();
 
   // 1. Tag Inference
-  const wantsFood = prefs.vibes?.some((v) =>
-    ["casual", "fancy", "sweets", "soda", "cafes"].includes(v),
-  );
+  const wantsFood = vibesWantFood(prefs.vibes);
 
   if (wantsFood) {
     satiation = 0;

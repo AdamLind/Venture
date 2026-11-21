@@ -4,6 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import {Pressable, Text, View} from "react-native";
 
+import {MAX_IDEA_TAGS, tagLabel} from "@/src/constants/tags";
 import {useProfileStore} from "@/src/store/useProfileStore";
 
 /** The one-time "hold a group" tip (Plan), per account on this device */
@@ -15,8 +16,11 @@ export default function ActivityTagsSelector({
   classes,
   initialActiveTags = [],
   onTagsChange,
+  openGroup = null,
 }: {
   mode?: "plan" | "publish";
+  /** Publishing: a group to open (e.g. Food once the idea is a meal) */
+  openGroup?: string | null;
   taxonomy: Record<string, string[]>;
   classes: {
     id: number;
@@ -33,8 +37,15 @@ export default function ActivityTagsSelector({
   const [activeTags, setActiveTags] = useState<string[]>(initialActiveTags);
 
   const [expandedClassId, setExpandedClassId] = useState<number | null>(
-    mode === "publish" ? classes[0]?.id : null,
+    mode === "publish" ? (classes.find((c) => c.name === openGroup)?.id ?? classes[0]?.id) : null,
   );
+  // Opens the group asked for when it changes (adjusted while rendering)
+  const [lastOpenGroup, setLastOpenGroup] = useState(openGroup);
+  if (openGroup !== lastOpenGroup) {
+    setLastOpenGroup(openGroup);
+    const target = classes.find((c) => c.name === openGroup);
+    if (target) setExpandedClassId(target.id);
+  }
 
   // Holding a group to pick within it is the one gesture people might not
   // find: after their first tap on a group (Plan), say so once
@@ -101,6 +112,13 @@ export default function ActivityTagsSelector({
     if (activeTags.includes(tag)) {
       nextTags = activeTags.filter((t) => t !== tag);
     } else {
+      // An idea gets a few tags that say the most about it
+      if (mode === "publish" && activeTags.length >= MAX_IDEA_TAGS) {
+        if (process.env.EXPO_OS === "ios") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        }
+        return;
+      }
       nextTags = [...activeTags, tag];
     }
     setActiveTags(nextTags);
@@ -242,12 +260,22 @@ export default function ActivityTagsSelector({
                 <Text
                   className={`text-[14px] font-medium ${isSelected ? "text-white" : expandedCategory.text}`}
                 >
-                  {tag.charAt(0).toUpperCase() + tag.slice(1)}
+                  {tagLabel(tag)}
                 </Text>
               </Pressable>
             );
           })}
         </View>
+      )}
+
+      {/* Publishing: how many of the few tags an idea gets */}
+      {mode === "publish" && (
+        <Text
+          className={`text-xs mt-3 ${activeTags.length >= MAX_IDEA_TAGS ? "text-zinc-300 font-semibold" : "text-zinc-500"}`}
+        >
+          {activeTags.length} of {MAX_IDEA_TAGS} tags
+          {activeTags.length >= MAX_IDEA_TAGS ? " · remove one to pick another" : ""}
+        </Text>
       )}
     </View>
   );

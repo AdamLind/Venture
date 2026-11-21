@@ -1263,7 +1263,7 @@ export default function CreateScreen() {
         <FieldLabel
           label="TAGS"
           missing={missingFields.includes("tags")}
-          hint="Pick at least one"
+          hint="Pick 1 to 4"
           className="mt-2 mb-0"
         />
         <View className={`mb-8 ${groupBox(missingFields.includes("tags"))}`}>
@@ -1272,6 +1272,8 @@ export default function CreateScreen() {
             mode="publish"
             taxonomy={TAG_TAXONOMY}
             classes={BASE_ACTIVITY_CLASSES}
+            // A meal or a treat: its tags are under Food
+            openGroup={activityType === "MEAL" || activityType === "TREAT" ? "Food" : null}
             initialActiveTags={selectedTags}
             onTagsChange={(newTags) => {
               setSelectedTags(newTags);

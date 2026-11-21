@@ -19,8 +19,8 @@ export type Feel = "CALM" | "UPBEAT";
 export type Exertion = "NONE" | "LIGHT" | "HARD";
 
 /** Tags that clearly mean calm and close (src/constants/tags.ts); games can be cozy or upbeat */
-const CALM_TAGS = ["intimate", "quiet", "spa", "views"];
-const PLAYFUL_TAGS = ["games"];
+const CALM_TAGS = ["romantic", "spa", "views"];
+const PLAYFUL_TAGS = ["games", "board games"];
 
 /** How it feels, or null if unknown (no arc rule for it) */
 export function feelOf(activity: any): Feel | null {

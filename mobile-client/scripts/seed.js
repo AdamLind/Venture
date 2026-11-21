@@ -166,7 +166,7 @@ async function seed() {
       max_people: 2,
       min_age: 0,
       visibility: "PENDING_REVIEW",
-      tags: ["views", "nature", "intimate", "quiet"],
+      tags: ["views", "nature", "romantic"],
     },
     {
       user_id: DEV_USER_ID,
@@ -189,7 +189,7 @@ async function seed() {
       max_people: 4,
       min_age: 0,
       visibility: "PENDING_REVIEW",
-      tags: ["casual", "film", "intimate"],
+      tags: ["casual", "movies", "romantic"],
     },
     {
       user_id: DEV_USER_ID,
@@ -212,7 +212,7 @@ async function seed() {
       max_people: 6,
       min_age: 5,
       visibility: "PUBLISHED",
-      tags: ["views", "nature", "seasonal"],
+      tags: ["views", "nature"],
     },
     {
       user_id: DEV_USER_ID,
@@ -235,7 +235,7 @@ async function seed() {
       max_people: 8,
       min_age: 10,
       visibility: "PRIVATE",
-      tags: ["games", "casual"],
+      tags: ["board games", "casual"],
     },
     {
       user_id: DEV_USER_ID,
@@ -258,7 +258,7 @@ async function seed() {
       max_people: 4,
       min_age: 0,
       visibility: "REJECTED",
-      tags: ["sweets", "stroll", "casual"],
+      tags: ["desserts", "walks", "casual"],
     },
     {
       user_id: DEV_USER_ID,
@@ -281,7 +281,7 @@ async function seed() {
       max_people: 4,
       min_age: 6,
       visibility: "NEEDS_REVISION",
-      tags: ["create", "arts", "quiet"],
+      tags: ["crafts"],
     },
     {
       user_id: DEV_USER_ID,
@@ -304,7 +304,7 @@ async function seed() {
       max_people: 4,
       min_age: 12,
       visibility: "PUBLISHED",
-      tags: ["sweat", "games"],
+      tags: ["sports", "games"],
     },
     {
       user_id: DEV_USER_ID,
@@ -327,7 +327,7 @@ async function seed() {
       max_people: 5,
       min_age: 0,
       visibility: "PUBLISHED",
-      tags: ["sweets", "casual", "create"],
+      tags: ["desserts", "casual", "cooking"],
     },
     {
       user_id: DEV_USER_ID,
@@ -350,7 +350,7 @@ async function seed() {
       max_people: 6,
       min_age: 0,
       visibility: "PUBLISHED",
-      tags: ["stroll", "casual", "seasonal"],
+      tags: ["walks", "casual"],
     },
     {
       user_id: DEV_USER_ID,
@@ -373,7 +373,7 @@ async function seed() {
       max_people: 6,
       min_age: 6,
       visibility: "PENDING_REVIEW",
-      tags: ["sweat", "games", "nature"],
+      tags: ["sports", "games", "nature"],
     },
     {
       user_id: DEV_USER_ID,
@@ -396,7 +396,7 @@ async function seed() {
       max_people: 6,
       min_age: 0,
       visibility: "PUBLISHED",
-      tags: ["casual", "stroll"],
+      tags: ["casual", "walks"],
     },
     {
       user_id: DEV_USER_ID,
@@ -419,7 +419,7 @@ async function seed() {
       max_people: 3,
       min_age: 8,
       visibility: "PRIVATE",
-      tags: ["spa", "quiet", "intimate"],
+      tags: ["spa", "romantic"],
     },
     {
       user_id: DEV_USER_ID,
@@ -442,7 +442,7 @@ async function seed() {
       max_people: 4,
       min_age: 8,
       visibility: "PUBLISHED",
-      tags: ["games", "nature", "stroll"],
+      tags: ["games", "nature", "walks"],
     },
     {
       user_id: DEV_USER_ID,
@@ -465,7 +465,7 @@ async function seed() {
       max_people: 2,
       min_age: 0,
       visibility: "PUBLISHED",
-      tags: ["cafes", "quiet", "intimate"],
+      tags: ["cafes", "romantic"],
     },
     {
       user_id: DEV_USER_ID,
@@ -488,7 +488,7 @@ async function seed() {
       max_people: 6,
       min_age: 4,
       visibility: "PENDING_REVIEW",
-      tags: ["games", "stroll", "casual"],
+      tags: ["games", "walks", "casual"],
     },
     {
       user_id: DEV_USER_ID,
@@ -511,7 +511,7 @@ async function seed() {
       max_people: 6,
       min_age: 21,
       visibility: "REJECTED",
-      tags: ["fancy", "intimate", "create"],
+      tags: ["upscale", "romantic", "cooking"],
     },
     {
       user_id: DEV_USER_ID,
@@ -534,7 +534,7 @@ async function seed() {
       max_people: 6,
       min_age: 0,
       visibility: "PUBLISHED",
-      tags: ["views", "nature", "intimate", "casual"],
+      tags: ["views", "nature", "romantic", "casual"],
     },
     {
       user_id: DEV_USER_ID,
@@ -557,7 +557,7 @@ async function seed() {
       max_people: 4,
       min_age: 12,
       visibility: "NEEDS_REVISION",
-      tags: ["games", "quiet"],
+      tags: ["board games"],
     },
     {
       user_id: DEV_USER_ID,
@@ -578,7 +578,7 @@ async function seed() {
       max_people: 4,
       min_age: 0,
       visibility: "PUBLISHED",
-      tags: ["cafes", "sweets", "casual"],
+      tags: ["cafes", "desserts", "casual"],
     },
     {
       user_id: DEV_USER_ID,
@@ -601,7 +601,7 @@ async function seed() {
       max_people: 6,
       min_age: 10,
       visibility: "PRIVATE",
-      tags: ["games", "intimate"],
+      tags: ["games", "romantic"],
     },
   ];
 
@@ -625,28 +625,13 @@ async function seed() {
   // ---------------------------------------------------------------------------
   // 3. INSERT TAGS (Junction Table)
   // ---------------------------------------------------------------------------
-  const tagMapping = {
-    casual: 1,
-    fancy: 2,
-    sweets: 3,
-    soda: 4,
-    cafes: 5,
-    nature: 6,
-    stroll: 7,
-    games: 8,
-    sweat: 9,
-    seasonal: 10,
-    film: 11,
-    music: 12,
-    comedy: 13,
-    stage: 14,
-    arts: 15,
-    intimate: 16,
-    quiet: 17,
-    create: 18,
-    views: 19,
-    spa: 20,
-  };
+  // Tag ids by name (supabase/migrations/20261120040000_tag_rework.sql)
+  const {data: tagRows, error: tagLookupError} = await supabase.from("tags").select("tag_id, name");
+  if (tagLookupError) {
+    console.error("❌ Error reading tags:", tagLookupError.message);
+    return;
+  }
+  const tagMapping = Object.fromEntries(tagRows.map((t) => [t.name, t.tag_id]));
 
   const tagsPayload = [];
 

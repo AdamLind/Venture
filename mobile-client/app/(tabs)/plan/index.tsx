@@ -46,7 +46,6 @@ import {
 import {
   TAG_TAXONOMY,
   BASE_ACTIVITY_CLASSES,
-  DATE_ACTIVITY_CLASS,
 } from "@/src/constants/tags";
 
 export default function PlanScreen() {
@@ -283,11 +282,8 @@ export default function PlanScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultsVersion]);
 
-  // Safely grab the first 3 base classes, and swap the 4th based on socialType
-  const activityClasses = [
-    ...BASE_ACTIVITY_CLASSES.slice(0, 3),
-    socialType === "Date" ? DATE_ACTIVITY_CLASS : BASE_ACTIVITY_CLASSES[3],
-  ];
+  // The four vibe groups ("Close" for dates and group dates alike)
+  const activityClasses = BASE_ACTIVITY_CLASSES;
 
   const formatStartDisplay = (date: Date) => {
     const today = new Date();

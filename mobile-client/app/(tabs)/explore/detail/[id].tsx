@@ -34,6 +34,7 @@ import ReviewPanel from "@/components/moderation/ReviewPanel";
 import {useStaffStore} from "@/src/store/useStaffStore";
 import {RULE_BY_ID, isRuleId, type RuleId} from "@/src/lib/ideaGuidelines";
 import {SAFETY_DISCLAIMER, needsSafetyLine, riskLabelsOf} from "@/src/lib/safety";
+import {tagLabel} from "@/src/constants/tags";
 
 export default function IdeaDetailScreen() {
   const router = useRouter();
@@ -645,7 +646,7 @@ export default function IdeaDetailScreen() {
                     className="bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-full"
                   >
                     <Text className="text-zinc-300 font-medium">
-                      {join.tags?.name}
+                      {join.tags?.name ? tagLabel(join.tags.name) : null}
                     </Text>
                   </View>
                 ))}
