@@ -184,7 +184,10 @@ function Question({
   return (
     <View className="mb-6">
       <View className="flex-row items-center justify-between gap-2 mb-2.5 ml-0.5">
-        <Text className={`text-[17px] font-bold ${missing ? "text-red-400" : "text-white"}`}>{title}</Text>
+        {/* One line, so side-by-side questions (price, length) stay level */}
+        <Text className={`text-[17px] font-bold shrink ${missing ? "text-red-400" : "text-white"}`} numberOfLines={1}>
+          {title}
+        </Text>
         {missing && (
           <View className="flex-row items-center gap-1 shrink">
             <Ionicons name="alert-circle" size={14} color="#ef4444" />
@@ -1389,7 +1392,9 @@ export default function CreateScreen() {
       <View className="flex-row gap-3 mb-2">
         <View className="flex-1">
           <Question title="Price per person" missing={missing("price")} note={paid ? "Add a price" : "Pick one"}>
-            <View className={`flex-row gap-2 ${groupBox(missing("price"))}`}>
+            {/* No outline box here: it would sit 8pt off the length stepper beside it.
+                Missing shows on the buttons' own borders instead */}
+            <View className="flex-row gap-2">
               <Pressable
                 onPress={() => {
                   setPaid(false);
@@ -1399,7 +1404,11 @@ export default function CreateScreen() {
                 accessibilityRole="button"
                 accessibilityState={{selected: paid === false}}
                 className={`flex-1 items-center justify-center h-[52px] rounded-2xl border active:opacity-70 ${
-                  paid === false ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
+                  paid === false
+                    ? "bg-zinc-800 border-white"
+                    : missing("price")
+                      ? "bg-red-950/10 border-red-500"
+                      : "bg-zinc-900 border-zinc-800"
                 }`}
               >
                 <Text className={`font-bold text-[15px] ${paid === false ? "text-white" : "text-zinc-400"}`}>Free</Text>
@@ -1428,7 +1437,9 @@ export default function CreateScreen() {
                     if (price === "0") setPrice("");
                   }}
                   accessibilityRole="button"
-                  className="flex-1 items-center justify-center h-[52px] rounded-2xl border bg-zinc-900 border-zinc-800 active:opacity-70"
+                  className={`flex-1 items-center justify-center h-[52px] rounded-2xl border active:opacity-70 ${
+                    missing("price") ? "bg-red-950/10 border-red-500" : "bg-zinc-900 border-zinc-800"
+                  }`}
                 >
                   <Text className="font-bold text-[15px] text-zinc-400">$ …</Text>
                 </Pressable>
