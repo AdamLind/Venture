@@ -69,6 +69,9 @@ export const PENALTY = {
   // Outside the months it works in, or away from its holiday (#21): it
   // isn't on (a corn maze in March, Christmas lights in July)
   outOfSeason: 70, // hard
+  // Made for a different group size (a candlelit dinner for 2 on a group
+  // date of 6): suggestions leave these out; one added anyway is a nudge
+  groupSize: 25,
   // The date's arc: it warms up, then winds down. Livening up after a calm,
   // close stop (stargazing, a spa) breaks the mood, and the end is what a
   // date is remembered by: an active stop after it (climbing) more than an
@@ -118,6 +121,8 @@ export type PlanIssueKind =
   | "PART_CLOSED"
   // Time of year (utils/seasons.ts)
   | "OUT_OF_SEASON"
+  // Who it's for (activities.min_people / max_people)
+  | "GROUP_SIZE"
   // Weather (src/lib/weatherRules.ts)
   | "TOO_COLD"
   | "TOO_HOT"
@@ -260,6 +265,21 @@ const hourOf = (ms: number) => {
 };
 
 const SEVERITY_ORDER = {hard: 0, soft: 1};
+
+/**
+ * Whether a group of `headCount` fits an idea's size (min_people to
+ * max_people): null if it does (or it isn't known), else what it's best for
+ * ("Best for 2", "Best for up to 4", "Best for 6 or more").
+ */
+export function groupSizeFit(activity: any, headCount: number | null | undefined): string | null {
+  const heads = Number(headCount);
+  const min = Number(activity?.min_people);
+  const max = Number(activity?.max_people);
+  if (!heads || !min || !max) return null;
+  if (heads > max) return max === min ? `Best for ${max}` : `Best for up to ${max}`;
+  if (heads < min) return `Best for ${min} or more`;
+  return null;
+}
 
 /** A calm, close stop for the date's arc (utils/ideaTraits.ts): calm, and not a workout */
 const isCalmStop = (activity: any) => feelOf(activity) === "CALM" && !isWorkout(activity);
@@ -453,6 +473,12 @@ export function evaluatePlan(
           penalty: PENALTY.afterDark,
         });
       }
+    }
+
+    // Who it's for: the group doesn't fit its size
+    const fit = groupSizeFit(activity, prefs.headCount);
+    if (fit) {
+      add({kind: "GROUP_SIZE", severity: "soft", stopId: id, message: fit, penalty: PENALTY.groupSize});
     }
 
     // Time of year: not on at all outside its season

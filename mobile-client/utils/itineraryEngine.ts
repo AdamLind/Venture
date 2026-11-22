@@ -247,7 +247,10 @@ export const queryCandidates = async (
       // long for the time left", "Over your remaining budget") instead of it
       // silently missing. Far-off ones stay out so the list doesn't balloon
       .lte("est_price_per_person", Math.max(targetBudgetPerPerson * 2, targetBudgetPerPerson + 25))
-      .lte("est_duration_minutes", Math.max(maxDuration * 2, maxDuration + 120));
+      .lte("est_duration_minutes", Math.max(maxDuration * 2, maxDuration + 120))
+      // Made for this size of group (a dinner for 2 isn't offered to 6)
+      .lte("min_people", Number(prefs.headCount) || 2)
+      .gte("max_people", Number(prefs.headCount) || 2);
 
     if (error) throw error;
 

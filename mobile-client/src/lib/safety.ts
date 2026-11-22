@@ -13,7 +13,8 @@ export type RiskLabel = "STRENUOUS" | "HEIGHTS" | "WATER" | "REMOTE" | "PERMIT" 
 export const RISK_LABELS: {value: RiskLabel; label: string; icon: IconName; hint: string}[] = [
   {value: "STRENUOUS", label: "Strenuous", icon: "barbell-outline", hint: "Hard physical effort"},
   {value: "HEIGHTS", label: "Heights", icon: "trending-up-outline", hint: "Drop-offs, ledges or climbing"},
-  {value: "WATER", label: "Water", icon: "water-outline", hint: "Swimming, boats or cold water"},
+  // (Not "Water": that's a tag for lakes and paddleboarding; this is the risk)
+  {value: "WATER", label: "Swimming or boats", icon: "water-outline", hint: "Swimming, boats or cold water"},
   {value: "REMOTE", label: "Remote", icon: "cellular-outline", hint: "Little or no phone signal"},
   {value: "PERMIT", label: "Permit or fee", icon: "ticket-outline", hint: "Book or pay ahead"},
   {value: "GUIDE", label: "Guide recommended", icon: "compass-outline", hint: "Safer with someone who knows it"},
