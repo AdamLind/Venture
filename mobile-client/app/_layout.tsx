@@ -251,14 +251,13 @@ function InitialLayout() {
           options={{
             title: "New Date Idea",
             headerShown: false,
-            // Native iOS sheet: rounded corners, swipe-to-dismiss.
-            // Grabber is custom (in create/index.tsx) for a larger, lower pill.
-            presentation: "formSheet",
-            sheetGrabberVisible: false,
-            sheetAllowedDetents: [1.0],
-            sheetCornerRadius: 24,
-            // Slightly lighter than the black screen behind so the edge reads
-            contentStyle: {backgroundColor: "#121212"},
+            // Full screen (#82): posting is several steps, and a sheet's
+            // swipe-down would throw them away. It slides up from the bottom;
+            // the × (step 1) or back arrow are the way out
+            presentation: "fullScreenModal",
+            animation: "slide_from_bottom",
+            gestureEnabled: false,
+            contentStyle: {backgroundColor: "#09090b"},
           }}
         />
 

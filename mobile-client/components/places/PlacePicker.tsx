@@ -99,13 +99,21 @@ export default function PlacePicker({
   onClose,
   onPick,
   current,
+  newPlaceName = null,
 }: {
   visible: boolean;
   onClose: () => void;
   onPick: (place: PickedPlace) => void;
   /** The place picked so far (centres the map and search on it) */
   current: PickedPlace | null;
+  /**
+   * Open straight on adding a new place, with this name to start (the
+   * publisher searches inline and only comes here to pin a new one). Its
+   * back button then closes, instead of going to search
+   */
+  newPlaceName?: string | null;
 }) {
+  const addOnly = newPlaceName !== null;
   const insets = useSafeAreaInsets();
   const {height: windowHeight, width: windowWidth} = useWindowDimensions();
   const userLocation = useLocationStore((s) => s.userLocation);
@@ -120,6 +128,14 @@ export default function PlacePicker({
     (current && {latitude: current.latitude, longitude: current.longitude}) ?? userLocation ?? home ?? FALLBACK;
 
   const [step, setStep] = useState<Step>("search");
+  // Opening to add a new place goes straight to the pin (adjusted while rendering)
+  const [wasVisible, setWasVisible] = useState(false);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible && addOnly) {
+      setStep("pin");
+    }
+  }
 
   // ─── Search ──────────────────────────────────────────────────────────────
   const [query, setQuery] = useState("");
@@ -240,6 +256,16 @@ export default function PlacePicker({
     reset();
     onPick(place);
   };
+
+  // (Opening in add-only mode: start from the name the publisher had typed)
+  const [seededName, setSeededName] = useState<string | null>(null);
+  if (visible && addOnly && seededName !== newPlaceName) {
+    setSeededName(newPlaceName);
+    setName(newPlaceName ?? "");
+    setPin(around);
+    setAddress(null);
+  }
+  if (!visible && seededName !== null) setSeededName(null);
 
   const startNew = () => {
     Keyboard.dismiss();
@@ -403,7 +429,11 @@ export default function PlacePicker({
       animationType="slide"
       presentationStyle="fullScreen"
       statusBarTranslucent
-      onRequestClose={() => (step === "search" ? close() : setStep(step === "same" ? "details" : step === "details" ? "pin" : "search"))}
+      onRequestClose={() =>
+        step === "search" || (addOnly && step === "pin")
+          ? close()
+          : setStep(step === "same" ? "details" : step === "details" ? "pin" : "search")
+      }
     >
       <View className="flex-1 bg-black">
         {step === "search" && (
@@ -527,7 +557,7 @@ export default function PlacePicker({
               pointerEvents="box-none"
             >
               <Pressable
-                onPress={() => setStep("search")}
+                onPress={() => (addOnly ? close() : setStep("search"))}
                 accessibilityRole="button"
                 accessibilityLabel="Back"
                 className="active:opacity-70"
@@ -637,6 +667,8 @@ export default function PlacePicker({
                   <TextInput
                     value={name}
                     onChangeText={setName}
+                    // A proper noun: capitals suggested, never forced
+                    autoCapitalize="words"
                     onFocus={() => onFieldFocus("name")}
                     autoFocus={!name}
                     placeholder="e.g. Hidden Falls trailhead"

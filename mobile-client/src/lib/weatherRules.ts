@@ -15,9 +15,9 @@ export type WeatherNeeds = "ANY" | "NICE" | "WARM" | "COLD";
 
 export const WEATHER_NEEDS_OPTIONS: {value: WeatherNeeds; label: string; hint: string}[] = [
   {value: "ANY", label: "Any weather", hint: "Weather doesn't matter"},
-  {value: "NICE", label: "Nice weather", hint: "Mild, dry, not too windy"},
-  {value: "WARM", label: "Warm weather", hint: "70°F or warmer"},
-  {value: "COLD", label: "Cold or snow", hint: "Freezing or snowy"},
+  {value: "NICE", label: "Mild and dry", hint: "50–90°F, little rain, not too windy"},
+  {value: "WARM", label: "Warm", hint: "70°F or warmer: a beach, a pool, a lake"},
+  {value: "COLD", label: "Snow or cold", hint: "Freezing or snowy: skiing, sledding, skating"},
 ];
 
 /** What the weather is (or usually is) at a moment. */

@@ -5,6 +5,7 @@
 
 import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
+import {tidyPlaceName} from "@/src/lib/text";
 import type {LatLng} from "@/utils/timeline";
 
 /** A place on Venture, from search_places() */
@@ -109,7 +110,7 @@ export async function addPlace(place: Extract<PickedPlace, {kind: "new"}>): Prom
   const {data, error} = await supabase
     .from("venues")
     .insert({
-      name: place.name.trim(),
+      name: tidyPlaceName(place.name),
       address: place.address,
       coordinates: `POINT(${place.longitude} ${place.latitude})`,
       access_note: place.accessNote?.trim() || null,
