@@ -22,6 +22,7 @@ import IdentityFields, {
 } from "@/components/profile/IdentityFields";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {formatBirthdate, validateUsername} from "@/src/lib/profile";
+import {AVATAR_FULL_PX, AVATAR_THUMB_PX} from "@/src/lib/images";
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -56,12 +57,19 @@ export default function EditProfileScreen() {
 
     setUploading(true);
     try {
-      const resized = await ImageManipulator.manipulateAsync(
-        result.assets[0].uri,
-        [{resize: {width: 512, height: 512}}],
-        {compress: 0.8, format: ImageManipulator.SaveFormat.JPEG},
-      );
-      await uploadAvatar(resized.uri);
+      // Sharp full screen, light in lists (src/lib/images.ts)
+      const picked = result.assets[0].uri;
+      const [full, thumb] = await Promise.all([
+        ImageManipulator.manipulateAsync(picked, [{resize: {width: AVATAR_FULL_PX, height: AVATAR_FULL_PX}}], {
+          compress: 0.82,
+          format: ImageManipulator.SaveFormat.JPEG,
+        }),
+        ImageManipulator.manipulateAsync(picked, [{resize: {width: AVATAR_THUMB_PX, height: AVATAR_THUMB_PX}}], {
+          compress: 0.8,
+          format: ImageManipulator.SaveFormat.JPEG,
+        }),
+      ]);
+      await uploadAvatar(full.uri, thumb.uri);
       Toast.show({type: "success", text1: "Photo updated", position: "bottom"});
     } catch (e) {
       Toast.show({

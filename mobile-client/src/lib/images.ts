@@ -12,6 +12,20 @@
 
 import {PixelRatio} from "react-native";
 
+// Profile photos (app/settings/edit-profile.tsx) are uploaded twice: 1080 px
+// for seeing them full screen, and a 256 px thumbnail next to it
+// ("<name>_thumb.jpg") for avatars in lists. Photos from before the
+// thumbnails existed don't have one (Avatar falls back to the photo).
+export const AVATAR_FULL_PX = 1080;
+export const AVATAR_THUMB_PX = 256;
+const AVATAR_MARKER = "/storage/v1/object/public/avatars/";
+
+/** An uploaded profile photo's thumbnail (null if it isn't one of ours) */
+export function avatarThumb(url: string | null | undefined): string | null {
+  if (!url || !url.includes(AVATAR_MARKER) || !url.endsWith(".jpg") || url.endsWith("_thumb.jpg")) return null;
+  return url.replace(/\.jpg$/, "_thumb.jpg");
+}
+
 /** Pixel widths we request (more steps would mean fewer cache hits). */
 const STEPS = [200, 400, 800, 1200, 1600];
 

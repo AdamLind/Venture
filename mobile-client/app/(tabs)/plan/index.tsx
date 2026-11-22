@@ -37,6 +37,9 @@ import {ideaDuration} from "@/src/lib/ideas";
 import {bestTimeLabel, nextGoodStart} from "@/src/lib/timeOfDay";
 import * as Haptics from "expo-haptics";
 import {holidayPreset, holidaysOn} from "@/utils/holidays";
+import {occasionsOn, upcomingOccasion} from "@/utils/occasions";
+import {usePartnerDatesStore} from "@/src/store/usePartnerDatesStore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {SEASONS, SEASON_ICONS, seasonOn} from "@/utils/seasons";
 import {IN_SEASON} from "@/utils/vibes";
 import TabHeader, {useTabHeader, useTabRefresh} from "@/components/ui/TabHeader";
@@ -260,19 +263,74 @@ export default function PlanScreen() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [resetKey, setResetKey] = useState<number>(0);
 
-  // A holiday around the date being planned (utils/holidays.ts): a one-tap
-  // chip that picks the vibes its dates are about. Nothing changes unless
-  // it's tapped
-  const preset = holidayPreset(startDate);
-  const presetVibes = preset?.vibes ?? [];
-  const presetOn = presetVibes.length > 0 && presetVibes.every((tag) => selectedTags.includes(tag));
-  const togglePreset = () => {
+  // Occasions around the date being planned: your anniversary and your
+  // partner's birthday (#87, utils/occasions.ts), and a holiday
+  // (utils/holidays.ts). Each is a one-tap chip that picks the vibes its
+  // dates are about. Nothing changes unless it's tapped
+  const partnerDates = usePartnerDatesStore();
+  const loadPartnerDates = usePartnerDatesStore((s) => s.load);
+  useFocusEffect(
+    useCallback(() => {
+      loadPartnerDates(partner?.user_id ?? null);
+    }, [partner?.user_id, loadPartnerDates]),
+  );
+  const known = {
+    anniversary: partnerDates.anniversary,
+    partnerBirthday: partnerDates.partnerBirthday,
+    partnerName: partner?.username ?? null,
+    partnerVibes: partnerDates.partnerVibes,
+  };
+  const occasions = partner ? occasionsOn(startDate, known) : [];
+  const holiday = holidayPreset(startDate);
+  const vibeChips = [
+    ...occasions.flatMap((o) => (o.vibes?.length ? [{key: o.id, emoji: o.emoji, label: o.label, vibes: o.vibes}] : [])),
+    ...(holiday?.vibes ? [{key: holiday.id, emoji: holiday.emoji, label: holiday.label, vibes: holiday.vibes}] : []),
+  ];
+  const chipOn = (vibes: string[]) => vibes.every((tag) => selectedTags.includes(tag));
+  const toggleChip = (vibes: string[]) => {
     if (process.env.EXPO_OS === "ios") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSelectedTags((prev) =>
-      presetOn ? prev.filter((tag) => !presetVibes.includes(tag)) : Array.from(new Set([...prev, ...presetVibes])),
-    );
+    const on = chipOn(vibes);
+    setSelectedTags((prev) => (on ? prev.filter((tag) => !vibes.includes(tag)) : Array.from(new Set([...prev, ...vibes]))));
     // The tiles show the new picks
     setResetKey((prev) => prev + 1);
+  };
+
+  // A quiet "plan something?" two weeks before your anniversary or your
+  // partner's birthday (dismissed for the year)
+  const [today] = useState(() => new Date());
+  const upcoming = partner ? upcomingOccasion(today, known) : null;
+  const upcomingKey = upcoming ? `venture.occasionNudge.${upcoming.id}.${upcoming.date.getFullYear()}` : null;
+  const [dismissedNudges, setDismissedNudges] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!upcomingKey) return;
+    let active = true;
+    AsyncStorage.getItem(upcomingKey)
+      .then((seen) => active && setDismissedNudges((prev) => (seen ? new Set([...(prev ?? []), upcomingKey]) : (prev ?? new Set()))))
+      .catch(() => active && setDismissedNudges((prev) => prev ?? new Set()));
+    return () => {
+      active = false;
+    };
+  }, [upcomingKey]);
+  const planningForIt = !!upcoming && occasions.some((o) => o.id === upcoming.id);
+  const showNudge = !!upcoming && !!upcomingKey && !!dismissedNudges && !dismissedNudges.has(upcomingKey) && !planningForIt;
+  const dismissNudge = () => {
+    if (!upcomingKey) return;
+    setDismissedNudges((prev) => new Set([...(prev ?? []), upcomingKey]));
+    AsyncStorage.setItem(upcomingKey, "1").catch(() => {});
+  };
+  const planForUpcoming = () => {
+    if (!upcoming) return;
+    // That day, at the time the form has now
+    const at = new Date(upcoming.date);
+    at.setHours(startDate.getHours(), startDate.getMinutes(), 0, 0);
+    setStartDate(at);
+    setTempStartDate(at);
+    if (upcoming.vibes?.length) {
+      const vibes = upcoming.vibes;
+      setSelectedTags((prev) => Array.from(new Set([...prev, ...vibes])));
+      setResetKey((prev) => prev + 1);
+    }
+    dismissNudge();
   };
 
   // "In season" (#22): ideas made for the time of year of the date being
@@ -534,6 +592,29 @@ export default function PlanScreen() {
             </View>
           )}
 
+          {/* --- YOUR ANNIVERSARY / THEIR BIRTHDAY IS COMING UP (#87) --- */}
+          {showNudge && upcoming && (
+            <View className="flex-row items-center gap-3 bg-pink-500/10 border border-pink-500/30 rounded-3xl pl-4 pr-2 py-3">
+              <Text className="text-xl">{upcoming.emoji}</Text>
+              <View className="flex-1">
+                <Text className="text-white font-bold" numberOfLines={1}>
+                  {upcoming.label} is {upcoming.date.toLocaleDateString([], {month: "short", day: "numeric"})}
+                </Text>
+                <Pressable onPress={planForUpcoming} hitSlop={6} accessibilityRole="button">
+                  <Text className="text-pink-300 text-sm font-semibold">Plan something for it</Text>
+                </Pressable>
+              </View>
+              <Pressable
+                onPress={dismissNudge}
+                hitSlop={8}
+                accessibilityLabel="Dismiss"
+                className="w-8 h-8 rounded-full items-center justify-center active:bg-zinc-800"
+              >
+                <Ionicons name="close" size={16} color="#a1a1aa" />
+              </Pressable>
+            </View>
+          )}
+
           {/* --- STARTING WITH ("Plan a date with this / these") --- */}
           {seeds.length > 0 && (
             <View className="bg-zinc-900 border border-zinc-800 rounded-3xl p-3 gap-3">
@@ -729,26 +810,32 @@ export default function PlanScreen() {
 
           {/* --- VIBES (the tag selector, unchanged) --- */}
           <Section icon="sparkles-outline" title="Vibes" hint="Tap • Hold to refine">
-            {preset && presetVibes.length > 0 && (
-              <Pressable
-                onPress={togglePreset}
-                accessibilityRole="button"
-                accessibilityState={{selected: presetOn}}
-                accessibilityLabel={`${preset.label}: ${presetVibes.map(tagLabel).join(", ")}`}
-                accessibilityHint={presetOn ? "Clears these vibes" : "Picks these vibes"}
-                className={`self-center flex-row items-center gap-2 pl-3 pr-4 py-2 rounded-full border active:opacity-70 ${
-                  presetOn ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
-                }`}
-              >
-                <Text>{preset.emoji}</Text>
-                <Text className={`font-bold text-sm ${presetOn ? "text-white" : "text-zinc-300"}`}>
-                  {preset.label}
-                </Text>
-                <Text className="text-zinc-500 text-xs" numberOfLines={1}>
-                  {presetVibes.map(tagLabel).join(" · ")}
-                </Text>
-                {presetOn && <Ionicons name="close" size={13} color="#a1a1aa" />}
-              </Pressable>
+            {vibeChips.length > 0 && (
+              <View className="items-center gap-2">
+                {vibeChips.map((chip) => {
+                  const on = chipOn(chip.vibes);
+                  return (
+                    <Pressable
+                      key={chip.key}
+                      onPress={() => toggleChip(chip.vibes)}
+                      accessibilityRole="button"
+                      accessibilityState={{selected: on}}
+                      accessibilityLabel={`${chip.label}: ${chip.vibes.map(tagLabel).join(", ")}`}
+                      accessibilityHint={on ? "Clears these vibes" : "Picks these vibes"}
+                      className={`flex-row items-center gap-2 pl-3 pr-4 py-2 rounded-full border active:opacity-70 ${
+                        on ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
+                      }`}
+                    >
+                      <Text>{chip.emoji}</Text>
+                      <Text className={`font-bold text-sm ${on ? "text-white" : "text-zinc-300"}`}>{chip.label}</Text>
+                      <Text className="text-zinc-500 text-xs shrink" numberOfLines={1}>
+                        {chip.vibes.map(tagLabel).join(" · ")}
+                      </Text>
+                      {on && <Ionicons name="close" size={13} color="#a1a1aa" />}
+                    </Pressable>
+                  );
+                })}
+              </View>
             )}
             <View className="pt-1">
               <ActivityTagsSelector

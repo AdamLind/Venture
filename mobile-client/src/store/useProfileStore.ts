@@ -28,7 +28,8 @@ interface ProfileState {
   /** Throws an Error with a readable message on failure. */
   updatePreferences: (changes: PreferencesUpdate) => Promise<void>;
   /** Uploads a local JPEG to the avatars bucket and saves its URL. */
-  uploadAvatar: (localUri: string) => Promise<void>;
+  /** The photo (1080 px) and its thumbnail (256 px: src/lib/images.ts) */
+  uploadAvatar: (localUri: string, thumbUri?: string) => Promise<void>;
   clear: () => void;
 }
 
@@ -135,7 +136,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     set({preferences: data as UserPreferences});
   },
 
-  uploadAvatar: async (localUri) => {
+  uploadAvatar: async (localUri, thumbUri) => {
     const {userId, profile, updateProfile} = get();
     if (!userId) throw new Error("You're signed out.");
 
@@ -149,6 +150,19 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       .upload(path, arrayBuffer, {contentType: "image/jpeg"});
     if (uploadError) throw new Error(friendlyError(uploadError));
 
+    // Its thumbnail next to it (best effort: avatars fall back to the photo)
+    if (thumbUri) {
+      try {
+        const thumb = await (await fetch(thumbUri)).arrayBuffer();
+        const {error} = await supabase.storage
+          .from("avatars")
+          .upload(path.replace(/\.jpg$/, "_thumb.jpg"), thumb, {contentType: "image/jpeg"});
+        if (error) console.warn("Avatar thumbnail upload failed:", error.message);
+      } catch (e) {
+        console.warn("Avatar thumbnail upload failed:", e);
+      }
+    }
+
     const {data} = supabase.storage.from("avatars").getPublicUrl(path);
     await updateProfile({profile_image_url: data.publicUrl});
 
@@ -158,7 +172,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     if (oldPath && oldPath.startsWith(`${userId}/`)) {
       supabase.storage
         .from("avatars")
-        .remove([oldPath])
+        .remove([oldPath, oldPath.replace(/\.jpg$/, "_thumb.jpg")])
         .then(({error}) => {
           if (error) console.warn("Old avatar cleanup failed:", error.message);
         });

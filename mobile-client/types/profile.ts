@@ -31,6 +31,8 @@ export interface UserPreferences {
   /** The terms version accepted (src/lib/terms.ts), and when (#76) */
   terms_version?: string | null;
   terms_accepted_at?: string | null;
+  /** Your partner may see your birthday's month and day (#87) */
+  share_birthday?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -60,6 +62,7 @@ export type PreferencesUpdate = Partial<
     | "vibes"
     | "dietary"
     | "onboarded_at"
+    | "share_birthday"
   >
 >;
 

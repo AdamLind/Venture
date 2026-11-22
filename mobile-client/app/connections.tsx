@@ -5,11 +5,9 @@
 
 import React, {useCallback, useState} from "react";
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Animated,
-  Platform,
   Pressable,
   Text,
   View,
@@ -20,6 +18,7 @@ import Toast from "react-native-toast-message";
 
 import TabHeader, {HeaderIconButton, useTabHeader, useTabRefresh} from "@/components/ui/TabHeader";
 import Avatar from "@/components/profile/Avatar";
+import ConnectionSheet, {type SheetAction} from "@/components/connections/ConnectionSheet";
 import {
   type Connection,
   type ConnectionRequest,
@@ -31,6 +30,7 @@ import {
   respondToRequest,
 } from "@/src/lib/connections";
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
+import {usePartnerDatesStore} from "@/src/store/usePartnerDatesStore";
 import {useBlockStore} from "@/src/store/useBlockStore";
 
 const PARTNER_COLOR = "#f472b6";
@@ -45,7 +45,14 @@ export default function ConnectionsScreen() {
   const outgoing = useConnectionsStore((s) => s.outgoing);
   const status = useConnectionsStore((s) => s.status);
   const error = useConnectionsStore((s) => s.error);
-  const reload = useConnectionsStore((s) => s.reload);
+  const reloadConnections = useConnectionsStore((s) => s.reload);
+  // The lists, then your partner's dates (their birthday shows up as soon
+  // as they share it: on coming back here, or pulling to refresh)
+  const reload = useCallback(async () => {
+    await reloadConnections();
+    const partnerNow = useConnectionsStore.getState().connections.find((c) => c.is_partner);
+    await usePartnerDatesStore.getState().load(partnerNow?.user_id ?? null);
+  }, [reloadConnections]);
   const [busy, setBusy] = useState<string | null>(null);
   // The tabs' header: large title, glass buttons, blur as it collapses
   const header = useTabHeader({back: true, subtitle: true});
@@ -58,6 +65,8 @@ export default function ConnectionsScreen() {
   );
 
   const partner = connections.find((c) => c.is_partner) ?? null;
+  // The person whose sheet is open (components/connections/ConnectionSheet.tsx)
+  const [sheetFor, setSheetFor] = useState<Connection | null>(null);
   const others = connections.filter((c) => !c.is_partner);
   const outgoingPartner = outgoing.find((r) => r.kind === "PARTNER");
 
@@ -130,34 +139,26 @@ export default function ConnectionsScreen() {
       },
     );
 
-  // A connection's options
-  const openMenu = (c: Connection) => {
-    const items: {label: string; destructive?: boolean; run: () => void}[] = [
+  // What you can do with a connection (in their sheet). The sheet closes
+  // first, so a confirmation shows on its own
+  const actionsFor = (c: Connection): SheetAction[] => {
+    const then = (fn: () => void) => () => {
+      setSheetFor(null);
+      fn();
+    };
+    return [
       ...(c.is_partner
-        ? [{label: "End partner link", destructive: true, run: () => confirmEndPartner(c)}]
+        ? []
         : !partner && !outgoingPartner
-          ? [{label: "Ask to be partners", run: () => askPartner(c)}]
+          ? [{label: "Ask to be partners", icon: "heart-outline" as const, run: then(() => askPartner(c))}]
           : []),
-      {label: `Forget @${c.username}`, destructive: true, run: () => confirmForget(c)},
+      ...(c.is_partner
+        ? [{label: "End partner link", icon: "heart-dislike-outline" as const, destructive: true, run: then(() => confirmEndPartner(c))}]
+        : []),
+      {label: `Forget @${c.username}`, icon: "person-remove-outline" as const, destructive: true, run: then(() => confirmForget(c))},
     ];
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: connectionName(c),
-          options: [...items.map((i) => i.label), "Cancel"],
-          destructiveButtonIndex: items.map((i, n) => (i.destructive ? n : -1)).filter((n) => n >= 0),
-          cancelButtonIndex: items.length,
-          userInterfaceStyle: "dark",
-        },
-        (index) => items[index]?.run(),
-      );
-    } else {
-      Alert.alert(connectionName(c), undefined, [
-        {text: "Cancel", style: "cancel"},
-        ...items.map((i) => ({text: i.label, style: i.destructive ? ("destructive" as const) : undefined, onPress: i.run})),
-      ]);
-    }
   };
+  const openMenu = (c: Connection) => setSheetFor(c);
 
   const firstLoad = status === "loading" && connections.length === 0 && incoming.length === 0;
   const nothing = connections.length === 0 && incoming.length === 0 && outgoing.length === 0;
@@ -234,7 +235,9 @@ export default function ConnectionsScreen() {
                     <Text className="text-white font-bold text-base" numberOfLines={1}>
                       {connectionName(partner)}
                     </Text>
-                    <Text className="text-zinc-400 text-sm">@{partner.username}</Text>
+                    <Text className="text-zinc-400 text-sm" numberOfLines={1}>
+                      @{partner.username}
+                    </Text>
                   </View>
                   <Ionicons name="heart" size={20} color={PARTNER_COLOR} />
                 </Pressable>
@@ -288,7 +291,7 @@ export default function ConnectionsScreen() {
                       onPress={() => openMenu(c)}
                       disabled={busy === c.user_id}
                       accessibilityRole="button"
-                      accessibilityHint="Options: partner, forget"
+                      accessibilityHint="Shows them, and what you can do"
                       className={`flex-row items-center gap-3 px-4 py-3 active:bg-zinc-800 ${
                         i > 0 ? "border-t border-zinc-800" : ""
                       }`}
@@ -317,6 +320,11 @@ export default function ConnectionsScreen() {
           </>
         )}
       </View>
+      <ConnectionSheet
+        connection={sheetFor}
+        actions={sheetFor ? actionsFor(sheetFor) : []}
+        onClose={() => setSheetFor(null)}
+      />
     </Animated.ScrollView>
   );
 }

@@ -1,9 +1,10 @@
-import React from "react";
+import React, {useState} from "react";
 import {View, Text} from "react-native";
 import {Image} from "expo-image";
 import Ionicons from "@expo/vector-icons/build/Ionicons";
 import type {PublicProfile} from "@/types/profile";
 import {initials} from "@/src/lib/profile";
+import {avatarThumb} from "@/src/lib/images";
 
 /**
  * Round avatar: the profile photo, or initials when there isn't one
@@ -23,7 +24,12 @@ export default function Avatar({
   /** Thin ring for inline use (cards, rows) instead of the thick profile border. */
   small?: boolean;
 }) {
-  const source = uri ?? profile?.profile_image_url;
+  const photo = uri ?? profile?.profile_image_url;
+  // Small avatars use the photo's thumbnail (src/lib/images.ts); older
+  // photos without one use the photo itself
+  const thumb = !uri && size <= 80 ? avatarThumb(photo) : null;
+  const [thumbFailed, setThumbFailed] = useState<string | null>(null);
+  const source = thumb && thumbFailed !== thumb ? thumb : photo;
 
   return (
     <View
@@ -40,6 +46,9 @@ export default function Avatar({
           style={{width: "100%", height: "100%"}}
           contentFit="cover"
           transition={150}
+          onError={() => {
+            if (source === thumb) setThumbFailed(thumb);
+          }}
         />
       ) : profile ? (
         <Text
