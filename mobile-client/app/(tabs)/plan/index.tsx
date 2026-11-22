@@ -35,6 +35,8 @@ import {usePartner} from "@/src/store/useConnectionsStore";
 import SurpriseRow from "@/components/dates/SurpriseRow";
 import {ideaDuration} from "@/src/lib/ideas";
 import {bestTimeLabel, nextGoodStart} from "@/src/lib/timeOfDay";
+import * as Haptics from "expo-haptics";
+import {holidayPreset} from "@/utils/holidays";
 import TabHeader, {useTabHeader, useTabRefresh} from "@/components/ui/TabHeader";
 import {
   BUDGET_TIERS,
@@ -46,6 +48,7 @@ import {
 import {
   TAG_TAXONOMY,
   BASE_ACTIVITY_CLASSES,
+  tagLabel,
 } from "@/src/constants/tags";
 
 export default function PlanScreen() {
@@ -254,6 +257,21 @@ export default function PlanScreen() {
 
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [resetKey, setResetKey] = useState<number>(0);
+
+  // A holiday around the date being planned (utils/holidays.ts): a one-tap
+  // chip that picks the vibes its dates are about. Nothing changes unless
+  // it's tapped
+  const preset = holidayPreset(startDate);
+  const presetVibes = preset?.vibes ?? [];
+  const presetOn = presetVibes.length > 0 && presetVibes.every((tag) => selectedTags.includes(tag));
+  const togglePreset = () => {
+    if (process.env.EXPO_OS === "ios") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedTags((prev) =>
+      presetOn ? prev.filter((tag) => !presetVibes.includes(tag)) : Array.from(new Set([...prev, ...presetVibes])),
+    );
+    // The tiles show the new picks
+    setResetKey((prev) => prev + 1);
+  };
 
   const resetLocalForm = () => {
     const roundedNow = getRoundedDate(new Date());
@@ -698,6 +716,27 @@ export default function PlanScreen() {
 
           {/* --- VIBES (the tag selector, unchanged) --- */}
           <Section icon="sparkles-outline" title="Vibes" hint="Tap • Hold to refine">
+            {preset && presetVibes.length > 0 && (
+              <Pressable
+                onPress={togglePreset}
+                accessibilityRole="button"
+                accessibilityState={{selected: presetOn}}
+                accessibilityLabel={`${preset.label}: ${presetVibes.map(tagLabel).join(", ")}`}
+                accessibilityHint={presetOn ? "Clears these vibes" : "Picks these vibes"}
+                className={`self-center flex-row items-center gap-2 pl-3 pr-4 py-2 rounded-full border active:opacity-70 ${
+                  presetOn ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
+                }`}
+              >
+                <Text>{preset.emoji}</Text>
+                <Text className={`font-bold text-sm ${presetOn ? "text-white" : "text-zinc-300"}`}>
+                  {preset.label}
+                </Text>
+                <Text className="text-zinc-500 text-xs" numberOfLines={1}>
+                  {presetVibes.map(tagLabel).join(" · ")}
+                </Text>
+                {presetOn && <Ionicons name="close" size={13} color="#a1a1aa" />}
+              </Pressable>
+            )}
             <View className="pt-1">
               <ActivityTagsSelector
                 key={resetKey}

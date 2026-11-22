@@ -1,4 +1,4 @@
-import React, {useRef, useState} from "react";
+import React, {startTransition, useRef, useState} from "react";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
@@ -35,6 +35,10 @@ export default function ActivityTagsSelector({
   onTagsChange: (tags: string[]) => void;
 }) {
   const [activeTags, setActiveTags] = useState<string[]>(initialActiveTags);
+
+  // The tile lights up first; the screen around it (which re-renders on
+  // every change) catches up right after, so a tap never waits on it
+  const notify = (tags: string[]) => startTransition(() => onTagsChange(tags));
 
   const [expandedClassId, setExpandedClassId] = useState<number | null>(
     mode === "publish" ? (classes.find((c) => c.name === openGroup)?.id ?? classes[0]?.id) : null,
@@ -98,12 +102,12 @@ export default function ActivityTagsSelector({
       // TURN OFF (It's already fully selected, so empty it)
       const nextTags = activeTags.filter((tag) => !categoryTags.includes(tag));
       setActiveTags(nextTags);
-      onTagsChange(nextTags);
+      notify(nextTags);
     } else {
       // TURN ON (Select everything in this category)
       const nextTags = Array.from(new Set([...activeTags, ...categoryTags]));
       setActiveTags(nextTags);
-      onTagsChange(nextTags);
+      notify(nextTags);
     }
   };
 
@@ -122,7 +126,7 @@ export default function ActivityTagsSelector({
       nextTags = [...activeTags, tag];
     }
     setActiveTags(nextTags);
-    onTagsChange(nextTags);
+    notify(nextTags);
   };
 
   const expandedCategory = classes.find((a) => a.id === expandedClassId);
@@ -156,7 +160,7 @@ export default function ActivityTagsSelector({
 
           return (
             <Pressable
-              className="flex flex-col justify-center items-center gap-[5px]"
+              className="flex flex-col justify-center items-center gap-[5px] active:scale-95"
               key={tagClass.name}
               onPress={() => {
                 if (process.env.EXPO_OS === "ios")
