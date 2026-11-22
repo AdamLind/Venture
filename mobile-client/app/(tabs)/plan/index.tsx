@@ -40,7 +40,7 @@ import {holidayPreset, holidaysOn} from "@/utils/holidays";
 import {occasionsOn, upcomingOccasion} from "@/utils/occasions";
 import {usePartnerDatesStore} from "@/src/store/usePartnerDatesStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import {SEASONS, SEASON_ICONS, seasonOn} from "@/utils/seasons";
+import {SEASONS, SEASON_COLORS, SEASON_ICONS, seasonOn} from "@/utils/seasons";
 import {IN_SEASON} from "@/utils/vibes";
 import TabHeader, {useTabHeader, useTabRefresh} from "@/components/ui/TabHeader";
 import {
@@ -822,7 +822,7 @@ export default function PlanScreen() {
                       accessibilityState={{selected: on}}
                       accessibilityLabel={`${chip.label}: ${chip.vibes.map(tagLabel).join(", ")}`}
                       accessibilityHint={on ? "Clears these vibes" : "Picks these vibes"}
-                      className={`flex-row items-center gap-2 pl-3 pr-4 py-2 rounded-full border active:opacity-70 ${
+                      className={`flex-row items-center gap-2 px-4 py-2 rounded-full border active:opacity-70 ${
                         on ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
                       }`}
                     >
@@ -831,7 +831,6 @@ export default function PlanScreen() {
                       <Text className="text-zinc-500 text-xs shrink" numberOfLines={1}>
                         {chip.vibes.map(tagLabel).join(" · ")}
                       </Text>
-                      {on && <Ionicons name="close" size={13} color="#a1a1aa" />}
                     </Pressable>
                   );
                 })}
@@ -853,20 +852,29 @@ export default function PlanScreen() {
               accessibilityState={{selected: inSeasonOn}}
               accessibilityLabel={`In season: ${seasonHoliday ? `${seasonHoliday.label} season` : SEASONS.find((s) => s.value === season)?.label}`}
               accessibilityHint="Ideas made for this time of year"
-              className={`self-center flex-row items-center gap-2 pl-3 pr-4 py-2 mt-1 rounded-full border active:opacity-70 ${
-                inSeasonOn ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
-              }`}
+              // On: the season's color (same size either way: nothing shifts)
+              className="self-center flex-row items-center gap-2 px-4 py-2 mt-1 rounded-full border active:opacity-70"
+              style={
+                inSeasonOn
+                  ? {backgroundColor: `${SEASON_COLORS[season]}26`, borderColor: SEASON_COLORS[season]}
+                  : {backgroundColor: "#18181b", borderColor: "#27272a"}
+              }
             >
               {seasonHoliday ? (
                 <Text>{seasonHoliday.emoji}</Text>
               ) : (
-                <Ionicons name={SEASON_ICONS[season] as any} size={15} color={inSeasonOn ? "white" : "#a1a1aa"} />
+                <Ionicons
+                  name={SEASON_ICONS[season] as any}
+                  size={15}
+                  color={inSeasonOn ? SEASON_COLORS[season] : "#a1a1aa"}
+                />
               )}
-              <Text className={`font-bold text-sm ${inSeasonOn ? "text-white" : "text-zinc-300"}`}>In season</Text>
-              <Text className="text-zinc-500 text-xs">
+              <Text className="font-bold text-sm" style={{color: inSeasonOn ? SEASON_COLORS[season] : "#d4d4d8"}}>
+                In season
+              </Text>
+              <Text className="text-xs" style={{color: inSeasonOn ? `${SEASON_COLORS[season]}b3` : "#71717a"}}>
                 {seasonHoliday ? seasonHoliday.label : SEASONS.find((s) => s.value === season)?.label}
               </Text>
-              {inSeasonOn && <Ionicons name="close" size={13} color="#a1a1aa" />}
             </Pressable>
           </Section>
 

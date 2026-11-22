@@ -40,6 +40,14 @@ export const SEASON_ICONS: Record<Season, string> = {
   WINTER: "snow-outline",
 };
 
+/** Each season's color (the "In season" chip on Plan, when it's on) */
+export const SEASON_COLORS: Record<Season, string> = {
+  SPRING: "#86efac", // light green
+  SUMMER: "#fbbf24", // warm amber
+  FALL: "#d97706", // orange-brown
+  WINTER: "#7dd3fc", // ice blue
+};
+
 /** A season's months where the place is (six months later south of the equator) */
 export function seasonMonths(season: Season, latitude: number | null | undefined): number[] {
   const months = NORTH[season];
