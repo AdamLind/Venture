@@ -21,6 +21,8 @@ import {
   ago,
   fetchIdeaReview,
   historyLine,
+  isNewPlace,
+  nearPosterHome,
   resolveReports,
   reviewIdea,
   setSuspension,
@@ -28,6 +30,7 @@ import {
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
 import type {IdeaVisibility} from "@/types/ideas";
+import PlaceReviewSheet from "@/components/moderation/PlaceReviewSheet";
 
 const STAFF_COLOR = "#a78bfa";
 
@@ -55,6 +58,16 @@ export default function ReviewPanel({
     visibility: IdeaVisibility;
     held_at?: string | null;
     users?: {username: string | null} | null;
+    /** Its place: a new one goes public with this idea (#88) */
+    venue_id?: string | null;
+    venues?: {
+      name?: string | null;
+      address?: string | null;
+      coordinates?: string | null;
+      opening_hours?: string | null;
+      access_note?: string | null;
+      pinned_by?: {username: string | null} | null;
+    } | null;
   };
   /** After a decision: the idea's new state */
   onDecided: (visibility: IdeaVisibility, note: string | null, rules: RuleId[] | null) => void;
@@ -71,6 +84,33 @@ export default function ReviewPanel({
   const [creatorSuspended, setCreatorSuspended] = useState(false);
   // The note sheet: sending back, rejecting, or suspending the creator
   const [noteFor, setNoteFor] = useState<NoteKind | null>(null);
+
+  // A new place (no published idea yet) goes public when this idea is
+  // approved, so it's checked too: Approve waits for "I checked the place"
+  const [newPlace, setNewPlace] = useState(false);
+  const [placeChecked, setPlaceChecked] = useState(false);
+  // Pinned near the poster's home (yes or no only)
+  const [nearHome, setNearHome] = useState(false);
+  const [placeSheetOpen, setPlaceSheetOpen] = useState(false);
+  useEffect(() => {
+    if (idea.visibility === "PUBLISHED" || !idea.venue_id) return;
+    let active = true;
+    isNewPlace(idea.venue_id, idea.idea_id)
+      .then(async (isNew) => {
+        if (!active) return;
+        setNewPlace(isNew);
+        if (isNew) {
+          const near = await nearPosterHome(idea.idea_id).catch(() => false);
+          if (active) setNearHome(near);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [idea.venue_id, idea.idea_id, idea.visibility]);
+  const checkingPlace = newPlace && idea.visibility !== "PUBLISHED";
+  const placeName = idea.venues?.name ?? "this place";
 
   // Bumped to reload after a decision
   const [version, setVersion] = useState(0);
@@ -128,7 +168,11 @@ export default function ReviewPanel({
       const publishes = idea.visibility !== "PUBLISHED";
       Alert.alert(
         publishes ? "Publish this idea?" : "Approve it?",
-        openReports ? "Its open reports stay open. Dismiss them if nothing's wrong." : "It shows in Discover for everyone.",
+        openReports
+          ? "Its open reports stay open. Dismiss them if nothing's wrong."
+          : checkingPlace
+            ? `It shows in Discover for everyone, and so does ${placeName}.`
+            : "It shows in Discover for everyone.",
         [
           {text: "Cancel", style: "cancel"},
           {text: "Approve", onPress: () => decide("APPROVE").catch(() => {})},
@@ -263,21 +307,48 @@ export default function ReviewPanel({
         <Text className="text-zinc-400 text-sm">No open reports.</Text>
       )}
 
+      {/* A NEW PLACE: a small card; tap to check it (#88: components/moderation/PlaceReviewSheet.tsx) */}
+      {checkingPlace && (
+        <Pressable
+          onPress={() => setPlaceSheetOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`New place: ${placeName}. ${placeChecked ? "Checked" : "Not checked yet"}. Open`}
+          className={`flex-row items-center gap-2.5 rounded-2xl px-3.5 py-3 border active:opacity-80 ${
+            placeChecked ? "bg-emerald-500/10 border-emerald-400/40" : "bg-orange-500/10 border-orange-400/40"
+          }`}
+        >
+          <Ionicons name={placeChecked ? "checkmark-circle" : "pin"} size={16} color={placeChecked ? "#6ee7b7" : "#fdba74"} />
+          <View className="flex-1">
+            <Text className="text-white font-bold text-sm" numberOfLines={1}>
+              New place: {placeName}
+            </Text>
+            <Text className={`text-xs ${placeChecked ? "text-emerald-200/80" : "text-orange-100/80"}`}>
+              {placeChecked ? "Checked" : "Not checked yet"}
+            </Text>
+          </View>
+          {nearHome && <Ionicons name="home" size={15} color="#fca5a5" accessibilityLabel="Near the poster's home" />}
+          <Ionicons name="chevron-forward" size={16} color="#a1a1aa" />
+        </Pressable>
+      )}
+
       {/* DECISIONS */}
       {canDecide ? (
         <View className="gap-2">
           <View className="flex-row gap-2">
             {decisions.map((d) => {
               const c = DECISIONS[d];
+              // A new place has to be checked before it's approved along with the idea
+              const waiting = d === "APPROVE" && checkingPlace && !placeChecked;
               return (
                 <Pressable
                   key={d}
                   onPress={() => onDecision(d)}
-                  disabled={!!busy}
+                  disabled={!!busy || waiting}
                   accessibilityRole="button"
                   accessibilityLabel={c.label}
+                  accessibilityHint={waiting ? "Check the place first" : undefined}
                   className="flex-1 h-11 rounded-2xl flex-row items-center justify-center gap-1.5 active:opacity-80"
-                  style={{backgroundColor: `${c.color}22`, opacity: busy && busy !== d ? 0.5 : 1}}
+                  style={{backgroundColor: `${c.color}22`, opacity: (busy && busy !== d) || waiting ? 0.4 : 1}}
                 >
                   {busy === d ? (
                     <ActivityIndicator color={c.color} size="small" />
@@ -365,6 +436,15 @@ export default function ReviewPanel({
           ))}
         </View>
       )}
+
+      <PlaceReviewSheet
+        visible={placeSheetOpen}
+        place={idea.venues}
+        nearHome={nearHome}
+        checked={placeChecked}
+        onClose={() => setPlaceSheetOpen(false)}
+        onChecked={setPlaceChecked}
+      />
 
       <ReviewNoteSheet
         decision={noteFor}

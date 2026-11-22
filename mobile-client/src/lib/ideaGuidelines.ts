@@ -24,7 +24,8 @@ export type RuleId =
   | "safe"
   | "audience"
   | "new"
-  | "no-spam";
+  | "no-spam"
+  | "place";
 
 export type Rule = {
   id: RuleId;
@@ -97,6 +98,17 @@ export const RULES: Rule[] = [
     body: "Set the minimum age to fit (anything with alcohol is 21+). Nothing sexual, hateful or degrading.",
   },
   {
+    id: "place",
+    icon: "pin",
+    title: "A real, reachable place",
+    body: "A new place goes public with its first idea, so it's reviewed too. The pin marks where you go or park, and anyone can get there.",
+    points: [
+      "Put the pin where people start: the trailhead, the pullout, the entrance. Not the middle of a lake.",
+      "Public places only: not private property, someone's yard, or anywhere closed to the public.",
+      "Use the place's real name, not an ad or a nickname only you know. Hours and how to get there should be right.",
+    ],
+  },
+  {
     id: "new",
     icon: "copy",
     title: "New to Venture",
@@ -164,6 +176,9 @@ export const QUICK_PICKS: Record<NoteDecision, {rule: RuleId; text: string}[]> =
     {rule: "safe", text: "Add risk labels and a safety note so people know what they're getting into."},
     {rule: "audience", text: "Check the minimum age. Anything with alcohol is 21+."},
     {rule: "no-spam", text: "Take out the phone number, social handles or promo codes."},
+    {rule: "place", text: "Move the pin to where you go or park: the trailhead, the pullout, the entrance."},
+    {rule: "place", text: "Use the place's real name."},
+    {rule: "place", text: "Check the place's hours and how to get there."},
   ],
   REJECT: [
     {rule: "together", text: "This isn't really a date idea."},
@@ -172,5 +187,6 @@ export const QUICK_PICKS: Record<NoteDecision, {rule: RuleId; text: string}[]> =
     {rule: "new", text: "This is already on Venture."},
     {rule: "audience", text: "This isn't right for everyone who'll see it."},
     {rule: "no-spam", text: "This looks like an ad or spam."},
+    {rule: "place", text: "This place is private property or closed to the public."},
   ],
 };

@@ -260,6 +260,13 @@ function ReviewRow({
           {mine ? "Your idea" : idea.username ? `@${idea.username}` : "Someone"}
           {idea.place ? ` · ${idea.place}` : ""}
         </Text>
+        {/* Approving it makes its place public too (#88) */}
+        {idea.newPlace && (
+          <View className="self-start flex-row items-center gap-1 mt-0.5 px-2 py-0.5 rounded-full bg-orange-500/15">
+            <Ionicons name="pin" size={11} color="#fdba74" />
+            <Text className="text-orange-200 text-xs font-bold">New place</Text>
+          </View>
+        )}
         {mine && !canReviewOwn && (
           <Text className="text-zinc-500 text-xs">Someone else needs to review it</Text>
         )}

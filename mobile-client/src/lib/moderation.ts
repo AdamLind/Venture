@@ -30,6 +30,8 @@ export interface QueueIdea {
   created_at: string;
   username: string | null;
   place: string | null;
+  /** Its place has no published ideas yet: approving makes the place public too (#88) */
+  newPlace: boolean;
 }
 
 export interface Report {
@@ -38,7 +40,7 @@ export interface Report {
   created_at: string;
 }
 
-export interface ReportedIdea extends Omit<QueueIdea, "submitted_at" | "place"> {
+export interface ReportedIdea extends Omit<QueueIdea, "submitted_at" | "place" | "newPlace"> {
   reports: Report[];
   /** Hidden from Discover automatically after enough reports (#76) */
   held: boolean;
@@ -56,7 +58,7 @@ export interface LogEntry {
 }
 
 const IDEA_COLUMNS = `
-  idea_id, user_id, title, image_urls, visibility, submitted_at, created_at,
+  idea_id, user_id, title, image_urls, visibility, submitted_at, created_at, venue_id,
   venues ( name ),
   users!activities_user_id_fkey ( username )
 `;
@@ -72,7 +74,37 @@ function toQueueIdea(row: any): QueueIdea {
     created_at: row.created_at,
     username: row.users?.username ?? null,
     place: row.venues?.name ?? null,
+    newPlace: false,
   };
+}
+
+/**
+ * Which of these places have a published idea (anyone can see published
+ * ideas); the rest are new: they go public with the idea being reviewed.
+ */
+async function placesWithPublishedIdeas(venueIds: string[], exceptIdeaId?: number): Promise<Set<string>> {
+  if (venueIds.length === 0) return new Set();
+  let query = supabase.from("activities").select("venue_id").eq("visibility", "PUBLISHED").in("venue_id", venueIds);
+  if (exceptIdeaId != null) query = query.neq("idea_id", exceptIdeaId);
+  const {data, error} = await query;
+  if (error) throw new Error(friendlyError(error));
+  return new Set((data ?? []).map((r: any) => r.venue_id as string));
+}
+
+/**
+ * Whether a new place's pin is near the poster's saved home (#88): the
+ * likeliest "someone's yard". Staff only; only yes or no, never the home.
+ */
+export async function nearPosterHome(ideaId: number): Promise<boolean> {
+  const {data, error} = await supabase.rpc("place_near_poster_home", {p_idea_id: ideaId});
+  if (error) throw new Error(friendlyError(error));
+  return !!data;
+}
+
+/** Approving this idea would make its place public (it has no other published idea) */
+export async function isNewPlace(venueId: string | null | undefined, ideaId: number): Promise<boolean> {
+  if (!venueId) return false;
+  return !(await placesWithPublishedIdeas([venueId], ideaId)).has(venueId);
 }
 
 /** Ideas waiting for review, oldest first. */
@@ -84,7 +116,10 @@ export async function fetchToReview(): Promise<QueueIdea[]> {
     .order("submitted_at", {ascending: true, nullsFirst: true})
     .limit(200);
   if (error) throw new Error(friendlyError(error));
-  return (data ?? []).map(toQueueIdea);
+  const rows = data ?? [];
+  const venueIds = [...new Set(rows.map((r: any) => r.venue_id).filter(Boolean))] as string[];
+  const known = await placesWithPublishedIdeas(venueIds);
+  return rows.map((row: any) => ({...toQueueIdea(row), newPlace: !!row.venue_id && !known.has(row.venue_id)}));
 }
 
 /** Ideas with open reports, most reported first. */

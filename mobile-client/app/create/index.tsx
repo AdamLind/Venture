@@ -1895,6 +1895,19 @@ export default function CreateScreen() {
         <Text className="text-zinc-400 text-[13px] font-semibold">
           {step + 1} of {STEPS.length}
         </Text>
+        {/* Out from any step (asks first if something would be lost); the
+            left button already closes on the first step and an edit's review */}
+        {step > 0 && !(editingId && step === REVIEW) && (
+          <Pressable
+            onPress={close}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 items-center justify-center active:opacity-70"
+          >
+            <Ionicons name="close" size={20} color="white" />
+          </Pressable>
+        )}
       </View>
 
       {/* WHAT YOU'RE MAKING (steps 2 to 7) */}
