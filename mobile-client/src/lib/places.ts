@@ -97,6 +97,31 @@ export async function similarPlacesNear(name: string, at: LatLng): Promise<Place
   return [...named, ...close].filter((p) => !seen.has(p.venue_id) && !!seen.add(p.venue_id)).slice(0, 5);
 }
 
+/**
+ * Whether publishing this idea would put your own place on the map for the
+ * first time (#77): it's yours and has no other published idea. False for
+ * anyone else's place. Throws a readable Error.
+ */
+export async function placeGoesPublic(venueId: string, exceptIdeaId?: number | null): Promise<boolean> {
+  const {data, error} = await supabase.rpc("place_goes_public", {
+    p_venue_id: venueId,
+    p_except_idea_id: exceptIdeaId ?? null,
+  });
+  if (error) throw new Error(friendlyError(error));
+  return !!data;
+}
+
+/**
+ * Public places that might be the same as your private pin (#77), for "Is
+ * this the same place?" when you publish: someone may have shared it since
+ * you pinned it. Only places that are already public; never anyone's
+ * private pins.
+ */
+export async function publicPlacesLike(name: string, at: LatLng, exceptVenueId: string): Promise<PlaceResult[]> {
+  const found = await similarPlacesNear(name, at);
+  return found.filter((p) => p.public_ideas > 0 && p.venue_id !== exceptVenueId).slice(0, 3);
+}
+
 /** "350 ft" / "0.4 mi" / "12 mi" */
 export function distanceLabel(meters: number | null): string | null {
   if (meters == null) return null;

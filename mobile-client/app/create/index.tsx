@@ -53,7 +53,16 @@ import {POSTER_PROMISE} from "@/src/lib/ideaGuidelines";
 import {RISK_LABELS, SAFETY_NOTE_MAX, type RiskLabel} from "@/src/lib/safety";
 import {WEATHER_NEEDS_OPTIONS, type WeatherNeeds} from "@/src/lib/weatherRules";
 import {TIME_OF_DAY_LABEL, type TimeOfDay} from "@/src/lib/timeOfDay";
-import {type PickedPlace, type PlaceResult, addPlace, distanceLabel, pickExisting, searchPlaces} from "@/src/lib/places";
+import {
+  type PickedPlace,
+  type PlaceResult,
+  addPlace,
+  distanceLabel,
+  pickExisting,
+  placeGoesPublic,
+  publicPlacesLike,
+  searchPlaces,
+} from "@/src/lib/places";
 import {useLocationStore} from "@/src/store/useLocationStore";
 import {TAG_TAXONOMY, BASE_ACTIVITY_CLASSES, MAX_IDEA_TAGS, tagLabel} from "@/src/constants/tags";
 import {parseCoordinates} from "@/utils/itineraryEngine";
@@ -95,6 +104,7 @@ const FIELD_STEP: Record<string, StepKey> = {
   age: "details",
   description: "story",
   promise: "review",
+  samePlace: "review",
 };
 
 // ─── The choices ───────────────────────────────────────────────────────────────
@@ -432,6 +442,75 @@ export default function CreateScreen() {
     clearMissing("where");
   };
 
+  // --- Publishing at your own private place (#77): it goes on the map for
+  //     everyone once the idea is approved. A pin from earlier is checked
+  //     again against places that went public since ("Is this the same
+  //     place?"); a new one was checked when it was pinned.
+  const publishingAtPlace = visibility === "PENDING_REVIEW" && whereMode === "PLACE" && !!place;
+  const placeKey = !place ? null : place.kind === "existing" ? place.venueId : `new:${place.latitude},${place.longitude}`;
+  type PlaceCheck = {key: string; goesPublic: boolean; matches: PlaceResult[]};
+  const [placeCheck, setPlaceCheck] = useState<PlaceCheck | null>(null);
+  // "No, mine's a different spot", for this place
+  const [differentFrom, setDifferentFrom] = useState<string | null>(null);
+  const checkPlace = async (): Promise<PlaceCheck | null> => {
+    if (!place || !placeKey) return null;
+    if (place.kind === "new") return {key: placeKey, goesPublic: true, matches: []};
+    const goesPublic = await placeGoesPublic(place.venueId, editingId);
+    const matches = goesPublic
+      ? await publicPlacesLike(place.name, {latitude: place.latitude, longitude: place.longitude}, place.venueId)
+      : [];
+    return {key: placeKey, goesPublic, matches};
+  };
+  useEffect(() => {
+    if (STEPS[step] !== "review" || !publishingAtPlace || placeCheck?.key === placeKey) return;
+    let active = true;
+    checkPlace()
+      .then((r) => active && setPlaceCheck(r))
+      .catch(() => {}); // checked again on submit
+    return () => {
+      active = false;
+    };
+    // (the place by its key)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, publishingAtPlace, placeKey]);
+  const shownCheck = publishingAtPlace && placeCheck?.key === placeKey ? placeCheck : null;
+  const goesPublic = !!shownCheck?.goesPublic;
+  const samePlaceMatches = goesPublic && differentFrom !== placeKey ? shownCheck!.matches : [];
+  // "Use this": your other private ideas at your pin can move there too
+  // (when this is saved); your pin itself stays, private
+  const [moveOthers, setMoveOthers] = useState<{from: string; to: string} | null>(null);
+  const pickSamePlace = async (match: PlaceResult) => {
+    const mine = place?.kind === "existing" ? place : null;
+    choosePlace(pickExisting(match));
+    clearMissing("samePlace");
+    setMoveOthers(null);
+    if (!mine) return;
+    const {
+      data: {session},
+    } = await supabase.auth.getSession();
+    if (!session) return;
+    let others = supabase
+      .from("activities")
+      .select("idea_id, title")
+      .eq("venue_id", mine.venueId)
+      .eq("user_id", session.user.id)
+      .eq("visibility", "PRIVATE");
+    if (editingId) others = others.neq("idea_id", editingId);
+    const {data} = await others.limit(50);
+    const n = data?.length ?? 0;
+    if (!n) return;
+    Alert.alert(
+      n === 1 ? `Move "${data![0].title}" too?` : `Move your other ${n} ideas too?`,
+      `${n === 1 ? "It's" : "They're"} at your pin for ${mine.name}. Move ${n === 1 ? "it" : "them"} to ${match.name}? ${
+        n === 1 ? "It stays" : "They stay"
+      } private.`,
+      [
+        {text: "Keep on my pin", style: "cancel"},
+        {text: "Move", onPress: () => setMoveOthers({from: mine.venueId, to: match.venue_id})},
+      ],
+    );
+  };
+
   // --- EDITING: load the idea into the steps, and open on the review ---
   useEffect(() => {
     if (!editingId) return;
@@ -726,6 +805,24 @@ export default function CreateScreen() {
       return;
     }
 
+    // Publishing at your own earlier pin: is it a place that's public now?
+    if (publishingAtPlace && place?.kind === "existing") {
+      let check = shownCheck;
+      if (!check) {
+        try {
+          check = await checkPlace();
+          setPlaceCheck(check);
+        } catch {
+          check = null; // can't check now: review double-checks places
+        }
+      }
+      if (check?.goesPublic && check.matches.length > 0 && differentFrom !== placeKey) {
+        setMissingFields(["samePlace"]);
+        warn();
+        return;
+      }
+    }
+
     setMissingFields([]);
     setIsSubmitting(true);
 
@@ -830,7 +927,19 @@ export default function CreateScreen() {
         if (tagError) throw tagError;
       }
 
-      // 5. An edit replaced the photo: remove the old file (best effort)
+      // 5. "Use this": your other private ideas at your pin move with it (#77)
+      if (moveOthers && moveOthers.to === venueId) {
+        const {error: moveError} = await supabase
+          .from("activities")
+          .update({venue_id: moveOthers.to})
+          .eq("venue_id", moveOthers.from)
+          .eq("user_id", userId)
+          .eq("visibility", "PRIVATE")
+          .neq("idea_id", savedIdeaId);
+        if (moveError) console.warn("Couldn't move your other ideas:", moveError.message);
+      }
+
+      // 6. An edit replaced the photo: remove the old file (best effort)
       if (editingId && photoChanged && original) {
         const oldPaths = original.imageUrls
           .map((u) => u.split(PHOTO_PATH_MARKER)[1])
@@ -1779,9 +1888,74 @@ export default function CreateScreen() {
           }`}
         >
           <Text className={`font-bold text-[15px] ${visibility === "PRIVATE" ? "text-white" : "text-zinc-400"}`}>Keep private</Text>
-          <Text className="text-zinc-400 text-xs mt-0.5">Only you, for planning</Text>
+          <Text className="text-zinc-400 text-xs mt-0.5">You and who you plan with</Text>
         </Pressable>
       </View>
+
+      {/* Your own place goes public with it (#77): first, is it one that's public already? */}
+      {visibility === "PENDING_REVIEW" && samePlaceMatches.length > 0 && place ? (
+        <View
+          className={`rounded-2xl border p-3.5 mb-2 gap-2.5 ${
+            missing("samePlace") ? "bg-red-500/10 border-red-500" : "bg-zinc-900 border-zinc-800"
+          }`}
+        >
+          <View className="gap-0.5">
+            <Text className={`font-bold text-[15px] ${missing("samePlace") ? "text-red-400" : "text-white"}`}>
+              Is this the same place?
+            </Text>
+            <Text className="text-zinc-400 text-[13px] leading-[18px]">
+              Someone has shared a place near your pin for {place.name}. If it&apos;s the same spot, use theirs.
+            </Text>
+          </View>
+          {samePlaceMatches.map((m) => (
+            <View key={m.venue_id} className="flex-row items-center gap-3 rounded-xl bg-zinc-800/60 px-3 py-2.5">
+              <Ionicons name="location" size={16} color="#FF9D0A" />
+              <View className="flex-1">
+                <Text className="text-white text-sm font-semibold" numberOfLines={1}>
+                  {m.name}
+                </Text>
+                <Text className="text-zinc-400 text-xs" numberOfLines={1}>
+                  {[distanceLabel(m.distance_m) && `${distanceLabel(m.distance_m)} away`, m.address].filter(Boolean).join(" · ")}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => pickSamePlace(m)}
+                accessibilityRole="button"
+                accessibilityLabel={`Use ${m.name}`}
+                className="px-3 py-1.5 rounded-full bg-white active:opacity-80"
+              >
+                <Text className="text-black text-[13px] font-bold">Use this</Text>
+              </Pressable>
+            </View>
+          ))}
+          <Pressable
+            onPress={() => {
+              setDifferentFrom(placeKey);
+              clearMissing("samePlace");
+            }}
+            accessibilityRole="button"
+            className="items-center py-1.5 active:opacity-70"
+          >
+            <Text className="text-blue-300 text-[13px] font-semibold">No, mine&apos;s a different spot</Text>
+          </Pressable>
+        </View>
+      ) : visibility === "PENDING_REVIEW" && goesPublic && place ? (
+        <View className="flex-row gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 mb-2">
+          <Ionicons name="earth" size={17} color="#fbbf24" style={{marginTop: 1}} />
+          <Text className="text-amber-100/90 text-[13px] leading-[18px] flex-1">
+            {`Once it's approved, ${place.name} and its pin go on the map for everyone.`}
+            {place.kind === "existing" ? " Your other private ideas there stay private." : ""}{" "}
+            <Text
+              onPress={() => goTo(STEPS.indexOf("where"))}
+              accessibilityRole="link"
+              suppressHighlighting
+              className="font-semibold text-amber-300"
+            >
+              Change place
+            </Text>
+          </Text>
+        </View>
+      ) : null}
 
       {/* The promise for publishing (#81) */}
       {visibility === "PENDING_REVIEW" && (
