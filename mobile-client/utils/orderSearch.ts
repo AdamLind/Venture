@@ -46,6 +46,7 @@ const CLOCK: ReadonlySet<PlanIssueKind> = new Set<PlanIssueKind>([
   "PART_CLOSED",
   "AFTER_DARK",
   "ODD_MEAL_TIME",
+  "OUT_OF_SEASON",
   "TOO_COLD",
   "TOO_HOT",
   "RAIN",

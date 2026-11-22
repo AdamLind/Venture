@@ -63,6 +63,9 @@ export interface BaseActivity {
   /** How it feels and how physical it is (#20, utils/ideaTraits.ts); null on older ideas */
   feel?: "CALM" | "UPBEAT" | null;
   exertion?: "NONE" | "LIGHT" | "HARD" | null;
+  /** Months it works in (1-12; all 12 = any time; null = not answered) and holidays it's only around (#21) */
+  months?: number[] | null;
+  holidays?: string[];
 
   // ─── RELATIONAL DATA (Populated via Supabase Joins) ───
   tags?: string[]; // Flattened from activity_tags table

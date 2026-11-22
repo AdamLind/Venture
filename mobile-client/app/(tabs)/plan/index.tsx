@@ -36,7 +36,9 @@ import SurpriseRow from "@/components/dates/SurpriseRow";
 import {ideaDuration} from "@/src/lib/ideas";
 import {bestTimeLabel, nextGoodStart} from "@/src/lib/timeOfDay";
 import * as Haptics from "expo-haptics";
-import {holidayPreset} from "@/utils/holidays";
+import {holidayPreset, holidaysOn} from "@/utils/holidays";
+import {SEASONS, SEASON_ICONS, seasonOn} from "@/utils/seasons";
+import {IN_SEASON} from "@/utils/vibes";
 import TabHeader, {useTabHeader, useTabRefresh} from "@/components/ui/TabHeader";
 import {
   BUDGET_TIERS,
@@ -270,6 +272,17 @@ export default function PlanScreen() {
       presetOn ? prev.filter((tag) => !presetVibes.includes(tag)) : Array.from(new Set([...prev, ...presetVibes])),
     );
     // The tiles show the new picks
+    setResetKey((prev) => prev + 1);
+  };
+
+  // "In season" (#22): ideas made for the time of year of the date being
+  // planned (seasonal ones in their months, holiday ones around it)
+  const season = seasonOn(startDate, homeLocation?.latitude);
+  const seasonHoliday = holidaysOn(startDate)[0] ?? null;
+  const inSeasonOn = selectedTags.includes(IN_SEASON);
+  const toggleInSeason = () => {
+    if (process.env.EXPO_OS === "ios") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedTags((prev) => (inSeasonOn ? prev.filter((tag) => tag !== IN_SEASON) : [...prev, IN_SEASON]));
     setResetKey((prev) => prev + 1);
   };
 
@@ -747,6 +760,27 @@ export default function PlanScreen() {
                 onTagsChange={(newTags) => setSelectedTags(newTags)}
               />
             </View>
+            <Pressable
+              onPress={toggleInSeason}
+              accessibilityRole="button"
+              accessibilityState={{selected: inSeasonOn}}
+              accessibilityLabel={`In season: ${seasonHoliday ? `${seasonHoliday.label} season` : SEASONS.find((s) => s.value === season)?.label}`}
+              accessibilityHint="Ideas made for this time of year"
+              className={`self-center flex-row items-center gap-2 pl-3 pr-4 py-2 mt-1 rounded-full border active:opacity-70 ${
+                inSeasonOn ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
+              }`}
+            >
+              {seasonHoliday ? (
+                <Text>{seasonHoliday.emoji}</Text>
+              ) : (
+                <Ionicons name={SEASON_ICONS[season] as any} size={15} color={inSeasonOn ? "white" : "#a1a1aa"} />
+              )}
+              <Text className={`font-bold text-sm ${inSeasonOn ? "text-white" : "text-zinc-300"}`}>In season</Text>
+              <Text className="text-zinc-500 text-xs">
+                {seasonHoliday ? seasonHoliday.label : SEASONS.find((s) => s.value === season)?.label}
+              </Text>
+              {inSeasonOn && <Ionicons name="close" size={13} color="#a1a1aa" />}
+            </Pressable>
           </Section>
 
           {/* --- START --- */}

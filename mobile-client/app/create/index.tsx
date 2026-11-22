@@ -27,6 +27,9 @@ import {SUSPENDED_MESSAGE, useAccountStore} from "@/src/store/useAccountStore";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {parseCoordinates} from "@/utils/itineraryEngine";
 import type {Exertion, Feel} from "@/utils/ideaTraits";
+import {HOLIDAYS, type HolidayId} from "@/utils/holidays";
+import {ALL_MONTHS, MONTH_NAMES, SEASONS, type Season, monthsLabel, seasonMonths} from "@/utils/seasons";
+import {usePrefsStore} from "@/src/store/usePrefsStore";
 
 import PlacePicker from "@/components/places/PlacePicker";
 import {type PickedPlace, addPlace} from "@/src/lib/places";
@@ -216,6 +219,37 @@ export default function CreateScreen() {
     NonNullable<BaseActivity["time_of_day"]>
   >([]);
 
+  // Time of year (#21): any time, some months (picked as seasons, fine-tuned
+  // by month), or only around a holiday. Required, starts unanswered
+  const [yearMode, setYearMode] = useState<"ANY" | "SEASONS" | "HOLIDAY" | null>(null);
+  const [months, setMonths] = useState<number[]>([]);
+  const [holidays, setHolidays] = useState<HolidayId[]>([]);
+  // Seasons are months where the place is (south of the equator they flip);
+  // a stay-in idea uses your home
+  const homeLatitude = usePrefsStore((s) => s.prefs.homeLocation?.latitude ?? null);
+  const seasonLatitude = modality === "GO_OUT" ? (place?.latitude ?? homeLatitude) : homeLatitude;
+  const seasonOn = (season: Season) =>
+    yearMode === "SEASONS" && seasonMonths(season, seasonLatitude).every((m) => months.includes(m));
+  const toggleSeason = (season: Season) => {
+    const its = seasonMonths(season, seasonLatitude);
+    const base = yearMode === "SEASONS" ? months : [];
+    const next = its.every((m) => base.includes(m)) ? base.filter((m) => !its.includes(m)) : [...base, ...its];
+    setYearMode("SEASONS");
+    setMonths(Array.from(new Set(next)).sort((a, b) => a - b));
+    setHolidays([]);
+    clearMissing("year");
+  };
+  const toggleMonth = (month: number) => {
+    setMonths((prev) =>
+      prev.includes(month) ? prev.filter((m) => m !== month) : [...prev, month].sort((a, b) => a - b),
+    );
+    clearMissing("year");
+  };
+  const toggleHoliday = (id: HolidayId) => {
+    setHolidays((prev) => (prev.includes(id) ? prev.filter((h) => h !== id) : [...prev, id]));
+    clearMissing("year");
+  };
+
   // Who it's for and how young (both required: a preset would be saved as an answer)
   const [groupSize, setGroupSize] = useState<string | null>(null);
   const [minPeople, setMinPeople] = useState("");
@@ -311,6 +345,18 @@ export default function CreateScreen() {
       setRiskLabels(risks.filter((r) => r !== "STRENUOUS"));
       setExertion((data.exertion as Exertion | null) ?? (risks.includes("STRENUOUS") ? "HARD" : null));
       setFeel((data.feel as Feel | null) ?? null);
+      // Time of year: null months (and no holidays) means it wasn't asked yet
+      const savedHolidays = (data.holidays ?? []) as HolidayId[];
+      const savedMonths = (data.months ?? null) as number[] | null;
+      if (savedHolidays.length > 0) {
+        setYearMode("HOLIDAY");
+        setHolidays(savedHolidays);
+      } else if (savedMonths && savedMonths.length === 12) {
+        setYearMode("ANY");
+      } else if (savedMonths && savedMonths.length > 0) {
+        setYearMode("SEASONS");
+        setMonths([...savedMonths].sort((a, b) => a - b));
+      }
       setSafetyNote(data.safety_note ?? "");
       setPrice(String(data.est_price_per_person ?? ""));
       setDuration(String(data.est_duration_minutes ?? ""));
@@ -422,6 +468,13 @@ export default function CreateScreen() {
     if (isDurationVariable === null) missing.push("flexible");
     if (!environment) missing.push("environment");
     if (!activityType) missing.push("type");
+    if (
+      !yearMode ||
+      (yearMode === "SEASONS" && months.length === 0) ||
+      (yearMode === "HOLIDAY" && holidays.length === 0)
+    ) {
+      missing.push("year");
+    }
     if (!feel) missing.push("feel");
     if (!exertion) missing.push("exertion");
     const customMin = parseInt(minPeople, 10);
@@ -558,6 +611,8 @@ export default function CreateScreen() {
         is_duration_variable: isDurationVariable,
         feel,
         exertion,
+        months: yearMode === "ANY" ? ALL_MONTHS : yearMode === "SEASONS" ? months : null,
+        holidays: yearMode === "HOLIDAY" ? holidays : [],
         min_people: dbMinPeople,
         max_people: dbMaxPeople,
         min_age: dbMinAge,
@@ -983,6 +1038,108 @@ export default function CreateScreen() {
             </Pressable>
           ))}
         </View>
+
+        {/* TIME OF YEAR (#21): most ideas, one tap; seasonal ones say when */}
+        <FieldLabel
+          label="TIME OF YEAR"
+          missing={missingFields.includes("year")}
+          hint={
+            yearMode === "SEASONS" ? "Pick a season or month" : yearMode === "HOLIDAY" ? "Pick a holiday" : "Pick one"
+          }
+          className="mb-0"
+        />
+        <View className={`flex-row flex-wrap gap-2 mb-1 ${groupBox(missingFields.includes("year"))}`}>
+          {[
+            {key: "ANY", label: "Any time", on: yearMode === "ANY", press: () => {
+              setYearMode("ANY");
+              setMonths([]);
+              setHolidays([]);
+              clearMissing("year");
+            }},
+            ...SEASONS.map((season) => ({
+              key: season.value,
+              label: season.label,
+              on: seasonOn(season.value),
+              press: () => toggleSeason(season.value),
+            })),
+            {key: "HOLIDAY", label: "Holiday", on: yearMode === "HOLIDAY", press: () => {
+              setYearMode("HOLIDAY");
+              setMonths([]);
+              clearMissing("year");
+            }},
+          ].map((chip) => (
+            <Pressable
+              key={chip.key}
+              onPress={chip.press}
+              accessibilityRole="button"
+              accessibilityState={{selected: chip.on}}
+              className={`px-4 py-2 rounded-xl border active:opacity-70 ${
+                chip.on ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
+              }`}
+            >
+              <Text className={`font-bold ${chip.on ? "text-white" : "text-zinc-500"}`}>{chip.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {yearMode === "SEASONS" && (
+          // Fine-tune by month (cherry blossoms: April only)
+          <View className="flex-row flex-wrap gap-1.5 mt-2 mb-1">
+            {ALL_MONTHS.map((month) => {
+              const on = months.includes(month);
+              return (
+                <Pressable
+                  key={month}
+                  onPress={() => toggleMonth(month)}
+                  accessibilityRole="button"
+                  accessibilityState={{selected: on}}
+                  className={`px-2.5 py-1.5 rounded-lg border active:opacity-70 ${
+                    on ? "bg-zinc-800 border-zinc-400" : "bg-zinc-900 border-zinc-800"
+                  }`}
+                >
+                  <Text className={`text-xs font-bold ${on ? "text-white" : "text-zinc-600"}`}>
+                    {MONTH_NAMES[month - 1]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        {yearMode === "HOLIDAY" && (
+          <View className="flex-row flex-wrap gap-2 mt-2 mb-1">
+            {HOLIDAYS.map((holiday) => {
+              const on = holidays.includes(holiday.id);
+              return (
+                <Pressable
+                  key={holiday.id}
+                  onPress={() => toggleHoliday(holiday.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{selected: on}}
+                  className={`flex-row items-center gap-1.5 px-3 py-2 rounded-xl border active:opacity-70 ${
+                    on ? "bg-zinc-800 border-white" : "bg-zinc-900 border-zinc-800"
+                  }`}
+                >
+                  <Text>{holiday.emoji}</Text>
+                  <Text className={`font-bold text-sm ${on ? "text-white" : "text-zinc-500"}`}>{holiday.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        <ChoiceHint
+          text={
+            yearMode === "ANY"
+              ? "Works any time of year."
+              : yearMode === "SEASONS"
+                ? months.length
+                  ? `Only ${monthsLabel(months)}${seasonLatitude != null && seasonLatitude < 0 ? " (southern hemisphere)" : ""}. Tap months to fine-tune.`
+                  : "Which seasons or months?"
+                : yearMode === "HOLIDAY"
+                  ? holidays.length
+                    ? "Only in the weeks around it."
+                    : "Which holiday is it for?"
+                  : "Most ideas work any time. Seasonal ones only show up when they're on."
+          }
+        />
 
         {/* ACTIVITY TYPE */}
         <FieldLabel

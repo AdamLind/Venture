@@ -9,6 +9,9 @@
 //   Close .... calm and close
 //   (Shows is its tags only.)
 // Each tag picked on its own is one request, met by that tag.
+// "In season" (IN_SEASON, a vibe that isn't a tag, #22) is one request, met by
+// an idea made for that time of year: seasonal and on at the date planned.
+// Any-time ideas don't meet it: the pill is for what's special right now.
 //
 // The fit is cosine similarity, the usual way search compares two sets of
 // terms: requests met ÷ √(the idea's tags). Meeting more of what was asked
@@ -19,6 +22,10 @@
 
 import {TAG_TAXONOMY} from "@/src/constants/tags";
 import {exertionOf, feelOf} from "./ideaTraits";
+import {inSeason, isSeasonal} from "./seasons";
+
+/** The "In season" vibe (kept with the tags in a plan's vibes; never a tag itself) */
+export const IN_SEASON = "in-season";
 
 const GROUP_FIELDS: Record<string, (item: any) => boolean> = {
   Food: (item) => item?.activity_type === "MEAL" || item?.activity_type === "TREAT",
@@ -31,7 +38,7 @@ export const wholeGroups = (vibes: string[]) =>
   Object.keys(TAG_TAXONOMY).filter((group) => TAG_TAXONOMY[group].every((tag) => vibes.includes(tag)));
 
 /** How many of the requests an idea meets (whole groups once each, single tags each) */
-export function requestsMet(item: any, vibes: string[] | null | undefined): number {
+export function requestsMet(item: any, vibes: string[] | null | undefined, date?: Date | null): number {
   if (!vibes?.length) return 0;
   const tags: string[] = Array.isArray(item?.tags) ? item.tags : [];
   const whole = wholeGroups(vibes);
@@ -42,14 +49,18 @@ export function requestsMet(item: any, vibes: string[] | null | undefined): numb
     if (hasGroupTag || GROUP_FIELDS[group]?.(item)) met += 1;
   }
   for (const vibe of vibes) {
-    if (!inWhole.has(vibe) && tags.includes(vibe)) met += 1;
+    if (vibe === IN_SEASON) {
+      if (date && isSeasonal(item) && inSeason(item, date)) met += 1;
+    } else if (!inWhole.has(vibe) && tags.includes(vibe)) {
+      met += 1;
+    }
   }
   return met;
 }
 
-/** How well an idea fits the vibes: requests met ÷ √(its tags); 0 when nothing was asked */
-export function vibeFit(item: any, vibes: string[] | null | undefined): number {
-  const met = requestsMet(item, vibes);
+/** How well an idea fits the vibes: requests met ÷ √(its tags); 0 when nothing was asked. `date`: the date planned (for "In season") */
+export function vibeFit(item: any, vibes: string[] | null | undefined, date?: Date | null): number {
+  const met = requestsMet(item, vibes, date);
   if (met === 0) return 0;
   const tagCount = Array.isArray(item?.tags) ? item.tags.length : 0;
   return met / Math.sqrt(Math.max(1, tagCount));

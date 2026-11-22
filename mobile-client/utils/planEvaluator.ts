@@ -34,6 +34,7 @@ import {
 import {sunsetAt} from "./sunset";
 import {checkHours, hoursMessage} from "./openingHours";
 import {feelOf, isWorkout} from "./ideaTraits";
+import {inSeason, seasonText} from "./seasons";
 import {type WeatherLookup, weatherProblems} from "@/src/lib/weatherRules";
 
 // ─── Tuning ────────────────────────────────────────────────────────────────────
@@ -65,6 +66,9 @@ export const PENALTY = {
   // opening a little late or closing a little early is a nudge
   closed: 80, // hard
   partClosed: 25,
+  // Outside the months it works in, or away from its holiday (#21): it
+  // isn't on (a corn maze in March, Christmas lights in July)
+  outOfSeason: 70, // hard
   // The date's arc: it warms up, then winds down. Livening up after a calm,
   // close stop (stargazing, a spa) breaks the mood, and the end is what a
   // date is remembered by: an active stop after it (climbing) more than an
@@ -112,6 +116,8 @@ export type PlanIssueKind =
   // Opening hours (utils/openingHours.ts)
   | "CLOSED"
   | "PART_CLOSED"
+  // Time of year (utils/seasons.ts)
+  | "OUT_OF_SEASON"
   // Weather (src/lib/weatherRules.ts)
   | "TOO_COLD"
   | "TOO_HOT"
@@ -447,6 +453,19 @@ export function evaluatePlan(
           penalty: PENALTY.afterDark,
         });
       }
+    }
+
+    // Time of year: not on at all outside its season
+    if (!inSeason(activity, new Date(slot.startTime))) {
+      const when = seasonText(activity);
+      add({
+        kind: "OUT_OF_SEASON",
+        severity: "hard",
+        stopId: id,
+        // "Only Sep–Nov", "Only around Christmas"
+        message: when ? `Only ${when.replace(/^Around/, "around")}` : "Out of season",
+        penalty: PENALTY.outOfSeason,
+      });
     }
 
     // Shorter than suggested (you can lengthen freely)

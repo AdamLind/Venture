@@ -10,6 +10,7 @@ import {weatherProblems} from "@/src/lib/weatherRules";
 import {type DayContext, parseCoordinates, safeGetDistance, stopLocation} from "./timeline";
 import {exertionOf} from "./ideaTraits";
 import {vibeFit, wantsFood as vibesWantFood} from "./vibes";
+import {inSeason} from "./seasons";
 
 /** Stay-in ideas in a go-out plan rank a little lower ("go out" = willing to travel) */
 const STAY_IN_ON_GO_OUT_PENALTY = 10;
@@ -40,7 +41,7 @@ export const preferenceScore = (item: any, prefs: UserPrefs, miles: number): num
   let score = 0;
   // How well it fits the vibes (utils/vibes.ts): 15 for an idea that's
   // exactly one thing asked for, more when it meets more of the request
-  score += vibeFit(item, prefs.vibes) * 15;
+  score += vibeFit(item, prefs.vibes, prefs.startDate ? new Date(prefs.startDate) : null) * 15;
   const budgetPerPerson = (Number(prefs.budget) || 0) / (Number(prefs.headCount) || 1);
   score -= Math.abs((Number(item.est_price_per_person) || 0) - budgetPerPerson) * 1.5;
   if (prefs.modality === "GO_OUT") {
@@ -250,10 +251,12 @@ export const queryCandidates = async (
 
     if (error) throw error;
 
-    // Skip ideas you marked "Not interested"
+    // Skip ideas you marked "Not interested", and ones that aren't on when
+    // the date is (a corn maze in March: utils/seasons.ts)
     const hidden = useHiddenStore.getState().ids;
+    const dateOf = new Date(prefs.startDate || Date.now());
     const formatted = (data || [])
-      .filter((row: any) => !hidden.has(row.idea_id))
+      .filter((row: any) => !hidden.has(row.idea_id) && inSeason(row, dateOf))
       .map((row: any) => {
       const parsed = parseCoordinates(row.venues?.coordinates);
       const flatTags = row.activity_tags
