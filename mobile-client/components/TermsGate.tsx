@@ -4,7 +4,13 @@
 // server records when you accepted (accept_terms()).
 
 import React, {useState} from "react";
-import {ActivityIndicator, Alert, Pressable, ScrollView, Text, View} from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 import TermsBody from "@/components/TermsBody";
@@ -13,6 +19,7 @@ import {friendlyError} from "@/src/lib/profile";
 import {signOut} from "@/src/lib/signOut";
 import {TERMS_VERSION} from "@/src/lib/terms";
 import {useProfileStore} from "@/src/store/useProfileStore";
+import {showError} from "@/src/lib/notify";
 
 export default function TermsGate({updated}: {updated: boolean}) {
   const insets = useSafeAreaInsets();
@@ -23,7 +30,7 @@ export default function TermsGate({updated}: {updated: boolean}) {
     const {error} = await supabase.rpc("accept_terms", {p_version: TERMS_VERSION});
     if (error) {
       setSaving(false);
-      Alert.alert("Couldn't save that", friendlyError(error));
+      showError("Couldn't save that", friendlyError(error));
       return;
     }
     const prefs = useProfileStore.getState().preferences;

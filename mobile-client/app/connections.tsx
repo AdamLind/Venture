@@ -6,7 +6,6 @@
 import React, {useCallback, useState} from "react";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Pressable,
   Text,
@@ -14,7 +13,7 @@ import {
 } from "react-native";
 import {useFocusEffect, useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import TabHeader, {HeaderIconButton, useTabHeader, useTabRefresh} from "@/components/ui/TabHeader";
 import Avatar from "@/components/profile/Avatar";
@@ -32,11 +31,13 @@ import {
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
 import {usePartnerDatesStore} from "@/src/store/usePartnerDatesStore";
 import {useBlockStore} from "@/src/store/useBlockStore";
+import {choose, confirm} from "@/src/lib/sheets";
+import {showError} from "@/src/lib/notify";
 
 const PARTNER_COLOR = "#f472b6";
 
 const toast = (text1: string, type: "success" | "error" = "success", text2?: string) =>
-  Toast.show({type, text1, text2, position: "bottom"});
+  Toast.show({type, text1, text2});
 
 export default function ConnectionsScreen() {
   const router = useRouter();
@@ -78,82 +79,85 @@ export default function ConnectionsScreen() {
       if (done) toast(done);
       await reload();
     } catch (e) {
-      Alert.alert("Couldn't do that", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't do that", e);
     } finally {
       setBusy(null);
     }
   };
 
-  const confirmForget = (c: Connection) => {
+  /** Asks over their sheet; true once it's decided (the sheet can close) */
+  const confirmForget = async (c: Connection) => {
     const who = `@${c.username}`;
-    Alert.alert(
-      `Forget ${who}?`,
-      `You'll be removed from each other's connections${
-        c.is_partner ? " and your partner link ends" : ""
-      }. They can't send you requests again unless you scan their code. Past dates stay. They aren't told.\n\nBlocking also hides their ideas from you.`,
-      [
-        {text: "Cancel", style: "cancel"},
+    const how = await choose({
+      title: `Forget ${who}?`,
+      message: `You'll be removed from each other's connections${
+        c.is_partner ? " and you're no longer each other's person" : ""
+      }. They can't send you requests again unless you scan their code. Past dates stay. They aren't told.`,
+      options: [
+        {label: "Forget", icon: "person-remove-outline", value: "FORGET" as const},
         {
-          text: "Forget",
-          onPress: () => run(c.user_id, () => forgetConnection(c.user_id, false), `Forgot ${who}`),
-        },
-        {
-          text: "Forget and block",
-          style: "destructive",
-          onPress: () =>
-            run(
-              c.user_id,
-              async () => {
-                await forgetConnection(c.user_id, true);
-                // Their ideas leave Discover now, not on the next load
-                const blocks = useBlockStore.getState();
-                if (blocks.userId) await blocks.load(blocks.userId);
-              },
-              `Forgot and blocked ${who}`,
-            ),
+          label: "Forget and block",
+          hint: "Their ideas are hidden from you too",
+          icon: "ban-outline",
+          destructive: true,
+          value: "BLOCK" as const,
         },
       ],
-    );
+    });
+    if (!how) return false;
+    if (how === "FORGET") {
+      run(c.user_id, () => forgetConnection(c.user_id, false), `Forgot ${who}`);
+    } else {
+      run(
+        c.user_id,
+        async () => {
+          await forgetConnection(c.user_id, true);
+          // Their ideas leave Discover now, not on the next load
+          const blocks = useBlockStore.getState();
+          if (blocks.userId) await blocks.load(blocks.userId);
+        },
+        `Forgot and blocked ${who}`,
+      );
+    }
+    return true;
   };
 
-  const confirmEndPartner = (c: Connection) =>
-    Alert.alert(
-      `End your partner link with @${c.username}?`,
-      "You stay connected, and you each keep the dates you've been on.",
-      [
-        {text: "Cancel", style: "cancel"},
-        {
-          text: "End it",
-          style: "destructive",
-          onPress: () => run(c.user_id, endPartner, "Partner link ended"),
-        },
-      ],
-    );
+  const confirmEndPartner = async (c: Connection) => {
+    const ok = await confirm({
+      title: `Unlink @${c.username} as your person?`,
+      message: "You stay connected, and you each keep the dates you've been on.",
+      confirmLabel: "End it",
+      destructive: true,
+      icon: "heart-dislike-outline",
+    });
+    if (ok) run(c.user_id, endPartner, "Unlinked");
+    return ok;
+  };
 
   const askPartner = (c: Connection) =>
     run(
       c.user_id,
       async () => {
         const result = await requestPartner(c.user_id);
-        toast(result === "LINKED" ? `You and @${c.username} are partners` : `Asked @${c.username}`);
+        toast(result === "LINKED" ? `You and @${c.username} are linked` : `Asked @${c.username}`);
       },
     );
 
-  // What you can do with a connection (in their sheet). The sheet closes
-  // first, so a confirmation shows on its own
+  // What you can do with a connection (in their sheet). A confirmation
+  // shows over the sheet (#86); it closes once you've decided
   const actionsFor = (c: Connection): SheetAction[] => {
-    const then = (fn: () => void) => () => {
-      setSheetFor(null);
-      fn();
+    const then = (fn: () => unknown) => async () => {
+      const decided = await fn();
+      if (decided !== false) setSheetFor(null);
     };
     return [
       ...(c.is_partner
         ? []
         : !partner && !outgoingPartner
-          ? [{label: "Ask to be partners", icon: "heart-outline" as const, run: then(() => askPartner(c))}]
+          ? [{label: `Make @${c.username} your person`, icon: "heart-outline" as const, run: then(() => askPartner(c))}]
           : []),
       ...(c.is_partner
-        ? [{label: "End partner link", icon: "heart-dislike-outline" as const, destructive: true, run: then(() => confirmEndPartner(c))}]
+        ? [{label: "Unlink as your person", icon: "heart-dislike-outline" as const, destructive: true, run: then(() => confirmEndPartner(c))}]
         : []),
       {label: `Forget @${c.username}`, icon: "person-remove-outline" as const, destructive: true, run: then(() => confirmForget(c))},
     ];
@@ -223,7 +227,7 @@ export default function ConnectionsScreen() {
             {/* PARTNER */}
             {partner && (
               <View className="gap-2">
-                <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider px-1">Your partner</Text>
+                <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider px-1">Your person</Text>
                 <Pressable
                   onPress={() => openMenu(partner)}
                   accessibilityRole="button"
@@ -259,7 +263,7 @@ export default function ConnectionsScreen() {
                         run(
                           `req-${r.request_id}`,
                           () => respondToRequest(r.request_id, true),
-                          r.kind === "PARTNER" ? "You're partners" : "Connected",
+                          r.kind === "PARTNER" ? "You're linked" : "Connected",
                         )
                       }
                       onDecline={() => run(`req-${r.request_id}`, () => respondToRequest(r.request_id, false))}
@@ -352,7 +356,7 @@ function RequestRow({
           {name}
         </Text>
         <Text className="text-zinc-400 text-sm" numberOfLines={1}>
-          {partner ? "Asked to be your partner" : "Wants to connect"}
+          {partner ? "Wants to be your person" : "Wants to connect"}
         </Text>
       </View>
       {busy ? (
@@ -402,7 +406,7 @@ function OutgoingRow({
           {name}
         </Text>
         <Text className="text-zinc-500 text-sm" numberOfLines={1}>
-          {request.kind === "PARTNER" ? "You asked to be partners" : "Request sent"}
+          {request.kind === "PARTNER" ? "You asked to be their person" : "Request sent"}
         </Text>
       </View>
       {busy ? (

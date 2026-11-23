@@ -3,7 +3,12 @@
 
 import React, {useState} from "react";
 import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
-import {View, Text, Pressable, ActivityIndicator, Alert} from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
 import {Image} from "expo-image";
 import {Ionicons} from "@expo/vector-icons";
 import {router} from "expo-router";
@@ -18,6 +23,7 @@ import {
   stopCountLabel,
   stopProgress,
 } from "@/src/lib/dates";
+import {showError} from "@/src/lib/notify";
 
 /** "with @sam" / "with @sam +2" for a shared date (people who said yes) */
 function withLabel(itinerary: Itinerary) {
@@ -205,7 +211,7 @@ export function InviteCard({
     try {
       await onAnswer(accept);
     } catch (e) {
-      Alert.alert("Couldn't answer", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't answer", e);
     } finally {
       setBusy(null);
     }

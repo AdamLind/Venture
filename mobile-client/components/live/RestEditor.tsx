@@ -7,11 +7,17 @@
 // for everyone on it.
 
 import React, {useEffect, useMemo, useRef, useState} from "react";
-import {ActivityIndicator, Alert, LayoutAnimation, Pressable, Text, View} from "react-native";
+import {
+  ActivityIndicator,
+  LayoutAnimation,
+  Pressable,
+  Text,
+  View,
+} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 import Reanimated from "react-native-reanimated";
 import {GestureDetector} from "react-native-gesture-handler";
 
@@ -35,6 +41,7 @@ import {smartOrder} from "@/utils/smartOrder";
 import {type DatePrefs, replanPoint, restPrefs} from "@/utils/replan";
 import {type LatLng, type PlacedActivity, deriveSequentialTimeline} from "@/utils/timeline";
 import type {TimeSlot} from "@/types/itinerary";
+import {showError} from "@/src/lib/notify";
 
 const clockTime = (ms: number) =>
   new Date(ms).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
@@ -178,11 +185,11 @@ export default function RestEditor({
       await replanDate(itineraryId, point, rest);
       if (process.env.EXPO_OS === "ios")
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Toast.show({type: "success", text1: "Updated the rest of your date", position: "bottom"});
+      Toast.show({type: "success", text1: "Updated the rest of your date"});
       onClose();
     } catch (e) {
       setSaving(false);
-      Alert.alert("Couldn't save the new order", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't save the new order", e);
     }
   };
 

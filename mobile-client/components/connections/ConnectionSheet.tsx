@@ -35,6 +35,7 @@ import {GestureDetector, GestureHandlerRootView, useNativeGesture, usePanGesture
 import {Ionicons} from "@expo/vector-icons";
 
 import Avatar from "@/components/profile/Avatar";
+import Overlays from "@/components/sheets/Overlays";
 import PartnerDetails, {PARTNER_COLOR} from "@/components/connections/PartnerDetails";
 import {type Connection, connectionName} from "@/src/lib/connections";
 
@@ -240,7 +241,7 @@ export default function ConnectionSheet({
                   <View className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full" style={{backgroundColor: `${PARTNER_COLOR}1f`}}>
                     <Ionicons name="heart" size={13} color={PARTNER_COLOR} />
                     <Text className="text-sm font-bold" style={{color: PARTNER_COLOR}}>
-                      Your partner
+                      Your person
                     </Text>
                   </View>
                 ) : (
@@ -326,6 +327,10 @@ export default function ConnectionSheet({
             </Pressable>
           </Reanimated.View>
         )}
+
+        {/* "Forget @sam?" and the like, over this sheet (#86). Toasts show
+            from the screen below: this sheet closes once you've decided */}
+        <Overlays toasts={false} />
       </GestureHandlerRootView>
     </Modal>
   );

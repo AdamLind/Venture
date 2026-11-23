@@ -8,7 +8,6 @@ import {
   Animated,
   Text,
   View,
-  Alert,
   TextInput,
   Platform,
   StatusBar,
@@ -55,6 +54,7 @@ import {
   BASE_ACTIVITY_CLASSES,
   tagLabel,
 } from "@/src/constants/tags";
+import {showError, showInfo} from "@/src/lib/notify";
 
 export default function PlanScreen() {
   const router = useRouter();
@@ -447,10 +447,7 @@ export default function PlanScreen() {
         const {status} = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
           if (!homeLocation) {
-            Alert.alert(
-              "Location Required",
-              "Allow location access, or set a home area in Settings, to find nearby activities.",
-            );
+            showInfo("Where are you?", "Allow location, or set a home area");
             setIsLocating(false);
             return;
           }
@@ -471,10 +468,7 @@ export default function PlanScreen() {
       } catch (error) {
         console.error("Location fetch error:", error);
         if (!homeLocation) {
-          Alert.alert(
-            "Location Error",
-            "Could not determine your location. Please check your settings.",
-          );
+          showError("Couldn't find you", "Turn on location for Venture");
           setIsLocating(false);
           return;
         }

@@ -4,7 +4,6 @@ import {
   Pressable,
   Text,
   View,
-  Alert,
   Linking,
   AppState,
   ActivityIndicator,
@@ -13,7 +12,8 @@ import {Ionicons} from "@expo/vector-icons";
 import {ActivityLocation} from "@/types/itinerary";
 import type {SimpleLocation} from "@/types/activities";
 import * as Location from "expo-location";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
+import {confirm} from "@/src/lib/sheets";
 
 export default function InOrOutSelector({
   inOrOut,
@@ -55,9 +55,8 @@ export default function InOrOutSelector({
         if (!result.granted) {
           Toast.show({
             type: "error",
-            text1: "Location Required",
-            text2: "We need your location to find nearby activities.",
-            position: "bottom",
+            text1: "Location is off",
+            text2: "Needed to find places nearby",
           });
           return false;
         }
@@ -76,9 +75,8 @@ export default function InOrOutSelector({
     } catch (error) {
       Toast.show({
         type: "error",
-        text1: "Location Error",
-        text2: "Could not fetch your current location.",
-        position: "bottom",
+        text1: "Couldn't find you",
+        text2: "Check your location settings",
       });
       console.error(error);
       return false;
@@ -101,14 +99,13 @@ export default function InOrOutSelector({
           permissionResponse?.status === Location.PermissionStatus.DENIED &&
           !permissionResponse.canAskAgain
         ) {
-          Alert.alert(
-            "Location Disabled",
-            "We need your location to find nearby activities. You can enable it in your phone's settings.",
-            [
-              {text: "Cancel", style: "cancel"},
-              {text: "Open Settings", onPress: () => Linking.openSettings()},
-            ],
-          );
+          const open = await confirm({
+            title: "Location is off",
+            message: "Venture needs your location to find places nearby. You can turn it on in your phone's settings.",
+            confirmLabel: "Open Settings",
+            icon: "location-outline",
+          });
+          if (open) Linking.openSettings();
           return;
         }
 

@@ -5,8 +5,15 @@
 // panel on top. Staff only (Settings shows the way in).
 
 import React, {useCallback, useState} from "react";
-import {ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, Text, View} from "react-native";
-import Toast from "react-native-toast-message";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  Text,
+  View,
+} from "react-native";
+import Toast from "@/src/lib/toast";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {useFocusEffect, useRouter} from "expo-router";
 import {Image} from "expo-image";
@@ -30,6 +37,8 @@ import {
 } from "@/src/lib/moderation";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
+import {showError} from "@/src/lib/notify";
+import {confirm} from "@/src/lib/sheets";
 
 type Tab = "review" | "reported" | "suspended" | "log";
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -94,26 +103,25 @@ export default function ModerationScreen() {
   };
 
   // Lift a suspension: works even when none of their ideas are left to open
-  const lift = (account: SuspendedAccount) => {
+  const lift = async (account: SuspendedAccount) => {
     const name = account.username ? `@${account.username}` : "this account";
-    Alert.alert(`Lift the suspension on ${name}?`, "They can publish and report again.", [
-      {text: "Cancel", style: "cancel"},
-      {
-        text: "Lift it",
-        onPress: async () => {
-          setLifting(account.user_id);
-          try {
-            await setSuspension(account.user_id, false, null);
-            Toast.show({type: "success", text1: "Suspension lifted", position: "bottom"});
-            await load();
-          } catch (e) {
-            Alert.alert("Couldn't lift it", e instanceof Error ? e.message : "Please try again.");
-          } finally {
-            setLifting(null);
-          }
-        },
-      },
-    ]);
+    const ok = await confirm({
+      title: `Lift the suspension on ${name}?`,
+      message: "They can publish and report again.",
+      confirmLabel: "Lift it",
+      icon: "lock-open-outline",
+    });
+    if (!ok) return;
+    setLifting(account.user_id);
+    try {
+      await setSuspension(account.user_id, false, null);
+      Toast.show({type: "success", text1: "Suspension lifted"});
+      await load();
+    } catch (e) {
+      showError("Couldn't lift it", e);
+    } finally {
+      setLifting(null);
+    }
   };
 
   const open = (ideaId: number) =>

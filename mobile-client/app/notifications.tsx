@@ -84,14 +84,14 @@ const KIND: Record<
   PARTNER_REQUEST: {
     icon: "heart",
     color: "#f472b6",
-    title: "Partner request",
-    body: (n) => `${who(n)} asked to be your partner.`,
+    title: "Wants to be your person",
+    body: (n) => `${who(n)} asked to be your person.`,
   },
   PARTNER_ACCEPTED: {
     icon: "heart",
     color: "#f472b6",
-    title: "You're partners",
-    body: (n) => `You and ${who(n)} are now partners.`,
+    title: "You're linked",
+    body: (n) => `You and ${who(n)} are linked now.`,
   },
   DATE_INVITE: {
     icon: "calendar",

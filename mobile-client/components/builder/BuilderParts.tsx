@@ -527,7 +527,7 @@ function IdeaTitle({item}: {item: any}) {
         />
       )}
       {partnerSaved && (
-        <Ionicons name="heart" size={13} color="#f472b6" accessibilityLabel="Your partner saved this" />
+        <Ionicons name="heart" size={13} color="#f472b6" accessibilityLabel="Your person saved this" />
       )}
       <Text className="text-white font-bold text-base flex-1" numberOfLines={1}>
         {item.title}

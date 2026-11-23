@@ -3,16 +3,17 @@
 // two parts: "Ours" (your shared saves and theirs, so you can plan a date
 // from their list) and "Just me" (private: safe for planning a surprise).
 // Each of your saves has a small switch between the two. Without a partner,
-// one list. Ideas you've been on a date with show "Been there", and the
-// Been there filter shows just those: your favorites, found for you.
+// one list. Ideas you've been on a date with show "Been there". Filters show
+// just those (your favorites, found for you) or just the ones you haven't
+// tried yet.
 // Select picks a few to plan a date with: the builder puts them in order.
 
 import React, {useMemo, useState} from "react";
-import {Alert, Pressable, Text, View} from "react-native";
+import {Pressable, Text, View} from "react-native";
 import {router} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import {SavedIdeaRow} from "@/components/ideas/IdeaRows";
 import {beenThereOn, formatShortDate} from "@/src/lib/dates";
@@ -22,12 +23,15 @@ import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {MAX_SEEDS, usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {sizedImage} from "@/src/lib/images";
 import type {IdeaSummary} from "@/types/ideas";
+import {showInfo} from "@/src/lib/notify";
 
 const PARTNER_COLOR = "#f472b6";
 const BEEN_COLOR = "#4ade80";
 
 type Row = {idea: IdeaSummary; mine: boolean; theirs: boolean; shared: boolean};
-type Filter = "all" | "been";
+type Filter = "all" | "been" | "notYet";
+
+const FILTER_LABEL: Record<Filter, string> = {all: "All", been: "Been there", notYet: "Not yet"};
 
 export default function SavedList() {
   const items = useSavedStore((s) => s.items);
@@ -44,7 +48,7 @@ export default function SavedList() {
     const next = new Map(picked);
     if (next.has(idea.idea_id)) next.delete(idea.idea_id);
     else if (next.size >= MAX_SEEDS) {
-      Alert.alert(`Up to ${MAX_SEEDS} ideas`, "That's plenty for one date. You can add more in the builder.");
+      showInfo(`Up to ${MAX_SEEDS} ideas`, "Add more in the builder");
       return;
     } else next.set(idea.idea_id, idea);
     if (process.env.EXPO_OS === "ios") Haptics.selectionAsync();
@@ -80,14 +84,14 @@ export default function SavedList() {
     const when = been.get(ideaId);
     return when ? `✓ Been there · ${formatShortDate(when)}` : undefined;
   };
-  const shown = (ideaId: number) => filter === "all" || been.has(ideaId);
+  const shown = (ideaId: number) => filter === "all" || (filter === "been") === been.has(ideaId);
 
   const mine = items.flatMap((item) => (item.idea ? [{...item, idea: item.idea}] : []));
   const anyBeen = mine.some((m) => been.has(m.activity_id)) || partnerItems.some((p) => been.has(p.activity_id));
 
   const filterChips = anyBeen ? (
     <View className="flex-row gap-2 flex-1">
-      {(["all", "been"] as Filter[]).map((f) => {
+      {(["all", "been", "notYet"] as Filter[]).map((f) => {
         const on = filter === f;
         return (
           <Pressable
@@ -100,9 +104,8 @@ export default function SavedList() {
             }`}
           >
             {f === "been" && <Ionicons name="checkmark-circle" size={13} color={on ? BEEN_COLOR : "#71717a"} />}
-            <Text className={`text-sm font-semibold ${on ? "text-white" : "text-zinc-400"}`}>
-              {f === "all" ? "All" : "Been there"}
-            </Text>
+            {f === "notYet" && <Ionicons name="sparkles" size={12} color={on ? "#fbbf24" : "#71717a"} />}
+            <Text className={`text-sm font-semibold ${on ? "text-white" : "text-zinc-400"}`}>{FILTER_LABEL[f]}</Text>
           </Pressable>
         );
       })}
@@ -193,14 +196,12 @@ export default function SavedList() {
       Toast.show({
         type: "success",
         text1: shared ? `Shared with ${partnerName}` : "Kept private",
-        position: "bottom",
       });
     } catch (e) {
       Toast.show({
         type: "error",
         text1: "Couldn't change that",
         text2: e instanceof Error ? e.message : undefined,
-        position: "bottom",
       });
     }
   };
@@ -227,7 +228,9 @@ export default function SavedList() {
           <Text className="text-zinc-500 text-sm px-1">
             {filter === "been"
               ? "Nothing here you've been to yet."
-              : `Ideas you both want to try show up here. Save something, or ask ${partnerName} to.`}
+              : filter === "notYet"
+                ? "You've been to everything here. Time to save something new."
+                : `Ideas you both want to try show up here. Save something, or ask ${partnerName} to.`}
           </Text>
         ) : (
           oursRows.map((row) => (
@@ -254,7 +257,9 @@ export default function SavedList() {
           <Text className="text-zinc-500 text-sm px-1">
             {filter === "been"
               ? "Nothing here you've been to yet."
-              : "Planning a surprise? Press and hold the bookmark to save an idea privately."}
+              : filter === "notYet"
+                ? "You've been to everything here."
+                : "Planning a surprise? Press and hold the bookmark to save an idea privately."}
           </Text>
         ) : (
           justMeRows.map((item) => (

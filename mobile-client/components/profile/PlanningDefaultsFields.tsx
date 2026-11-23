@@ -2,7 +2,7 @@ import React, {useState} from "react";
 import {View, Text, Pressable, TextInput, ActivityIndicator} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
 import * as Location from "expo-location";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 import type {Modality, PlanningDefaults} from "@/types/profile";
 import {BUDGET_TIERS, TRAVEL_DISTANCES} from "@/src/lib/profile";
 
@@ -81,8 +81,7 @@ export default function PlanningDefaultsFields({
         Toast.show({
           type: "error",
           text1: "Location is off",
-          text2: "Allow location access to set your home area.",
-          position: "bottom",
+          text2: "Allow it to set your home area",
         });
         return;
       }
@@ -118,7 +117,6 @@ export default function PlanningDefaultsFields({
         type: "error",
         text1: "Couldn't find your area",
         text2: "Please try again in a moment.",
-        position: "bottom",
       });
     } finally {
       setLocating(false);

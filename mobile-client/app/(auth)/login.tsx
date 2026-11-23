@@ -1,6 +1,5 @@
 import React, {useState} from "react";
 import {
-  Alert,
   View,
   TextInput,
   TouchableOpacity,
@@ -13,6 +12,7 @@ import {Ionicons} from "@expo/vector-icons";
 import {supabase} from "@/src/supabase";
 import {switchAccount} from "@/src/lib/signOut";
 import {sortedAccounts, useDeviceAccounts, type DeviceAccount} from "@/src/store/useDeviceAccounts";
+import {showDone, showError} from "@/src/lib/notify";
 
 export default function AuthScreen() {
   const [email, setEmail] = useState("");
@@ -28,7 +28,7 @@ export default function AuthScreen() {
     try {
       await switchAccount(account.userId);
     } catch (e) {
-      Alert.alert("Couldn't switch", e instanceof Error ? e.message : "Please sign in.");
+      showError("Couldn't switch", e, "Please sign in.");
     } finally {
       setSwitching(null);
     }
@@ -43,7 +43,7 @@ export default function AuthScreen() {
         email: email,
         password: password,
       });
-      if (error) Alert.alert("Login Failed", error.message);
+      if (error) showError("Couldn't sign in", error.message);
     } else {
       // SIGN UP FLOW
       const {error} = await supabase.auth.signUp({
@@ -51,9 +51,9 @@ export default function AuthScreen() {
         password: password,
       });
       if (error) {
-        Alert.alert("Sign Up Failed", error.message);
+        showError("Couldn't create your account", error.message);
       } else {
-        Alert.alert("Success!", "Your account has been created.");
+        showDone("Account created", "Welcome to Venture.");
         // The Postgres Trigger just fired in the background!
       }
     }

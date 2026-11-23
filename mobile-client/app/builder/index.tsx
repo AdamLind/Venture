@@ -19,9 +19,8 @@ import {
   ActivityIndicator,
   LayoutAnimation,
   type ScrollViewInstance,
-  Alert,
 } from "react-native";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 import {Ionicons} from "@expo/vector-icons";
 import {usePrefsStore} from "@/src/store/usePrefsStore";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
@@ -74,6 +73,8 @@ import type {WeatherLookup} from "@/src/lib/weatherRules";
 import WeatherStrip from "@/components/builder/WeatherStrip";
 import Reanimated from "react-native-reanimated";
 import {GestureDetector} from "react-native-gesture-handler";
+import {showError, showInfo} from "@/src/lib/notify";
+import {confirm} from "@/src/lib/sheets";
 
 /** How far out an open-ended date's timeline runs (it never fills up) */
 const OPEN_ENDED_ROOM_MS = 48 * 3_600_000;
@@ -345,7 +346,6 @@ export default function BuilderScreen() {
             type: "error",
             text1: "These don't all fit in your time",
             text2: "Make the date longer, or remove one.",
-            position: "bottom",
           });
         }
       }
@@ -353,7 +353,6 @@ export default function BuilderScreen() {
         Toast.show({
           type: "error",
           text1: ideaIds.length - found.length === 1 ? "One idea isn't available anymore" : "Some ideas aren't available anymore",
-          position: "bottom",
         });
       }
       setPlaced(start);
@@ -363,7 +362,6 @@ export default function BuilderScreen() {
       Toast.show({
         type: "error",
         text1: "That idea isn't available anymore",
-        position: "bottom",
       });
       loadInitialIdeas();
     }
@@ -491,8 +489,6 @@ export default function BuilderScreen() {
         type: "success",
         text1: `Added ${spotLabel(activity.spot)}`,
         text2: "Hold and drag to move it",
-        position: "bottom",
-        visibilityTime: 2500,
       });
     } else {
       setTimeout(() => {
@@ -588,7 +584,6 @@ export default function BuilderScreen() {
       type: "success",
       text1: "Reordered your plan",
       text2: "Tap to undo",
-      position: "bottom",
       onPress: () => {
         Toast.hide();
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -652,10 +647,7 @@ export default function BuilderScreen() {
 
     const activitySlots = timeline.filter((slot) => slot.activity);
     if (activitySlots.length === 0) {
-      Alert.alert(
-        "Add a stop first",
-        "Your plan needs at least one activity before you can save it.",
-      );
+      showInfo("Add a stop first");
       return;
     }
 
@@ -681,10 +673,7 @@ export default function BuilderScreen() {
       });
     } catch (e) {
       setIsSaving(false);
-      Alert.alert(
-        "Couldn't save your date",
-        e instanceof Error ? e.message : "Please try again.",
-      );
+      showError("Couldn't save your date", e);
       return;
     }
     setIsSaving(false);
@@ -696,31 +685,30 @@ export default function BuilderScreen() {
     };
 
     if (startsAt.getTime() - Date.now() <= START_NOW_WINDOW_MS) {
-      Alert.alert("Your date is saved", "It starts soon. Start it now?", [
-        {text: "Later", style: "cancel", onPress: goToUpcoming},
-        {
-          text: "Start now",
-          onPress: async () => {
-            try {
-              await startDate(itineraryId);
-              clearDraft();
-              router.replace("/active-date");
-            } catch (e) {
-              Alert.alert(
-                "Couldn't start your date",
-                e instanceof Error ? e.message : "Please try again.",
-              );
-              goToUpcoming();
-            }
-          },
-        },
-      ]);
+      const startNow = await confirm({
+        title: "Your date is saved",
+        message: "It starts soon. Start it now?",
+        confirmLabel: "Start now",
+        cancelLabel: "Later",
+        icon: "play-circle-outline",
+      });
+      if (!startNow) {
+        goToUpcoming();
+        return;
+      }
+      try {
+        await startDate(itineraryId);
+        clearDraft();
+        router.replace("/active-date");
+      } catch (e) {
+        showError("Couldn't start your date", e);
+        goToUpcoming();
+      }
     } else {
       Toast.show({
         type: "success",
         text1: "Date saved",
-        text2: `It's in Upcoming for ${formatWhen(startsAt)}.`,
-        position: "bottom",
+        text2: `Upcoming · ${formatWhen(startsAt)}`,
       });
       goToUpcoming();
     }
@@ -768,7 +756,6 @@ export default function BuilderScreen() {
       type: "success",
       text1: `Your date now ends at ${newEnd.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`,
       text2: "Tap to undo",
-      position: "bottom",
       onPress: () => {
         Toast.hide();
         setPrefs({endDate: previousEnd});
@@ -1177,16 +1164,16 @@ export default function BuilderScreen() {
                 <Text className="text-white font-bold">Keep editing</Text>
               </Pressable>
               <Pressable
-                onPress={() =>
-                  Alert.alert(
-                    "Start over?",
-                    "This clears every stop in this plan.",
-                    [
-                      {text: "Cancel", style: "cancel"},
-                      {text: "Start over", style: "destructive", onPress: startOver},
-                    ],
-                  )
-                }
+                onPress={async () => {
+                  const ok = await confirm({
+                    title: "Start over?",
+                    message: "This clears every stop in this plan.",
+                    confirmLabel: "Start over",
+                    destructive: true,
+                    icon: "refresh-outline",
+                  });
+                  if (ok) startOver();
+                }}
                 className="h-11 items-center justify-center"
               >
                 <Text className="text-zinc-500 font-semibold">Start over</Text>

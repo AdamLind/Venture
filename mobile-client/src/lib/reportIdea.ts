@@ -5,31 +5,33 @@
 // Reporting also hides the idea for you (like "Not interested"), so you
 // don't keep seeing what you reported; Settings > Hidden ideas undoes it.
 
-import {ActionSheetIOS, Alert, Platform} from "react-native";
-import Toast from "react-native-toast-message";
+import {router} from "expo-router";
+import Toast from "@/src/lib/toast";
 
 import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
+import {type SheetIcon, choose, confirm, prompt} from "@/src/lib/sheets";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
 import {useBlockStore} from "@/src/store/useBlockStore";
-import {SUSPENDED_MESSAGE, useAccountStore} from "@/src/store/useAccountStore";
+import {useAccountStore} from "@/src/store/useAccountStore";
 
 type Reason = "INAPPROPRIATE" | "SPAM" | "UNSAFE" | "AGE_RATING" | "OTHER";
 
-const REASONS: {value: Reason; label: string}[] = [
-  {value: "INAPPROPRIATE", label: "Inappropriate or offensive"},
-  {value: "UNSAFE", label: "Unsafe or illegal"},
-  {value: "SPAM", label: "Spam or misleading"},
-  {value: "AGE_RATING", label: "Wrong age rating"},
-  {value: "OTHER", label: "Something else"},
+const REASONS: {value: Reason; label: string; icon: SheetIcon}[] = [
+  {value: "INAPPROPRIATE", label: "Inappropriate or offensive", icon: "hand-left-outline"},
+  {value: "UNSAFE", label: "Unsafe or illegal", icon: "warning-outline"},
+  {value: "SPAM", label: "Spam or misleading", icon: "megaphone-outline"},
+  {value: "AGE_RATING", label: "Wrong age rating", icon: "people-outline"},
+  {value: "OTHER", label: "Something else", icon: "ellipsis-horizontal-circle-outline"},
 ];
+const DETAILS_MAX = 500;
 
 async function submit(ideaId: number, reason: Reason, details: string | undefined, onHidden?: () => void) {
   // No .select(): reports are write-only, so there's nothing to read back
   const {error} = await supabase.from("idea_reports").insert({
     idea_id: ideaId,
     reason,
-    details: details?.trim() ? details.trim().slice(0, 500) : null,
+    details: details?.trim() ? details.trim().slice(0, DETAILS_MAX) : null,
   });
 
   if (error && error.code !== "23505") {
@@ -37,7 +39,6 @@ async function submit(ideaId: number, reason: Reason, details: string | undefine
       type: "error",
       text1: "Couldn't send your report",
       text2: friendlyError(error),
-      position: "bottom",
     });
     return;
   }
@@ -51,78 +52,44 @@ async function submit(ideaId: number, reason: Reason, details: string | undefine
   }
   Toast.show({
     type: "success",
-    text1: error ? "You've already reported this" : "Thanks for letting us know",
-    text2: hidden
-      ? error
-        ? "It's hidden for you while we look."
-        : "We've hidden it for you, and we'll take a look."
-      : error
-        ? undefined
-        : "We'll take a look.",
-    position: "bottom",
+    text1: error ? "Already reported" : "Thanks for letting us know",
+    text2: hidden ? "Hidden while we take a look" : error ? undefined : "We'll take a look",
   });
   if (hidden) onHidden?.();
 }
 
-function chooseReason(ideaId: number, onHidden?: () => void) {
+async function chooseReason(ideaId: number, onHidden?: () => void) {
   if (useAccountStore.getState().suspension) {
-    Alert.alert("You can't report right now", SUSPENDED_MESSAGE);
+    // The reason is in Settings (the suspension notice)
+    Toast.show({
+      type: "error",
+      text1: "You can't report right now",
+      text2: "Tap to see why",
+      onPress: () => router.push("/settings"),
+    });
     return;
   }
-  const onReason = (reason: Reason) => {
-    if (reason === "OTHER" && Platform.OS === "ios") {
-      Alert.prompt(
-        "What's wrong with it?",
-        "A short note helps us review it.",
-        [
-          {text: "Cancel", style: "cancel"},
-          {text: "Report", style: "destructive", onPress: (text?: string) => submit(ideaId, reason, text, onHidden)},
-        ],
-        "plain-text",
-      );
-      return;
-    }
-    submit(ideaId, reason, undefined, onHidden);
-  };
-
-  if (Platform.OS === "ios") {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: "Why are you reporting this idea?",
-        message: "Reports are private. The person who shared it won't see who reported it.",
-        options: [...REASONS.map((r) => r.label), "Cancel"],
-        cancelButtonIndex: REASONS.length,
-        userInterfaceStyle: "dark",
-      },
-      (index) => {
-        const reason = REASONS[index];
-        if (reason) onReason(reason.value);
-      },
-    );
-  } else {
-    showAndroidReasons(REASONS, onReason);
-  }
-}
-
-/** Android alerts fit three buttons, so longer lists continue under "More". */
-function showAndroidReasons(
-  reasons: typeof REASONS,
-  onReason: (reason: Reason) => void,
-) {
-  const title = "Why are you reporting this idea?";
-  const toButton = (r: (typeof REASONS)[number]) => ({
-    text: r.label,
-    onPress: () => onReason(r.value),
+  const reason = await choose({
+    title: "Why are you reporting this idea?",
+    message: "Reports are private. The person who shared it won't see who reported it.",
+    options: REASONS.map((r) => ({label: r.label, icon: r.icon, value: r.value})),
   });
-  if (reasons.length <= 2) {
-    Alert.alert(title, undefined, [{text: "Cancel", style: "cancel"}, ...reasons.map(toButton)]);
-    return;
+  if (!reason) return;
+  let details: string | undefined;
+  if (reason === "OTHER") {
+    const note = await prompt({
+      title: "What's wrong with it?",
+      message: "A short note helps us review it.",
+      placeholder: "What should we look at?",
+      maxLength: DETAILS_MAX,
+      multiline: true,
+      submitLabel: "Report",
+      destructive: true,
+    });
+    if (note == null) return;
+    details = note;
   }
-  Alert.alert(title, undefined, [
-    {text: "Cancel", style: "cancel"},
-    toButton(reasons[0]),
-    {text: "More", onPress: () => showAndroidReasons(reasons.slice(1), onReason)},
-  ]);
+  await submit(ideaId, reason, details, onHidden);
 }
 
 /** Hides the idea from Discover and the builder, with a tap-to-undo toast. */
@@ -135,16 +102,14 @@ async function notInterested(ideaId: number, onHidden?: () => void) {
       type: "error",
       text1: "Couldn't hide it",
       text2: e instanceof Error ? e.message : undefined,
-      position: "bottom",
     });
     return;
   }
   onHidden?.();
   Toast.show({
     type: "success",
-    text1: "You won't see this idea again",
+    text1: "Idea hidden",
     text2: "Tap to undo",
-    position: "bottom",
     onPress: () => {
       Toast.hide();
       unhide(ideaId).catch((e) =>
@@ -152,7 +117,6 @@ async function notInterested(ideaId: number, onHidden?: () => void) {
           type: "error",
           text1: "Couldn't undo",
           text2: e instanceof Error ? e.message : undefined,
-          position: "bottom",
         }),
       );
     },
@@ -160,34 +124,29 @@ async function notInterested(ideaId: number, onHidden?: () => void) {
 }
 
 /** Hides every idea from a creator (#76). Nobody is told. */
-function confirmBlock(creator: {id: string; username: string | null}, onHidden?: () => void) {
+async function confirmBlock(creator: {id: string; username: string | null}, onHidden?: () => void) {
   const name = creator.username ? `@${creator.username}` : "this creator";
-  Alert.alert(
-    `Block ${name}?`,
-    "You won't see their ideas in Discover or when you plan a date. They won't be told. You can unblock them in Settings › Hidden ideas.",
-    [
-      {text: "Cancel", style: "cancel"},
-      {
-        text: "Block",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await useBlockStore.getState().block(creator.id);
-          } catch (e) {
-            Toast.show({
-              type: "error",
-              text1: "Couldn't block them",
-              text2: e instanceof Error ? e.message : undefined,
-              position: "bottom",
-            });
-            return;
-          }
-          Toast.show({type: "success", text1: `Blocked ${name}`, position: "bottom"});
-          onHidden?.();
-        },
-      },
-    ],
-  );
+  const ok = await confirm({
+    title: `Block ${name}?`,
+    message:
+      "You won't see their ideas in Discover or when you plan a date. They won't be told. You can unblock them in Settings › Hidden ideas.",
+    confirmLabel: "Block",
+    destructive: true,
+    icon: "ban-outline",
+  });
+  if (!ok) return;
+  try {
+    await useBlockStore.getState().block(creator.id);
+  } catch (e) {
+    Toast.show({
+      type: "error",
+      text1: "Couldn't block them",
+      text2: e instanceof Error ? e.message : undefined,
+    });
+    return;
+  }
+  Toast.show({type: "success", text1: `Blocked ${name}`});
+  onHidden?.();
 }
 
 /**
@@ -197,7 +156,7 @@ function confirmBlock(creator: {id: string; username: string | null}, onHidden?:
  * `onReview` (staff with their tools on) adds "Review as staff" first.
  * `creator` adds "Block @username".
  */
-export function showIdeaMenu(
+export async function showIdeaMenu(
   ideaId: number,
   {
     onHidden,
@@ -209,38 +168,22 @@ export function showIdeaMenu(
     creator?: {id: string; username: string | null} | null;
   } = {},
 ) {
-  const items: {label: string; destructive?: boolean; run: () => void}[] = [
-    ...(onReview ? [{label: "Review as staff", run: onReview}] : []),
-    {label: "Not interested", run: () => notInterested(ideaId, onHidden)},
+  const items: {label: string; icon: SheetIcon; destructive?: boolean; run: () => void}[] = [
+    ...(onReview ? [{label: "Review as staff", icon: "shield-checkmark-outline" as SheetIcon, run: onReview}] : []),
+    {label: "Not interested", icon: "eye-off-outline", run: () => notInterested(ideaId, onHidden)},
     ...(creator
       ? [
           {
             label: creator.username ? `Block @${creator.username}` : "Block creator",
+            icon: "ban-outline" as SheetIcon,
             run: () => confirmBlock(creator, onHidden),
           },
         ]
       : []),
-    {label: "Report idea", destructive: true, run: () => chooseReason(ideaId, onHidden)},
+    {label: "Report idea", icon: "flag-outline", destructive: true, run: () => chooseReason(ideaId, onHidden)},
   ];
-
-  if (Platform.OS === "ios") {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options: [...items.map((i) => i.label), "Cancel"],
-        destructiveButtonIndex: items.findIndex((i) => i.destructive),
-        cancelButtonIndex: items.length,
-        userInterfaceStyle: "dark",
-      },
-      (index) => items[index]?.run(),
-    );
-  } else {
-    Alert.alert("Idea options", undefined, [
-      {text: "Cancel", style: "cancel"},
-      ...items.map((i) => ({
-        text: i.label,
-        style: i.destructive ? ("destructive" as const) : undefined,
-        onPress: i.run,
-      })),
-    ]);
-  }
+  const picked = await choose({
+    options: items.map((item, i) => ({label: item.label, icon: item.icon, destructive: item.destructive, value: i})),
+  });
+  if (picked != null) items[picked].run();
 }

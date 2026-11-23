@@ -3,16 +3,24 @@
 // then deletes it after one more confirmation.
 
 import React, {useEffect, useState} from "react";
-import {View, Text, Pressable, ScrollView, Alert, ActivityIndicator} from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  ScrollView,
+  ActivityIndicator,
+} from "react-native";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {Ionicons} from "@expo/vector-icons";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import ScreenHeader from "@/components/ui/ScreenHeader";
 import {supabase} from "@/src/supabase";
 import {deleteAccount} from "@/src/lib/signOut";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
+import {showError} from "@/src/lib/notify";
+import {confirm} from "@/src/lib/sheets";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -66,26 +74,23 @@ export default function DeleteAccountScreen() {
         type: "success",
         text1: "Account deleted",
         text2: "Thanks for trying Venture.",
-        position: "bottom",
       });
     } catch (e) {
       setDeleting(false);
-      Alert.alert(
-        "Couldn't delete your account",
-        e instanceof Error ? e.message : "Please try again.",
-      );
+      showError("Couldn't delete your account", e);
     }
   };
 
-  const confirm = () =>
-    Alert.alert(
-      "Delete your account?",
-      "This is permanent. Your account and everything listed here will be gone, and it can't be undone.",
-      [
-        {text: "Cancel", style: "cancel"},
-        {text: "Delete account", style: "destructive", onPress: runDelete},
-      ],
-    );
+  const askDelete = async () => {
+    const ok = await confirm({
+      title: "Delete your account?",
+      message: "This is permanent. Your account and everything listed here will be gone, and it can't be undone.",
+      confirmLabel: "Delete account",
+      destructive: true,
+      icon: "trash-outline",
+    });
+    if (ok) runDelete();
+  };
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={{flex: 1, backgroundColor: "#000"}}>
@@ -146,7 +151,7 @@ export default function DeleteAccountScreen() {
 
         <View className="gap-3 mt-2">
           <Pressable
-            onPress={confirm}
+            onPress={askDelete}
             disabled={deleting}
             accessibilityRole="button"
             className={`h-14 rounded-2xl items-center justify-center ${

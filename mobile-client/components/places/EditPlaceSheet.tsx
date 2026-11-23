@@ -7,7 +7,6 @@
 import React, {useState} from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Pressable,
@@ -21,6 +20,8 @@ import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 import {updateMyPlace} from "@/src/lib/places";
 import HoursEditor, {type HoursChoice, choiceFromHours, hoursFromChoice} from "./HoursEditor";
+import {showError} from "@/src/lib/notify";
+import Overlays from "@/components/sheets/Overlays";
 
 const NOTE_MAX = 300;
 /** Font size only (a line height pushes one-line text off centre on iOS) */
@@ -47,6 +48,9 @@ export default function EditPlaceSheet({
     <Modal visible={!!place} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       {/* (keyed, so it starts from the place's saved values each time) */}
       {place && <EditPlaceForm key={place.venueId} place={place} onClose={onClose} onSaved={onSaved} />}
+
+      {/* Pop-ups and toasts over this sheet (#86) */}
+      <Overlays />
     </Modal>
   );
 }
@@ -68,7 +72,7 @@ function EditPlaceForm({
 
   const save = async () => {
     if (!name.trim()) {
-      Alert.alert("Name the place", "What do people call it?");
+      showError("Name the place", "What do people call it?");
       return;
     }
     setSaving(true);
@@ -85,7 +89,7 @@ function EditPlaceForm({
       });
     } catch (e) {
       setSaving(false);
-      Alert.alert("Couldn't save the place", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't save the place", e);
     }
   };
 

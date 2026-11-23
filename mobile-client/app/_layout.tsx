@@ -10,9 +10,7 @@ import {StatusBar} from "expo-status-bar";
 import "react-native-reanimated";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
 import "../global.css";
-import Toast, {ToastConfig} from "react-native-toast-message";
 import {View, Text, ActivityIndicator, Pressable} from "react-native";
-import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 import {useColorScheme} from "@/hooks/useColorScheme";
 import {AuthProvider, useAuth} from "../src/providers/AuthProvider";
@@ -27,58 +25,17 @@ import {useBlockStore} from "@/src/store/useBlockStore";
 import {useAccountStore} from "@/src/store/useAccountStore";
 import TermsGate from "@/components/TermsGate";
 import SaveTip from "@/components/ideas/SaveTip";
+import SheetHost from "@/components/sheets/SheetHost";
+import ToastHost from "@/components/sheets/ToastHost";
 import {watchDeviceAccounts} from "@/src/store/useDeviceAccounts";
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
 import {TERMS_VERSION} from "@/src/lib/terms";
 import {signOut} from "@/src/lib/signOut";
 
-// --- CREATE YOUR CUSTOM TOAST THEMES ---
-// Custom toasts draw their own box, so they have to pass taps through
-// themselves (`onPress`): "Tap to undo" toasts rely on it.
-const toastConfig: ToastConfig = {
-  // Override the default 'error' toast
-  error: ({text1, text2, onPress}) => (
-    <Pressable
-      onPress={onPress}
-      className="w-[90%] bg-zinc-900 border border-red-900/50 rounded-2xl p-4 shadow-2xl flex-row items-center active:opacity-80"
-    >
-      <View className="flex-1">
-        <Text className="text-red-400 font-bold text-base mb-0.5">{text1}</Text>
-        {text2 && (
-          <Text className="text-zinc-400 text-sm font-medium">{text2}</Text>
-        )}
-      </View>
-    </Pressable>
-  ),
-
-  // Override the default 'success' toast
-  success: ({text1, text2, onPress}) => (
-    <Pressable
-      onPress={onPress}
-      className="w-[90%] bg-zinc-900 border border-zinc-700 rounded-2xl p-4 shadow-2xl flex-row items-center active:opacity-80"
-    >
-      <View className="flex-1">
-        <Text className="text-white font-bold text-base mb-0.5">{text1}</Text>
-        {text2 && (
-          <Text className="text-zinc-400 text-sm font-medium">{text2}</Text>
-        )}
-      </View>
-    </Pressable>
-  ),
-};
-
 // --- THE TRAFFIC COP ---
 // We moved your original layout into this component so it has access to the useAuth hook
-/**
- * How far bottom toasts sit above the screen's bottom edge: clear of the
- * bottom bars (the tab bar, the builder's action bar, an idea's "Plan a date
- * with this"), which all end about this high above the safe area.
- */
-// (84 left a ~25pt gap above the tab bar)
-const TOAST_ABOVE_BARS = 60;
 
 function InitialLayout() {
-  const insets = useSafeAreaInsets();
   const {session, initialized} = useAuth();
   const segments = useSegments();
   const router = useRouter();
@@ -365,9 +322,13 @@ function InitialLayout() {
       {/* The first save with a partner: tap vs press and hold (#35) */}
       <SaveTip />
 
+      {/* Our own pop-ups (#86: src/lib/sheets.ts); screens that open over
+          the app mount their own */}
+      <SheetHost />
+
       <StatusBar style="light" />
       {/* Bottom toasts ("Tap to undo") sit above the bottom bars, not on them */}
-      <Toast config={toastConfig} bottomOffset={insets.bottom + TOAST_ABOVE_BARS} />
+      <ToastHost />
     </ThemeProvider>
   );
 }

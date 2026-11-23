@@ -288,7 +288,7 @@ export default function DatesScreen() {
           {!firstLoad && !selectedDay && partnerUpcoming.length > 0 && (
             <View className="mt-8">
               <SectionTitle
-                title={partner ? `Planned by @${partner.username}` : "Your partner's dates"}
+                title={partner ? `Planned by @${partner.username}` : "Your person's dates"}
                 count={partnerUpcoming.length}
               />
               <View className="gap-5">

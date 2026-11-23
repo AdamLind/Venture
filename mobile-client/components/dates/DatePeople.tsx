@@ -4,11 +4,8 @@
 
 import React, {useState} from "react";
 import {
-  ActionSheetIOS,
   ActivityIndicator,
-  Alert,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -17,7 +14,7 @@ import {
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 import {router} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import Avatar from "@/components/profile/Avatar";
 import {connectionName} from "@/src/lib/connections";
@@ -33,6 +30,9 @@ import {
 } from "@/src/lib/sharedDates";
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
 import type {DateRole} from "@/types/dates";
+import {showDone, showError} from "@/src/lib/notify";
+import {type SheetIcon, afterSheetCloses, choose, confirm} from "@/src/lib/sheets";
+import Overlays from "@/components/sheets/Overlays";
 
 const STATUS_NOTE: Record<string, string> = {PENDING: "Invited", DECLINED: "Declined"};
 
@@ -57,55 +57,45 @@ export default function DatePeople({
     setBusy(key);
     try {
       await action();
-      if (done) Toast.show({type: "success", text1: done, position: "bottom"});
+      if (done) Toast.show({type: "success", text1: done});
       onChanged();
     } catch (e) {
-      Alert.alert("Couldn't do that", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't do that", e);
     } finally {
       setBusy(null);
     }
   };
 
   // The owner's options for one person
-  const openMenu = (m: DateMember) => {
+  const openMenu = async (m: DateMember) => {
     const name = memberName(m);
-    const items: {label: string; destructive?: boolean; run: () => void}[] = [
+    const items: {label: string; icon: SheetIcon; destructive?: boolean; run: () => void}[] = [
       ...INVITE_ROLES.filter((r) => r !== m.role).map((r) => ({
         label: ROLE_LABEL[r],
+        icon: (r === "EDITOR" ? "create-outline" : r === "COMMENTER" ? "chatbubble-outline" : "eye-outline") as SheetIcon,
         run: () => run(m.user_id, () => setDateRole(itineraryId, m.user_id, r), `${name}: ${ROLE_LABEL[r].toLowerCase()}`),
       })),
       {
         label: "Remove from date",
+        icon: "person-remove-outline",
         destructive: true,
-        run: () =>
-          Alert.alert(`Remove ${name}?`, "They won't see this date anymore.", [
-            {text: "Cancel", style: "cancel"},
-            {
-              text: "Remove",
-              style: "destructive",
-              onPress: () => run(m.user_id, () => removeFromDate(itineraryId, m.user_id), `Removed ${name}`),
-            },
-          ]),
+        run: async () => {
+          const ok = await confirm({
+            title: `Remove ${name}?`,
+            message: "They won't see this date anymore.",
+            confirmLabel: "Remove",
+            destructive: true,
+          });
+          if (ok) run(m.user_id, () => removeFromDate(itineraryId, m.user_id), `Removed ${name}`);
+        },
       },
     ];
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: name,
-          message: `${ROLE_LABEL[m.role]} now`,
-          options: [...items.map((i) => i.label), "Cancel"],
-          destructiveButtonIndex: items.findIndex((i) => i.destructive),
-          cancelButtonIndex: items.length,
-          userInterfaceStyle: "dark",
-        },
-        (index) => items[index]?.run(),
-      );
-    } else {
-      Alert.alert(name, `${ROLE_LABEL[m.role]} now`, [
-        {text: "Cancel", style: "cancel"},
-        ...items.map((i) => ({text: i.label, style: i.destructive ? ("destructive" as const) : undefined, onPress: i.run})),
-      ]);
-    }
+    const picked = await choose({
+      title: name,
+      message: `${ROLE_LABEL[m.role]} now`,
+      options: items.map((item, i) => ({label: item.label, icon: item.icon, destructive: item.destructive, value: i})),
+    });
+    if (picked != null) items[picked].run();
   };
 
   const shown = (members ?? []).filter((m) => m.invite_status !== "DECLINED");
@@ -235,16 +225,14 @@ function InviteSheet({
     setSending(true);
     try {
       const count = await inviteToDate(itineraryId, [...picked], role);
-      Toast.show({
-        type: "success",
-        text1: count === 1 ? "Invite sent" : `${count} invites sent`,
-        text2: "They'll see it in their Dates.",
-        position: "bottom",
-      });
       setPicked(new Set());
       onInvited();
+      // From the screen below, once this sheet has slid away
+      afterSheetCloses().then(() =>
+        showDone(count === 1 ? "Invite sent" : `${count} invites sent`, "They'll see it in their Dates."),
+      );
     } catch (e) {
-      Alert.alert("Couldn't invite them", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't invite them", e);
     } finally {
       setSending(false);
     }
@@ -331,7 +319,7 @@ function InviteSheet({
                         <Text className="text-white font-semibold" numberOfLines={1}>
                           {connectionName(c)}
                         </Text>
-                        {c.is_partner && <Text className="text-pink-300 text-xs">Your partner</Text>}
+                        {c.is_partner && <Text className="text-pink-300 text-xs">Your person</Text>}
                       </View>
                       <View
                         className={`w-6 h-6 rounded-full border items-center justify-center ${
@@ -363,6 +351,9 @@ function InviteSheet({
           </View>
         </ScrollView>
       </View>
+
+      {/* Pop-ups and toasts over this sheet (#86) */}
+      <Overlays />
     </Modal>
   );
 }

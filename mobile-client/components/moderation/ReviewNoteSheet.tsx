@@ -19,6 +19,7 @@ import {
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 import {QUICK_PICKS, RULES, type NoteDecision, type RuleId} from "@/src/lib/ideaGuidelines";
+import Overlays from "@/components/sheets/Overlays";
 
 const NOTE_MAX = 1000;
 /** Font size only (a line height pushes text off centre on iOS) */
@@ -86,6 +87,9 @@ export default function ReviewNoteSheet({
           onSend={onSend}
         />
       )}
+
+      {/* Pop-ups and toasts over this sheet (#86) */}
+      <Overlays />
     </Modal>
   );
 }

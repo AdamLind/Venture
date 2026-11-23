@@ -1,10 +1,18 @@
 // app/settings/index.tsx
 import React, {useEffect, useState} from "react";
-import {View, Text, Pressable, ScrollView, Alert, ActivityIndicator, Switch, Linking} from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  ScrollView,
+  ActivityIndicator,
+  Switch,
+  Linking,
+} from "react-native";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import ScreenHeader from "@/components/ui/ScreenHeader";
 import {useAuth} from "@/src/providers/AuthProvider";
@@ -14,9 +22,11 @@ import {useBlockStore} from "@/src/store/useBlockStore";
 import {useAccountStore} from "@/src/store/useAccountStore";
 import SuspensionNotice from "@/components/settings/SuspensionNotice";
 import {SUPPORT_EMAIL} from "@/src/lib/terms";
+import {confirm} from "@/src/lib/sheets";
 import {sortedAccounts, useDeviceAccounts} from "@/src/store/useDeviceAccounts";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
+import {showError} from "@/src/lib/notify";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -144,30 +154,35 @@ function DeviceAccountsSection() {
     setBusy(userId);
     try {
       await switchAccount(userId);
-      Toast.show({type: "success", text1: `Switched to ${name}`, position: "bottom"});
+      Toast.show({type: "success", text1: `Switched to ${name}`});
     } catch (e) {
-      Alert.alert("Couldn't switch", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't switch", e);
     } finally {
       // Either way: the list is ready for the next switch
       setBusy(null);
     }
   };
 
-  const onRemove = (userId: string, name: string) =>
-    Alert.alert(`Remove ${name} from this device?`, "You can sign in to it again anytime.", [
-      {text: "Cancel", style: "cancel"},
-      {text: "Remove", style: "destructive", onPress: () => useDeviceAccounts.getState().forget(userId)},
-    ]);
+  const onRemove = async (userId: string, name: string) => {
+    const ok = await confirm({
+      title: `Remove ${name} from this device?`,
+      message: "You can sign in to it again anytime.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (ok) useDeviceAccounts.getState().forget(userId);
+  };
 
-  const onAdd = () =>
-    Alert.alert(
-      "Add another account?",
-      "You'll go to sign in. This account stays on this device, so you can switch back from Settings or the sign-in screen.",
-      [
-        {text: "Cancel", style: "cancel"},
-        {text: "Continue", onPress: () => addAnotherAccount()},
-      ],
-    );
+  const onAdd = async () => {
+    const ok = await confirm({
+      title: "Add another account?",
+      message:
+        "You'll go to sign in. This account stays on this device, so you can switch back from Settings or the sign-in screen.",
+      confirmLabel: "Continue",
+      icon: "person-add-outline",
+    });
+    if (ok) addAnotherAccount();
+  };
 
   const others = accounts.filter((a) => a.userId !== myUserId);
 
@@ -225,22 +240,21 @@ export default function SettingsScreen() {
   const hiddenCount = useHiddenStore((s) => s.ids.size) + useBlockStore((s) => s.ids.size);
   const suspension = useAccountStore((s) => s.suspension);
 
-  const confirmSignOut = () => {
-    Alert.alert("Sign out?", "You can sign back in anytime.", [
-      {text: "Cancel", style: "cancel"},
-      {
-        text: "Sign out",
-        style: "destructive",
-        onPress: async () => {
-          setSigningOut(true);
-          try {
-            await signOut();
-          } finally {
-            setSigningOut(false);
-          }
-        },
-      },
-    ]);
+  const confirmSignOut = async () => {
+    const ok = await confirm({
+      title: "Sign out?",
+      message: "You can sign back in anytime.",
+      confirmLabel: "Sign out",
+      destructive: true,
+      icon: "log-out-outline",
+    });
+    if (!ok) return;
+    setSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   return (

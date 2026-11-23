@@ -11,7 +11,6 @@ import {
   ScrollView,
   Pressable,
   TextInput,
-  Alert,
   ActivityIndicator,
   Switch,
 } from "react-native";
@@ -47,7 +46,7 @@ import {
   stopCountLabel,
 } from "@/src/lib/dates";
 import type {ItineraryStatus} from "@/types/dates";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 import ReplaceSheet from "@/components/dates/ReplaceSheet";
 import {
   checkEdit,
@@ -61,6 +60,8 @@ import {evaluatePlan, warningsByStop, type PlanIssue} from "@/utils/planEvaluato
 import {smartOrderSummary} from "@/utils/smartOrder";
 import type {PlacedActivity} from "@/utils/timeline";
 import type {UserPrefs} from "@/src/store/usePrefsStore";
+import {showError, showInfo} from "@/src/lib/notify";
+import {afterSheetCloses, choose, confirm} from "@/src/lib/sheets";
 
 type Busy = null | "start" | "end" | "delete" | "rename" | "accept" | "decline" | "leave" | "edit";
 
@@ -249,10 +250,7 @@ export default function ItineraryDetailScreen() {
     try {
       await action();
     } catch (e) {
-      Alert.alert(
-        "Something went wrong",
-        e instanceof Error ? e.message : "Please try again.",
-      );
+      showError("Something went wrong", e);
     } finally {
       setBusy(null);
     }
@@ -264,33 +262,31 @@ export default function ItineraryDetailScreen() {
       router.push("/active-date");
     });
 
-  const onEnd = () =>
-    Alert.alert("End this date?", "It moves to your Past Dates.", [
-      {text: "Cancel", style: "cancel"},
-      {
-        text: "End date",
-        style: "destructive",
-        onPress: () => run("end", () => completeDate(itineraryId)),
-      },
-    ]);
+  const onEnd = async () => {
+    const ok = await confirm({
+      title: "End this date?",
+      message: "It moves to your Past Dates.",
+      confirmLabel: "End date",
+      destructive: true,
+      icon: "flag-outline",
+    });
+    if (ok) run("end", () => completeDate(itineraryId));
+  };
 
-  const onDelete = () =>
-    Alert.alert(
-      "Delete this date?",
-      "It's removed for everyone on it. This can't be undone.",
-      [
-        {text: "Cancel", style: "cancel"},
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () =>
-            run("delete", async () => {
-              await remove(itineraryId);
-              router.back();
-            }),
-        },
-      ],
-    );
+  const onDelete = async () => {
+    const ok = await confirm({
+      title: "Delete this date?",
+      message: "It's removed for everyone on it. This can't be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+      icon: "trash-outline",
+    });
+    if (!ok) return;
+    run("delete", async () => {
+      await remove(itineraryId);
+      router.back();
+    });
+  };
 
   const isOwner = itinerary.my_role === "OWNER";
   // Comment threads show on dates shared with someone, once you've said yes
@@ -310,8 +306,12 @@ export default function ItineraryDetailScreen() {
   type Entry = {stopId?: number; placed: PlacedActivity};
   const entriesNow = (): Entry[] => placedStops(itinerary);
 
-  /** Save a change, first saying what it'd break (and offering a reorder that fixes it) */
-  const applyEdit = (entries: Entry[], done: string) => {
+  /**
+   * Save a change, first saying what it'd break (and offering a reorder that
+   * fixes it). `beforeAsking` waits for a sheet that's closing (iOS can't
+   * show the question while it does).
+   */
+  const applyEdit = async (entries: Entry[], done: string, beforeAsking?: () => Promise<void>) => {
     const prefs = itinerary.prefs_snapshot as UserPrefs;
     const check = checkEdit(entries.map((e) => e.placed), prefs);
     // Running longer could run into another of your dates
@@ -329,7 +329,7 @@ export default function ItineraryDetailScreen() {
     const save = (list: Entry[]) =>
       run("edit", async () => {
         await editStops(itineraryId, list);
-        Toast.show({type: "success", text1: done, position: "bottom"});
+        Toast.show({type: "success", text1: done});
       });
     if (check.problems.length === 0) {
       save(entries);
@@ -339,41 +339,46 @@ export default function ItineraryDetailScreen() {
       .slice(0, 2)
       .map((p) => `• ${p.message}`)
       .join("\n");
+    await beforeAsking?.();
     if (check.reorder) {
       const byIdea = new Map(entries.map((e) => [e.placed.activity.idea_id, e]));
       const reordered = check.reorder.order.map((p) => byIdea.get(p.activity.idea_id)!);
-      Alert.alert(
-        "This causes a problem",
-        `${what}\n\n${smartOrderSummary(check.reorder) ?? "A new order fixes it"}.`,
-        [
-          {text: "Cancel", style: "cancel"},
-          {text: "Keep this order", onPress: () => save(entries)},
-          {text: "Reorder", onPress: () => save(reordered)},
+      const pick = await choose({
+        title: "This causes a problem",
+        message: what,
+        options: [
+          {
+            label: "Reorder",
+            hint: `${smartOrderSummary(check.reorder) ?? "A new order fixes it"}.`,
+            icon: "swap-vertical-outline",
+            value: "REORDER" as const,
+          },
+          {label: "Keep this order", icon: "checkmark-outline", value: "KEEP" as const},
         ],
-      );
+      });
+      if (pick === "REORDER") save(reordered);
+      else if (pick === "KEEP") save(entries);
     } else {
-      Alert.alert("Heads up", what, [
-        {text: "Cancel", style: "cancel"},
-        {text: "Save anyway", onPress: () => save(entries)},
-      ]);
+      const ok = await confirm({title: "Heads up", message: what, confirmLabel: "Save anyway", icon: "alert-circle-outline"});
+      if (ok) save(entries);
     }
   };
 
-  const removeStop = (i: number) => {
+  const removeStop = async (i: number) => {
     const entries = entriesNow();
     const title = entries[i]?.placed.activity.title ?? "this stop";
     if (entries.length <= 1) {
-      Alert.alert("This is the only stop", "A date needs at least one stop. Replace it, or delete the date.");
+      showInfo("It's the only stop", "Replace it, or delete the date");
       return;
     }
-    Alert.alert(`Remove ${title}?`, "The rest of the date moves up to fill the time.", [
-      {text: "Cancel", style: "cancel"},
-      {
-        text: "Remove",
-        style: "destructive",
-        onPress: () => applyEdit(entries.filter((_, j) => j !== i), `Removed ${title}`),
-      },
-    ]);
+    const ok = await confirm({
+      title: `Remove ${title}?`,
+      message: "The rest of the date moves up to fill the time.",
+      confirmLabel: "Remove",
+      destructive: true,
+      icon: "remove-circle-outline",
+    });
+    if (ok) applyEdit(entries.filter((_, j) => j !== i), `Removed ${title}`);
   };
 
   const replaceStop = (i: number, replacement: Replacement) => {
@@ -381,7 +386,8 @@ export default function ItineraryDetailScreen() {
     const entries = entriesNow();
     const before = entries[i]?.placed.activity.title ?? "it";
     const next = entries.map((e, j) => (j === i ? {placed: {activity: replacement}} : e));
-    applyEdit(next, `Swapped ${before} for ${replacement.title}`);
+    // (the replace sheet is still sliding away)
+    applyEdit(next, `Swapped ${before} for ${replacement.title}`, afterSheetCloses);
   };
 
   const toggleSurprise = (on: boolean) =>
@@ -397,21 +403,22 @@ export default function ItineraryDetailScreen() {
       if (!accept) router.back();
     });
 
-  const onLeave = () =>
-    Alert.alert("Leave this date?", "You won't see it anymore. The owner can invite you again.", [
-      {text: "Cancel", style: "cancel"},
-      {
-        text: "Leave",
-        style: "destructive",
-        onPress: () =>
-          run("leave", async () => {
-            if (!myUserId) return;
-            await removeFromDate(itineraryId, myUserId);
-            await reloadDates();
-            router.back();
-          }),
-      },
-    ]);
+  const onLeave = async () => {
+    const ok = await confirm({
+      title: "Leave this date?",
+      message: "You won't see it anymore. The owner can invite you again.",
+      confirmLabel: "Leave",
+      destructive: true,
+      icon: "exit-outline",
+    });
+    if (!ok) return;
+    run("leave", async () => {
+      if (!myUserId) return;
+      await removeFromDate(itineraryId, myUserId);
+      await reloadDates();
+      router.back();
+    });
+  };
 
   const saveTitle = () =>
     run("rename", async () => {
@@ -457,8 +464,8 @@ export default function ItineraryDetailScreen() {
           <View className="flex-row items-center gap-2 bg-pink-500/10 border border-pink-500/30 rounded-2xl px-4 py-3 mb-5">
             <Ionicons name="heart" size={16} color="#f472b6" />
             <Text className="text-pink-100/90 text-sm flex-1">
-              Planned by {partner ? `@${partner.username}` : "your partner"}. You can see it because you&apos;re
-              partners.
+              Planned by {partner ? `@${partner.username}` : "your person"}. You can see it because you&apos;re
+              linked.
             </Text>
           </View>
         )}

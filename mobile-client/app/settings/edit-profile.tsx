@@ -13,7 +13,7 @@ import {SafeAreaView} from "react-native-safe-area-context";
 import {useRouter} from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import ScreenHeader from "@/components/ui/ScreenHeader";
 import Avatar from "@/components/profile/Avatar";
@@ -70,13 +70,12 @@ export default function EditProfileScreen() {
         }),
       ]);
       await uploadAvatar(full.uri, thumb.uri);
-      Toast.show({type: "success", text1: "Photo updated", position: "bottom"});
+      Toast.show({type: "success", text1: "Photo updated"});
     } catch (e) {
       Toast.show({
         type: "error",
         text1: "Couldn't update your photo",
         text2: e instanceof Error ? e.message : undefined,
-        position: "bottom",
       });
     } finally {
       setUploading(false);

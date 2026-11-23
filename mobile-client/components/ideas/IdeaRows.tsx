@@ -92,7 +92,7 @@ function PrivacyButton({shared, onToggle}: {shared: boolean; onToggle: () => voi
       onPress={onToggle}
       hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel={shared ? "Shared with your partner. Keep it private" : "Private. Share with your partner"}
+      accessibilityLabel={shared ? "Shared with your person. Keep it private" : "Private. Share with your person"}
       className="w-9 h-9 rounded-full items-center justify-center bg-zinc-800 active:opacity-70"
     >
       <Ionicons name={shared ? "people" : "lock-closed"} size={16} color={shared ? "#f472b6" : "#a1a1aa"} />

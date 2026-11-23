@@ -5,7 +5,14 @@
 // Long-press your own comment (or any, as the owner) to delete it.
 
 import React, {useRef, useState} from "react";
-import {ActivityIndicator, Alert, Pressable, Share, Text, TextInput, View} from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  Share,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
 
 import Avatar from "@/components/profile/Avatar";
@@ -20,6 +27,8 @@ import {
 } from "@/src/lib/sharedDates";
 import {formatWhen} from "@/src/lib/dates";
 import type {Itinerary} from "@/types/dates";
+import {showError} from "@/src/lib/notify";
+import {confirm} from "@/src/lib/sheets";
 
 /** Font size only (a line height pushes text off centre on iOS), with even
  *  padding and the send button's height, so one line sits centred */
@@ -76,28 +85,22 @@ export function CommentThread({
       setDraft("");
       onChanged();
     } catch (e) {
-      Alert.alert("Couldn't post that", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't post that", e);
     } finally {
       setSending(false);
     }
   };
 
-  const confirmDelete = (c: DateComment) =>
-    Alert.alert("Delete this comment?", undefined, [
-      {text: "Cancel", style: "cancel"},
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteComment(c.comment_id);
-            onChanged();
-          } catch (e) {
-            Alert.alert("Couldn't delete it", e instanceof Error ? e.message : "Please try again.");
-          }
-        },
-      },
-    ]);
+  const confirmDelete = async (c: DateComment) => {
+    const ok = await confirm({title: "Delete this comment?", confirmLabel: "Delete", destructive: true});
+    if (!ok) return;
+    try {
+      await deleteComment(c.comment_id);
+      onChanged();
+    } catch (e) {
+      showError("Couldn't delete it", e);
+    }
+  };
 
   return (
     <View>

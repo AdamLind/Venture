@@ -19,7 +19,6 @@
 import React, {useEffect, useRef, useState} from "react";
 import {
   ActivityIndicator,
-  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -53,6 +52,9 @@ import type {LatLng} from "@/utils/timeline";
 import GlassSurface from "@/components/ui/GlassSurface";
 import HoursEditor, {DEFAULT_HOURS, type HoursChoice, hoursFromChoice} from "./HoursEditor";
 import MapPin, {PIN_COLOR, PIN_TIP_Y, PIN_WIDTH} from "./MapPin";
+import {showError} from "@/src/lib/notify";
+import {confirm} from "@/src/lib/sheets";
+import Overlays from "@/components/sheets/Overlays";
 
 /** A pin this close to your saved home area (miles) gets a check */
 const NEAR_HOME_MILES = 0.3;
@@ -291,16 +293,18 @@ export default function PlacePicker({
   });
 
   // Last check before adding: is the pin at someone's home (yours)?
-  const finishNew = () => {
+  const finishNew = async () => {
     if (home && getDistance(home, pin) <= NEAR_HOME_MILES) {
-      Alert.alert(
-        "This pin is near your home",
-        "Places on Venture are for public spots. If this is your home or someone's yard, move the pin, or make the idea a stay-in one.",
-        [
-          {text: "Move the pin", style: "cancel", onPress: () => setStep("pin")},
-          {text: "It's a public place", onPress: () => pick(newPlace())},
-        ],
-      );
+      const publicPlace = await confirm({
+        title: "This pin is near your home",
+        message:
+          "Places on Venture are for public spots. If this is your home or someone's yard, move the pin, or make the idea a stay-in one.",
+        confirmLabel: "It's a public place",
+        cancelLabel: "Move the pin",
+        icon: "home-outline",
+      });
+      if (publicPlace) pick(newPlace());
+      else setStep("pin");
       return;
     }
     pick(newPlace());
@@ -308,7 +312,7 @@ export default function PlacePicker({
 
   const addNew = async () => {
     if (!name.trim()) {
-      Alert.alert("Name the place", "What do people call it? (e.g. Hidden Falls trailhead)");
+      showError("Name the place", "Like Hidden Falls Trailhead");
       return;
     }
     Keyboard.dismiss();
@@ -777,6 +781,9 @@ export default function PlacePicker({
           </>
         )}
       </View>
+
+      {/* Pop-ups and toasts over this sheet (#86) */}
+      <Overlays />
     </Modal>
   );
 }

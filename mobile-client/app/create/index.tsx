@@ -24,7 +24,6 @@
 import React, {useEffect, useRef, useState} from "react";
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   Keyboard,
   KeyboardAvoidingView,
@@ -72,8 +71,11 @@ import {ALL_MONTHS, MONTH_NAMES, SEASONS, type Season, monthsLabel, seasonMonths
 import {closedTimesOfDay} from "@/utils/closedTimes";
 import {tidyTitle} from "@/src/lib/text";
 import PlacePicker from "@/components/places/PlacePicker";
+import Overlays from "@/components/sheets/Overlays";
+import {confirm} from "@/src/lib/sheets";
 import ActivityTagsSelector from "@/components/home/ActivityTagsSelector";
 import {BaseActivity} from "@/types/activities";
+import {showDone, showError} from "@/src/lib/notify";
 
 // Where an idea's photos live in storage (strip to get the file path)
 const PHOTO_PATH_MARKER = "/storage/v1/object/public/activities/";
@@ -247,7 +249,7 @@ function Choices<T extends string | number>({
             accessibilityState={{selected: active, disabled: off}}
             accessibilityHint={option.hint}
             className={`${fill ? "flex-1 items-center py-3.5" : "px-4 py-2.5"} rounded-2xl border active:opacity-70 ${
-              active ? "bg-zinc-800 border-white" : off ? "border-dashed border-zinc-700" : "bg-zinc-900 border-zinc-800"
+              active ? "bg-zinc-800 border-white border-solid" : off ? "border-dashed border-zinc-700" : "bg-zinc-900 border-zinc-800 border-solid"
             }`}
           >
             <Text
@@ -499,17 +501,27 @@ export default function CreateScreen() {
     const {data} = await others.limit(50);
     const n = data?.length ?? 0;
     if (!n) return;
-    Alert.alert(
-      n === 1 ? `Move "${data![0].title}" too?` : `Move your other ${n} ideas too?`,
-      `${n === 1 ? "It's" : "They're"} at your pin for ${mine.name}. Move ${n === 1 ? "it" : "them"} to ${match.name}? ${
-        n === 1 ? "It stays" : "They stay"
-      } private.`,
-      [
-        {text: "Keep on my pin", style: "cancel"},
-        {text: "Move", onPress: () => setMoveOthers({from: mine.venueId, to: match.venue_id})},
-      ],
-    );
+    const move = await confirm({
+      title: n === 1 ? `Move "${data![0].title}" too?` : `Move your other ${n} ideas too?`,
+      message: `${n === 1 ? "It's" : "They're"} at your pin for ${mine.name}. Move ${n === 1 ? "it" : "them"} to ${
+        match.name
+      }? ${n === 1 ? "It stays" : "They stay"} private.`,
+      confirmLabel: "Move",
+      cancelLabel: "Keep on my pin",
+      icon: "swap-horizontal-outline",
+    });
+    if (move) setMoveOthers({from: mine.venueId, to: match.venue_id});
   };
+
+  // Leaving after saving (or when the idea won't open): this screen's toasts
+  // step aside first, so the message shows from the screen below (#86)
+  const [leaving, setLeaving] = useState<(() => void) | null>(null);
+  const leave = (then: () => void) => setLeaving(() => then);
+  useEffect(() => {
+    if (!leaving) return;
+    router.back();
+    setTimeout(leaving, 60);
+  }, [leaving, router]);
 
   // --- EDITING: load the idea into the steps, and open on the review ---
   useEffect(() => {
@@ -528,8 +540,7 @@ export default function CreateScreen() {
       if (!active) return;
 
       if (error || !data) {
-        Alert.alert("Couldn't open this idea", error?.message ?? "It may have been deleted.");
-        router.back();
+        leave(() => showError("Couldn't open this idea", error?.message ?? "It may have been deleted."));
         return;
       }
 
@@ -598,7 +609,6 @@ export default function CreateScreen() {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingId]);
 
   useEffect(() => {
@@ -673,20 +683,21 @@ export default function CreateScreen() {
   const startedSomething = editingId
     ? baseline !== null && snapshot !== baseline
     : !!imageUri || !!title.trim() || !!whereMode || !!activityType || selectedTags.length > 0 || !!description.trim();
-  const close = () => {
+  const close = async () => {
     Keyboard.dismiss();
     if (!startedSomething) {
       router.back();
       return;
     }
-    Alert.alert(
-      editingId ? "Leave without saving?" : "Discard this idea?",
-      editingId ? "Your changes won't be saved." : "What you've entered so far will be lost.",
-      [
-        {text: "Keep going", style: "cancel"},
-        {text: editingId ? "Leave" : "Discard", style: "destructive", onPress: () => router.back()},
-      ],
-    );
+    const leave = await confirm({
+      title: editingId ? "Leave without saving?" : "Discard this idea?",
+      message: editingId ? "Your changes won't be saved." : "What you've entered so far will be lost.",
+      confirmLabel: editingId ? "Leave" : "Discard",
+      cancelLabel: "Keep going",
+      destructive: true,
+      icon: editingId ? "exit-outline" : "trash-outline",
+    });
+    if (leave) router.back();
   };
   const back = () => {
     // Searching for a place: back closes the search first
@@ -776,7 +787,7 @@ export default function CreateScreen() {
       data: {session},
     } = await supabase.auth.getSession();
     if (!session) {
-      Alert.alert("Sign In Required", "You must be logged in to post a date idea.");
+      showError("Sign in to post an idea");
       return;
     }
     const userId = session.user.id;
@@ -791,10 +802,13 @@ export default function CreateScreen() {
     }
 
     if (visibility === "PENDING_REVIEW" && suspended) {
-      Alert.alert("You can't publish right now", SUSPENDED_MESSAGE, [
-        {text: "Cancel", style: "cancel"},
-        {text: "Keep it private", onPress: () => setVisibility("PRIVATE")},
-      ]);
+      const keepPrivate = await confirm({
+        title: "You can't publish right now",
+        message: SUSPENDED_MESSAGE,
+        confirmLabel: "Keep it private",
+        icon: "lock-closed-outline",
+      });
+      if (keepPrivate) setVisibility("PRIVATE");
       return;
     }
 
@@ -958,26 +972,18 @@ export default function CreateScreen() {
       useMyIdeasStore.getState().reload();
       if (editingId) useSavedStore.getState().reload();
 
-      if (editingId) {
-        Alert.alert(
-          visibility === "PRIVATE" ? "Changes saved" : "Sent for review",
-          visibility === "PRIVATE"
-            ? "Only you can see it, and you can use it when you plan."
-            : "It goes live again once it's approved. You can follow it in Profile › My Ideas.",
-        );
-      } else {
-        Alert.alert(
-          visibility === "PRIVATE" ? "Saved" : "Submitted for review",
-          visibility === "PRIVATE"
-            ? "It's in Profile › My Ideas. Only you can see it, and you can use it when you plan."
-            : "You can follow its review in Profile › My Ideas.",
-        );
-      }
-      // Close the sheet (pushing a screen from it left the sheet under it)
-      router.back();
+      // Close the screen, then say so from the one below
+      const done = editingId
+        ? visibility === "PRIVATE"
+          ? ["Changes saved", "Only you can see it"]
+          : ["Sent for review", "Live again once it's approved"]
+        : visibility === "PRIVATE"
+          ? ["Saved", "In My Ideas · only you"]
+          : ["Submitted for review", "Follow it in My Ideas"];
+      leave(() => showDone(done[0], done[1]));
     } catch (error: any) {
       console.error("Upload Error:", error);
-      Alert.alert(editingId ? "Couldn't save changes" : "Upload Failed", error.message || "An error occurred");
+      showError(editingId ? "Couldn't save your changes" : "Couldn't post it", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -1058,7 +1064,8 @@ export default function CreateScreen() {
         accessibilityRole="button"
         accessibilityLabel={imageUri ? "Change the cover photo" : "Add a cover photo"}
         className={`h-60 w-full rounded-3xl border justify-center items-center mb-6 overflow-hidden active:opacity-80 ${
-          missing("image") ? "bg-red-950/20 border-red-500" : "bg-zinc-900 border-zinc-700 border-dashed"
+          // (both set the border style: switching between them mustn't add or drop its variable)
+          missing("image") ? "bg-red-950/20 border-red-500 border-solid" : "bg-zinc-900 border-zinc-700 border-dashed"
         }`}
       >
         {imageUri ? (
@@ -1364,7 +1371,7 @@ export default function CreateScreen() {
                 accessibilityState={{selected: on, disabled: closed}}
                 accessibilityHint={closed ? "The place is closed then" : undefined}
                 className={`px-4 py-2.5 rounded-2xl border active:opacity-70 ${
-                  on ? "bg-zinc-800 border-white" : closed ? "border-dashed border-zinc-700" : "bg-zinc-900 border-zinc-800"
+                  on ? "bg-zinc-800 border-white border-solid" : closed ? "border-dashed border-zinc-700" : "bg-zinc-900 border-zinc-800 border-solid"
                 }`}
               >
                 <Text
@@ -2149,6 +2156,10 @@ export default function CreateScreen() {
           choosePlace(picked);
         }}
       />
+
+      {/* Pop-ups and toasts over this screen (#86: it's a modal, so it has
+          its own; leaving, toasts show from the screen below) */}
+      <Overlays toasts={!leaving} />
     </KeyboardAvoidingView>
   );
 }

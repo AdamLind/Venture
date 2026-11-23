@@ -6,7 +6,6 @@
 import React, {useEffect, useRef, useState} from "react";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Keyboard,
   Modal,
@@ -24,12 +23,14 @@ import {useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
 import {CameraView, useCameraPermissions} from "expo-camera";
 import QRCode from "react-native-qrcode-svg";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import TabHeader, {useTabHeader} from "@/components/ui/TabHeader";
 import {connectLink, formatCode, parseCode, resetProfileCode} from "@/src/lib/connections";
 import {connectWithCode} from "@/src/lib/connectWithCode";
 import {useProfileStore} from "@/src/store/useProfileStore";
+import {showError} from "@/src/lib/notify";
+import {confirm} from "@/src/lib/sheets";
 
 /** Font size only (a line height pushes text off centre on iOS) */
 const INPUT_TEXT = {fontSize: 16};
@@ -46,15 +47,23 @@ export default function AddConnectionScreen() {
   const header = useTabHeader({back: true});
   const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
 
-  // Typing a code: once the keyboard's up, scroll to the bottom so the box
-  // and Connect sit comfortably above it
-  useEffect(() => {
-    if (!typing) return;
-    const sub = Keyboard.addListener("keyboardDidShow", () =>
-      scrollRef.current?.scrollToEnd({animated: true}),
-    );
-    return () => sub.remove();
-  }, [typing]);
+  // Typing a code: scroll to the bottom once, so the box and Connect sit
+  // above the keyboard. Now if it's up already, else once it's up (it can
+  // report "shown" more than once as it settles: only the first counts)
+  const keyboardSub = useRef<{remove: () => void} | null>(null);
+  const scrollToBox = () => {
+    keyboardSub.current?.remove();
+    if (Keyboard.isVisible()) {
+      scrollRef.current?.scrollToEnd({animated: true});
+      return;
+    }
+    keyboardSub.current = Keyboard.addListener("keyboardDidShow", () => {
+      keyboardSub.current?.remove();
+      keyboardSub.current = null;
+      scrollRef.current?.scrollToEnd({animated: true});
+    });
+  };
+  useEffect(() => () => keyboardSub.current?.remove(), []);
 
   const link = code ? connectLink(code) : null;
 
@@ -63,7 +72,7 @@ export default function AddConnectionScreen() {
     if (!code) return;
     await Clipboard.setStringAsync(code);
     if (process.env.EXPO_OS === "ios") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Toast.show({type: "success", text1: "Code copied", position: "bottom"});
+    Toast.show({type: "success", text1: "Code copied"});
   };
 
   const shareLink = () => {
@@ -74,7 +83,7 @@ export default function AddConnectionScreen() {
   const submitTyped = async () => {
     const parsed = parseCode(typed);
     if (!parsed) {
-      Alert.alert("That doesn't look like a code", "Codes are 12 letters and numbers, like AbCd eFgH iJkL.");
+      showError("That's not a code", "Codes look like AbCd eFgH iJkL");
       return;
     }
     setBusy(true);
@@ -83,28 +92,24 @@ export default function AddConnectionScreen() {
     if (ok) router.back();
   };
 
-  const confirmReset = () =>
-    Alert.alert(
-      "Get a new code?",
-      "Your current QR code and link stop working. Anyone already connected stays connected.",
-      [
-        {text: "Cancel", style: "cancel"},
-        {
-          text: "New code",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const fresh = await resetProfileCode();
-              const prefs = useProfileStore.getState().preferences;
-              if (prefs) useProfileStore.setState({preferences: {...prefs, profile_code: fresh}});
-              Toast.show({type: "success", text1: "New code ready", position: "bottom"});
-            } catch (e) {
-              Alert.alert("Couldn't reset it", e instanceof Error ? e.message : "Please try again.");
-            }
-          },
-        },
-      ],
-    );
+  const confirmReset = async () => {
+    const ok = await confirm({
+      title: "Get a new code?",
+      message: "Your current QR code and link stop working. Anyone already connected stays connected.",
+      confirmLabel: "New code",
+      destructive: true,
+      icon: "refresh-outline",
+    });
+    if (!ok) return;
+    try {
+      const fresh = await resetProfileCode();
+      const prefs = useProfileStore.getState().preferences;
+      if (prefs) useProfileStore.setState({preferences: {...prefs, profile_code: fresh}});
+      Toast.show({type: "success", text1: "New code ready"});
+    } catch (e) {
+      showError("Couldn't reset it", e);
+    }
+  };
 
   return (
     // The scroll view is the screen's root, like the tabs (see TabHeader.tsx)
@@ -183,8 +188,7 @@ export default function AddConnectionScreen() {
                 placeholderTextColor="#71717a"
                 returnKeyType="go"
                 onSubmitEditing={submitTyped}
-                // Already focused when the keyboard was up: still bring it into view
-                onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({animated: true}), 300)}
+                onFocus={scrollToBox}
                 className="bg-zinc-900 text-white px-4 py-3.5 rounded-2xl border border-zinc-800"
                 style={INPUT_TEXT}
               />

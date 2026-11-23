@@ -8,7 +8,7 @@ import React from "react";
 import {Pressable, View, StyleSheet} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import GlassSurface from "@/components/ui/GlassSurface";
 
@@ -49,14 +49,13 @@ export default function SaveButton({
       type: "success",
       text1: shared ? `Saved · shared with ${partnerName}` : "Saved privately",
       text2: shared ? "Tap to keep it private" : `${partnerName} won't see it`,
-      position: "bottom",
       onPress: shared
         ? () => {
             Toast.hide();
             useSavedStore
               .getState()
               .setShared(ideaId, false)
-              .then(() => Toast.show({type: "success", text1: "Kept private", position: "bottom"}))
+              .then(() => Toast.show({type: "success", text1: "Kept private"}))
               .catch(() => {});
           }
         : undefined,
@@ -81,7 +80,6 @@ export default function SaveButton({
         type: "error",
         text1: saved ? "Couldn't remove it" : "Couldn't save it",
         text2: e instanceof Error ? e.message : undefined,
-        position: "bottom",
       });
     }
   };
@@ -102,14 +100,12 @@ export default function SaveButton({
       Toast.show({
         type: "success",
         text1: shared ? "Kept private" : `Shared with ${partnerName}`,
-        position: "bottom",
       });
     } catch (e) {
       Toast.show({
         type: "error",
         text1: "Couldn't change that",
         text2: e instanceof Error ? e.message : undefined,
-        position: "bottom",
       });
     }
   };

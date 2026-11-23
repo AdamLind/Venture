@@ -16,7 +16,7 @@ import {
 import {SafeAreaView} from "react-native-safe-area-context";
 import {Image} from "expo-image";
 import {Ionicons} from "@expo/vector-icons";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import ScreenHeader from "@/components/ui/ScreenHeader";
 import {IdeaMeta, openIdea} from "@/components/ideas/IdeaRows";
@@ -98,14 +98,12 @@ export default function HiddenIdeasScreen() {
       Toast.show({
         type: "success",
         text1: "It's back in Discover",
-        position: "bottom",
       });
     } catch (e) {
       Toast.show({
         type: "error",
         text1: "Couldn't unhide it",
         text2: e instanceof Error ? e.message : undefined,
-        position: "bottom",
       });
     } finally {
       setBusy(null);
@@ -120,14 +118,12 @@ export default function HiddenIdeasScreen() {
       Toast.show({
         type: "success",
         text1: row.username ? `Unblocked @${row.username}` : "Unblocked",
-        position: "bottom",
       });
     } catch (e) {
       Toast.show({
         type: "error",
         text1: "Couldn't unblock them",
         text2: e instanceof Error ? e.message : undefined,
-        position: "bottom",
       });
     } finally {
       setUnblocking(null);

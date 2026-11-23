@@ -4,11 +4,16 @@
 // The database checks every decision (review_idea / resolve_reports).
 
 import React, {useCallback, useEffect, useState} from "react";
-import {ActivityIndicator, Alert, Pressable, Text, View} from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  Text,
+  View,
+} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
 import {useRouter} from "expo-router";
 import * as Haptics from "expo-haptics";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import {StatusChip} from "@/components/ideas/IdeaRows";
 import ReviewNoteSheet, {type NoteKind} from "@/components/moderation/ReviewNoteSheet";
@@ -31,6 +36,8 @@ import {useProfileStore} from "@/src/store/useProfileStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
 import type {IdeaVisibility} from "@/types/ideas";
 import PlaceReviewSheet from "@/components/moderation/PlaceReviewSheet";
+import {showDone, showError} from "@/src/lib/notify";
+import {afterSheetCloses, confirm} from "@/src/lib/sheets";
 
 const STAFF_COLOR = "#a78bfa";
 
@@ -147,8 +154,10 @@ export default function ReviewPanel({
     try {
       await reviewIdea(idea.idea_id, decision, note, rules);
       if (process.env.EXPO_OS === "ios") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Toast.show({type: "success", text1: DONE_TOAST[decision], position: "bottom"});
+      // From this screen, once the note sheet (if open) has slid away
+      const fromSheet = noteFor != null;
       setNoteFor(null);
+      (fromSheet ? afterSheetCloses() : Promise.resolve()).then(() => showDone(DONE_TOAST[decision]));
       onDecided(
         DECISIONS[decision].to,
         decision === "APPROVE" ? null : (note ?? null),
@@ -156,52 +165,50 @@ export default function ReviewPanel({
       );
       load();
     } catch (e) {
-      Alert.alert("Couldn't save that", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't save that", e);
       throw e;
     } finally {
       setBusy(null);
     }
   };
 
-  const onDecision = (decision: Decision) => {
+  const onDecision = async (decision: Decision) => {
     if (decision === "APPROVE") {
       const publishes = idea.visibility !== "PUBLISHED";
-      Alert.alert(
-        publishes ? "Publish this idea?" : "Approve it?",
-        openReports
+      const ok = await confirm({
+        title: publishes ? "Publish this idea?" : "Approve it?",
+        message: openReports
           ? "Its open reports stay open. Dismiss them if nothing's wrong."
           : checkingPlace
             ? `It shows in Discover for everyone, and so does ${placeName}.`
             : "It shows in Discover for everyone.",
-        [
-          {text: "Cancel", style: "cancel"},
-          {text: "Approve", onPress: () => decide("APPROVE").catch(() => {})},
-        ],
-      );
+        confirmLabel: "Approve",
+        icon: "checkmark-circle-outline",
+      });
+      if (ok) decide("APPROVE").catch(() => {});
       return;
     }
     setNoteFor(decision);
   };
 
-  const dismiss = () =>
-    Alert.alert("Dismiss the reports?", "Nothing's wrong with it. It stays as it is.", [
-      {text: "Cancel", style: "cancel"},
-      {
-        text: "Dismiss",
-        onPress: async () => {
-          setBusy("DISMISS");
-          try {
-            await resolveReports(idea.idea_id, "DISMISSED");
-            Toast.show({type: "success", text1: "Reports dismissed", position: "bottom"});
-            load();
-          } catch (e) {
-            Alert.alert("Couldn't dismiss them", e instanceof Error ? e.message : "Please try again.");
-          } finally {
-            setBusy(null);
-          }
-        },
-      },
-    ]);
+  const dismiss = async () => {
+    const ok = await confirm({
+      title: "Dismiss the reports?",
+      message: "Nothing's wrong with it. It stays as it is.",
+      confirmLabel: "Dismiss",
+    });
+    if (!ok) return;
+    setBusy("DISMISS");
+    try {
+      await resolveReports(idea.idea_id, "DISMISSED");
+      Toast.show({type: "success", text1: "Reports dismissed"});
+      load();
+    } catch (e) {
+      showError("Couldn't dismiss them", e);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   // Suspend the creator (repeat offenders), or lift it. Staff can't be
   // suspended; the database says so
@@ -214,28 +221,32 @@ export default function ReviewPanel({
     setBusy("SUSPEND");
     try {
       await setSuspension(idea.user_id, suspend, note, idea.idea_id);
-      Toast.show({
-        type: "success",
-        text1: suspend ? `Suspended ${creatorName}` : "Suspension lifted",
-        text2: suspend && rejectsIdea ? "This idea was rejected too." : undefined,
-        position: "bottom",
-      });
+      const fromSheet = noteFor != null;
       setNoteFor(null);
+      (fromSheet ? afterSheetCloses() : Promise.resolve()).then(() =>
+        showDone(
+          suspend ? `Suspended ${creatorName}` : "Suspension lifted",
+          suspend && rejectsIdea ? "This idea was rejected too." : undefined,
+        ),
+      );
       if (suspend && rejectsIdea) onDecided("REJECTED", note?.trim() || null, null);
       load();
     } catch (e) {
-      Alert.alert("Couldn't save that", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't save that", e);
       throw e;
     } finally {
       setBusy(null);
     }
   };
-  const onSuspend = () => {
+  const onSuspend = async () => {
     if (creatorSuspended) {
-      Alert.alert(`Lift the suspension on ${creatorName}?`, "They can publish and report again.", [
-        {text: "Cancel", style: "cancel"},
-        {text: "Lift it", onPress: () => runSuspension(false, null).catch(() => {})},
-      ]);
+      const ok = await confirm({
+        title: `Lift the suspension on ${creatorName}?`,
+        message: "They can publish and report again.",
+        confirmLabel: "Lift it",
+        icon: "lock-open-outline",
+      });
+      if (ok) runSuspension(false, null).catch(() => {});
       return;
     }
     // The reason goes in the note sheet (room to write it, quick picks)

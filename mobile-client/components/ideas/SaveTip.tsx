@@ -6,7 +6,7 @@
 import React from "react";
 import {Modal, Pressable, Text, View} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import {SAVED_COLOR} from "@/components/ideas/SaveButton";
 import {usePartner} from "@/src/store/useConnectionsStore";
@@ -19,7 +19,7 @@ export default function SaveTip() {
   const ideaId = useSaveTipStore((s) => s.ideaId);
   const close = useSaveTipStore((s) => s.close);
   const partner = usePartner();
-  const name = partner ? `@${partner.username}` : "your partner";
+  const name = partner ? `@${partner.username}` : "your person";
 
   const keepPrivate = async () => {
     const id = ideaId;
@@ -27,9 +27,9 @@ export default function SaveTip() {
     if (id == null) return;
     try {
       await useSavedStore.getState().setShared(id, false);
-      Toast.show({type: "success", text1: "Kept private", text2: `${name} won't see it`, position: "bottom"});
+      Toast.show({type: "success", text1: "Kept private", text2: `${name} won't see it`});
     } catch (e) {
-      Toast.show({type: "error", text1: "Couldn't change that", text2: e instanceof Error ? e.message : undefined, position: "bottom"});
+      Toast.show({type: "error", text1: "Couldn't change that", text2: e instanceof Error ? e.message : undefined});
     }
   };
 

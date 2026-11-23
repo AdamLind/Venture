@@ -9,7 +9,7 @@ import React, {useEffect, useRef, useState} from "react";
 import {Platform, Pressable, Switch, Text, View} from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {Ionicons} from "@expo/vector-icons";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import {usePartnerDatesStore} from "@/src/store/usePartnerDatesStore";
 import {useProfileStore} from "@/src/store/useProfileStore";
@@ -99,7 +99,7 @@ export default function PartnerDetails({partnerId, partnerName}: {partnerId: str
     try {
       await updatePreferences({share_birthday: next});
     } catch (e) {
-      Toast.show({type: "error", text1: "Couldn't change that", text2: e instanceof Error ? e.message : undefined, position: "bottom"});
+      Toast.show({type: "error", text1: "Couldn't change that", text2: e instanceof Error ? e.message : undefined});
     } finally {
       if (save === shareSave.current) setShareDraft(null);
     }
@@ -119,9 +119,9 @@ export default function PartnerDetails({partnerId, partnerName}: {partnerId: str
     try {
       await setAnniversary(value);
       setEditing(false);
-      Toast.show({type: "success", text1: value ? "Anniversary saved" : "Anniversary removed", position: "bottom"});
+      Toast.show({type: "success", text1: value ? "Anniversary saved" : "Anniversary removed"});
     } catch (e) {
-      Toast.show({type: "error", text1: "Couldn't save that", text2: e instanceof Error ? e.message : undefined, position: "bottom"});
+      Toast.show({type: "error", text1: "Couldn't save that", text2: e instanceof Error ? e.message : undefined});
     } finally {
       setBusy(false);
     }

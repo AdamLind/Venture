@@ -23,7 +23,6 @@ import {
   Pressable,
   Linking,
   Platform,
-  Alert,
   StyleSheet,
   Share,
   useWindowDimensions,
@@ -46,7 +45,7 @@ import Reanimated, {
 } from "react-native-reanimated";
 import {scheduleOnRN} from "react-native-worklets";
 import * as Location from "expo-location";
-import Toast from "react-native-toast-message";
+import Toast from "@/src/lib/toast";
 
 import type {TimeSlot} from "@/types/itinerary";
 import {useActiveDateStore, useLiveTimeline} from "@/src/store/activeDateStore";
@@ -69,6 +68,8 @@ import {
   activityImage,
   formatMinutes,
 } from "@/components/builder/BuilderParts";
+import {showError, showInfo} from "@/src/lib/notify";
+import {type ChoiceOption, choose, confirm} from "@/src/lib/sheets";
 
 const BLUE = "#3b82f6";
 // Settles quickly without bouncing past the snap point
@@ -423,10 +424,7 @@ export default function ActiveDateScreen() {
       router.replace("/");
     } catch (e) {
       setFinishing(false);
-      Alert.alert(
-        "Couldn't finish your date",
-        e instanceof Error ? e.message : "Please try again.",
-      );
+      showError("Couldn't finish your date", e);
     }
   };
 
@@ -492,33 +490,41 @@ export default function ActiveDateScreen() {
       const point = await currentPoint();
       await skipStop(itineraryId, point, idOf(focus));
       if (process.env.EXPO_OS === "ios") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Toast.show({type: "success", text1: `Skipped ${focus.activity!.title}`, position: "bottom"});
+      Toast.show({type: "success", text1: `Skipped ${focus.activity!.title}`});
     } catch (e) {
-      Alert.alert("Couldn't skip it", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't skip it", e);
     }
   };
 
   // What to do about it: reorder (if there's more than one stop ahead) or
   // skip it (not once you're there, and not the date's only stop)
-  const hoursOptions = () => {
+  const hoursOptions = async () => {
     if (!focus || !focusNote) return;
     tap();
     const title = focus.activity!.title;
-    const buttons: Parameters<typeof Alert.alert>[2] = [];
-    if (canReorder) buttons.push({text: "Reorder the rest", onPress: startEditing});
+    const message = `${focusNote}. Hours can change, so check before you go.`;
+    const options: ChoiceOption<"REORDER" | "SKIP">[] = [];
+    if (canReorder) options.push({label: "Reorder the rest", icon: "swap-vertical-outline", value: "REORDER"});
     if (canEdit && !arrived && stops.length > 1 && itineraryId != null) {
-      buttons.push({
-        text: "Skip this stop",
-        style: "destructive",
-        onPress: () =>
-          Alert.alert(`Skip ${title}?`, "It comes off your date, and the rest moves up to fill the time.", [
-            {text: "Keep it", style: "cancel"},
-            {text: "Skip it", style: "destructive", onPress: skipFocus},
-          ]),
-      });
+      options.push({label: "Skip this stop", icon: "play-skip-forward-outline", destructive: true, value: "SKIP"});
     }
-    buttons.push({text: buttons.length ? "Keep it" : "OK", style: "cancel"});
-    Alert.alert(title, `${focusNote}. Hours can change, so check before you go.`, buttons);
+    // Nothing to do about it: just say so
+    if (options.length === 0) {
+      showInfo(title, message);
+      return;
+    }
+    const pick = await choose({title, message, options, cancelLabel: "Keep it"});
+    if (pick === "REORDER") startEditing();
+    if (pick === "SKIP") {
+      const ok = await confirm({
+        title: `Skip ${title}?`,
+        message: "It comes off your date, and the rest moves up to fill the time.",
+        confirmLabel: "Skip it",
+        cancelLabel: "Keep it",
+        destructive: true,
+      });
+      if (ok) skipFocus();
+    }
   };
 
   // ─── Ahead of the plan ───────────────────────────────────────────────────
@@ -538,25 +544,25 @@ export default function ActiveDateScreen() {
       const rest = placedStops(itinerary).map((s) => s.placed).slice(point.kept);
       await replanDate(itineraryId, point, rest);
       if (process.env.EXPO_OS === "ios") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Toast.show({type: "success", text1: "Moved the rest of your date up", position: "bottom"});
+      Toast.show({type: "success", text1: "Moved the rest of your date up"});
     } catch (e) {
-      Alert.alert("Couldn't move it up", e instanceof Error ? e.message : "Please try again.");
+      showError("Couldn't move it up", e);
     } finally {
       setMovingUp(false);
     }
   };
-  const aheadOptions = () => {
+  const aheadOptions = async () => {
     if (!ahead || movingUp) return;
     tap();
     const by = formatMinutes(ahead.minutes);
-    Alert.alert(
-      `You're ${by} ahead`,
-      `Move the rest of your date up? ${ahead.stop.activity!.title} and everything after it start sooner. You can keep the plan as it is, too.`,
-      [
-        {text: "Keep the plan", style: "cancel"},
-        {text: "Move it up", onPress: moveRestUp},
-      ],
-    );
+    const ok = await confirm({
+      title: `You're ${by} ahead`,
+      message: `Move the rest of your date up? ${ahead.stop.activity!.title} and everything after it start sooner. You can keep the plan as it is, too.`,
+      confirmLabel: "Move it up",
+      cancelLabel: "Keep the plan",
+      icon: "play-forward-outline",
+    });
+    if (ok) moveRestUp();
   };
 
   let eyebrow: string;
