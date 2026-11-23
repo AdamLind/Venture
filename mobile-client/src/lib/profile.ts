@@ -9,7 +9,7 @@ import type {
 } from "@/types/profile";
 import {formatMoney} from "@/utils/money";
 
-export const MIN_AGE = 16; // keep in sync with private.user_preferences_guard()
+export const MIN_AGE = 18; // keep in sync with private.user_preferences_guard()
 
 export const USERNAME_PATTERN = /^[a-z0-9_.]{3,30}$/;
 

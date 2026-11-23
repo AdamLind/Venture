@@ -153,10 +153,10 @@ const PEOPLE_OPTIONS: Choice<string>[] = [
   {value: "2-50", label: "Any size", hint: "2 or more"},
   {value: "CUSTOM", label: "Other"},
 ];
-/** The youngest it's OK for (Venture itself is 16+, so "All ages" means anyone on it) */
+/** The youngest it's OK for. Venture itself is 18+, so "All ages" means
+ *  anyone on it (and there's no 18+); 21+ for anything with alcohol */
 const AGE_OPTIONS: Choice<number | "OTHER">[] = [
   {value: 0, label: "All ages"},
-  {value: 18, label: "18+"},
   {value: 21, label: "21+"},
   {value: "OTHER", label: "Other"},
 ];

@@ -40,7 +40,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Venture uses the camera to scan a friend's code so you can connect. Nothing is recorded.",
+          "cameraPermission": "Venture uses the camera to take photos during your dates, and to scan a friend's code so you can connect.",
           "recordAudioAndroid": false
         }
       ]

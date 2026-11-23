@@ -83,7 +83,7 @@ const SELECT = `
   itinerary_comments ( count ),
   itinerary_activities (
     stop_id, sort_order, starts_at, ends_at,
-    activities ( *, venues ( name, address, coordinates, opening_hours ) )
+    activities ( *, venues ( name, address, coordinates, opening_hours, created_by ) )
   )
 `;
 

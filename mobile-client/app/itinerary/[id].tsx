@@ -61,6 +61,9 @@ import {smartOrderSummary} from "@/utils/smartOrder";
 import type {PlacedActivity} from "@/utils/timeline";
 import type {UserPrefs} from "@/src/store/usePrefsStore";
 import {showError, showInfo} from "@/src/lib/notify";
+import PhotoViewer from "@/components/dates/PhotoViewer";
+import {type Capture, coverPhoto} from "@/src/lib/captures";
+import {useCaptureStore, useDatePhotos} from "@/src/store/useCaptureStore";
 import {afterSheetCloses, choose, confirm} from "@/src/lib/sheets";
 
 type Busy = null | "start" | "end" | "delete" | "rename" | "accept" | "decline" | "leave" | "edit";
@@ -202,6 +205,30 @@ export default function ItineraryDetailScreen() {
     reloadDates();
   };
 
+  // ─── Photos from the date (#43) ──────────────────────────────────────────
+  // The end-of-date photo (or the last one) heads the page; each stop shows
+  // the ones taken there; tap one to see them full screen
+  const photos = useDatePhotos(itineraryId);
+  const loadPhotos = useCaptureStore((s) => s.load);
+  useFocusEffect(
+    useCallback(() => {
+      loadPhotos([itineraryId]);
+    }, [itineraryId, loadPhotos]),
+  );
+  const [viewing, setViewing] = useState<{list: Capture[]; at: number} | null>(null);
+  const heroPhoto = coverPhoto(photos);
+  const photoName = (userId: string) => {
+    if (userId === myUserId) return "You";
+    const m = (members ?? []).find((x) => x.user_id === userId);
+    return m ? memberName(m) : "Someone";
+  };
+  const stopIdeaIds = new Set(itinerary?.stops.map((s) => s.activity?.idea_id).filter((id) => id != null));
+  // Not from a stop that's still on it: the end-of-date photos (except the
+  // cover), and ones from a stop taken off since
+  const otherPhotos = photos.filter(
+    (p) => p !== heroPhoto && (p.kind === "END" || p.activity_id == null || !stopIdeaIds.has(p.activity_id)),
+  );
+
   // ─── Comment threads (the whole date, and each stop) ───────────────────────
   const threadOf = (stopId: number | null) =>
     (comments ?? []).filter((c) => threadKey(c.stop_id) === threadKey(stopId));
@@ -265,7 +292,7 @@ export default function ItineraryDetailScreen() {
   const onEnd = async () => {
     const ok = await confirm({
       title: "End this date?",
-      message: "It moves to your Past Dates.",
+      message: "It moves to your Memories.",
       confirmLabel: "End date",
       destructive: true,
       icon: "flag-outline",
@@ -442,14 +469,36 @@ export default function ItineraryDetailScreen() {
         // Room for the keyboard, so a comment box can scroll above it
         automaticallyAdjustKeyboardInsets
       >
-        {/* --- HERO --- */}
-        <View className="h-44 rounded-3xl overflow-hidden border border-zinc-800 mb-5">
+        {/* --- HERO: the date's photo, or one of its ideas' --- */}
+        <Pressable
+          onPress={heroPhoto ? () => setViewing({list: photos, at: photos.indexOf(heroPhoto)}) : undefined}
+          disabled={!heroPhoto}
+          accessibilityRole={heroPhoto ? "imagebutton" : undefined}
+          accessibilityLabel={heroPhoto ? "Photo from the date. Open" : undefined}
+          className={`${heroPhoto ? "h-72" : "h-44"} rounded-3xl overflow-hidden border border-zinc-800 mb-5`}
+        >
           <Image
-            source={{uri: coverImage(itinerary)}}
+            source={
+              heroPhoto
+                ? {uri: heroPhoto.url ?? heroPhoto.thumbUrl ?? undefined, cacheKey: heroPhoto.storage_path}
+                : {uri: coverImage(itinerary)}
+            }
+            placeholder={
+              heroPhoto?.thumbUrl ? {uri: heroPhoto.thumbUrl, cacheKey: heroPhoto.thumb_path ?? undefined} : undefined
+            }
             style={{width: "100%", height: "100%"}}
             contentFit="cover"
+            transition={150}
           />
-          <View className="absolute inset-0 bg-black/30" />
+          <View className={`absolute inset-0 ${heroPhoto ? "bg-black/10" : "bg-black/30"}`} />
+          {photos.length > 0 && (
+            <View className="absolute bottom-3 right-3 flex-row items-center gap-1 bg-black/55 rounded-full px-2.5 py-1">
+              <Ionicons name="images" size={12} color="white" />
+              <Text className="text-white text-xs font-bold">
+                {photos.length} {photos.length === 1 ? "photo" : "photos"}
+              </Text>
+            </View>
+          )}
           <View
             className={`absolute top-4 left-4 px-3 py-1.5 rounded-full border ${badge.className}`}
           >
@@ -457,7 +506,7 @@ export default function ItineraryDetailScreen() {
               {badge.label}
             </Text>
           </View>
-        </View>
+        </Pressable>
 
         {/* --- YOUR PARTNER'S DATE (view only) --- */}
         {partnersDate && (
@@ -708,6 +757,13 @@ export default function ItineraryDetailScreen() {
                 </Pressable>
               </View>
             )}
+            {/* Photos taken here */}
+            {!editing &&
+              (() => {
+                const here = photos.filter((p) => p.activity_id != null && p.activity_id === stop.activity?.idea_id);
+                if (!here.length) return null;
+                return <PhotoStrip photos={here} onOpen={(i) => setViewing({list: here, at: i})} />;
+              })()}
             {open && !editing && (
               <View className="bg-zinc-900/60 border border-zinc-800 border-t-zinc-800/60 rounded-b-2xl overflow-hidden">
                 <CommentThread
@@ -727,6 +783,15 @@ export default function ItineraryDetailScreen() {
             );
           })}
         </View>
+
+        {/* Photos not from a stop on it: the end of the date, or a stop
+            taken off since */}
+        {otherPhotos.length > 0 && (
+          <View className="mt-6 gap-2">
+            <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider px-1">More photos</Text>
+            <PhotoStrip photos={otherPhotos} onOpen={(i) => setViewing({list: otherPhotos, at: i})} />
+          </View>
+        )}
 
         {/* --- A SURPRISE: hidden from your partner (#35) --- */}
         {canSurprise && (
@@ -853,6 +918,42 @@ export default function ItineraryDetailScreen() {
         onClose={() => setReplacing(null)}
         onPick={(replacement) => replacing != null && replaceStop(replacing, replacement)}
       />
+      <PhotoViewer
+        photos={viewing?.list.filter((p) => photos.includes(p)) ?? []}
+        startAt={viewing ? Math.max(0, viewing.at) : null}
+        myUserId={myUserId}
+        nameOf={photoName}
+        onClose={() => setViewing(null)}
+      />
     </SafeAreaView>
+  );
+}
+
+/** A row of photos (a stop's, or the rest); tap one to see it full screen */
+function PhotoStrip({photos, onOpen}: {photos: Capture[]; onOpen: (index: number) => void}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      className="mt-2"
+      contentContainerStyle={{gap: 6, paddingLeft: 44}}
+    >
+      {photos.map((p, i) => (
+        <Pressable
+          key={p.capture_id}
+          onPress={() => onOpen(i)}
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`Photo ${i + 1} of ${photos.length}`}
+          className="active:opacity-80"
+        >
+          <Image
+            source={{uri: p.thumbUrl ?? undefined, cacheKey: p.thumb_path ?? p.storage_path}}
+            style={{width: 66, height: 88, borderRadius: 12, backgroundColor: "#18181b"}}
+            contentFit="cover"
+            transition={120}
+          />
+        </Pressable>
+      ))}
+    </ScrollView>
   );
 }

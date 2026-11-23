@@ -321,15 +321,15 @@ export default function DatesScreen() {
             </View>
           )}
 
-          {/* --- PAST DATES LINK --- */}
+          {/* --- MEMORIES LINK (past dates, on your profile) --- */}
           {!firstLoad && !selectedDay && past.length > 0 && (
             <Pressable
               onPress={() => router.push("/(tabs)/profile")}
               className="flex-row items-center bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 mt-8 active:opacity-70"
             >
-              <Ionicons name="time-outline" size={18} color="#a1a1aa" />
+              <Ionicons name="images-outline" size={18} color="#a1a1aa" />
               <Text className="text-zinc-300 font-semibold flex-1 ml-3">
-                {past.length} past {past.length === 1 ? "date" : "dates"}
+                {past.length} {past.length === 1 ? "memory" : "memories"}
               </Text>
               <Text className="text-zinc-500 text-sm mr-1">On your profile</Text>
               <Ionicons name="chevron-forward" size={16} color="#71717a" />

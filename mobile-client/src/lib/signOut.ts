@@ -15,6 +15,7 @@ import {useBlockStore} from "@/src/store/useBlockStore";
 import {useAccountStore} from "@/src/store/useAccountStore";
 import {useDeviceAccounts} from "@/src/store/useDeviceAccounts";
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
+import {useCaptureStore} from "@/src/store/useCaptureStore";
 import {friendlyError} from "@/src/lib/profile";
 
 /** Clears every in-memory store so the next person on this device starts fresh. */
@@ -30,6 +31,7 @@ function clearLocalState() {
   useBlockStore.getState().clear();
   useAccountStore.getState().clear();
   useConnectionsStore.getState().clear();
+  useCaptureStore.getState().clear();
   usePrefsStore.getState().resetPrefs();
   useBuilderStore.getState().clearBuilder();
   useActiveDateStore.getState().endActiveDate();

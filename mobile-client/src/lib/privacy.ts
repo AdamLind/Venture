@@ -26,11 +26,11 @@ export const PRIVACY_SECTIONS: {title: string; body: string}[] = [
   },
   {
     title: "Where you are",
-    body: "If you allow it, Venture uses your location while you're using the app: to plan a date from where you are, find places near you, and keep a date on track while it's happening. It never uses your location in the background. You can also save a home area to plan from instead. Where a date starts is saved with it while it's coming up or happening (for travel times), and removed once it's over.",
+    body: "If you allow it, Venture uses your location while you're using the app: to plan a date from where you are, find places near you, and keep a date on track while it's happening. It never uses your location in the background. You can also save a home area to plan from instead. Where a date starts is saved with it to about 100 m (enough for travel times, not your exact spot) while it's coming up or happening, and removed once it's over. People on a date can see roughly where it starts.",
   },
   {
     title: "Your dates",
-    body: "Dates you plan (their stops, times, notes and budget), the comments on them, and photos you add during a date are saved to your account. Everyone you invite to a date can see it, along with the others on it.",
+    body: "Dates you plan (their stops, times, notes and budget), the comments on them, and photos you take during a date are saved to your account. Everyone on a date can see it and its photos, and so can your person on dates you plan. Photos can only be taken in the app while the date is happening, and you can delete yours at any time.",
   },
   {
     title: "Ideas and places you share",
@@ -58,7 +58,7 @@ export const PRIVACY_SECTIONS: {title: string; body: string}[] = [
   },
   {
     title: "Children",
-    body: "Venture is for people 16 and older. If you believe someone younger has an account, report them or contact us and we'll remove it.",
+    body: "Venture is for people 18 and older. If you believe someone younger has an account, report them or contact us and we'll remove it.",
   },
   {
     title: "Keeping it safe",

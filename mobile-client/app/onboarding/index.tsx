@@ -1,6 +1,6 @@
 // app/onboarding/index.tsx
 // Shown once after signup (until user_preferences.onboarded_at is set).
-// Steps: name + username -> birthday (16+ gate) -> planning defaults.
+// Steps: name + username -> birthday (18+ gate) -> planning defaults.
 // Each step saves as it goes, so quitting midway resumes where they left off.
 
 import React, {useMemo, useState} from "react";

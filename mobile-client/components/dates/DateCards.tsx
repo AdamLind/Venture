@@ -17,7 +17,6 @@ import type {Itinerary} from "@/types/dates";
 import {
   countdownLabel,
   coverImage,
-  formatShortDate,
   formatTimeOfDay,
   formatWhen,
   stopCountLabel,
@@ -102,32 +101,6 @@ export function UpNextCard({itinerary}: {itinerary: Itinerary}) {
 }
 
 /** Profile tab: a finished date. */
-export function PastDateCard({itinerary}: {itinerary: Itinerary}) {
-  return (
-    <Pressable
-      onPress={() => openDate(itinerary)}
-      className="bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 active:opacity-80"
-    >
-      <View className="h-32 w-full">
-        <Image
-          source={{uri: coverImage(itinerary)}}
-          style={{width: "100%", height: "100%"}}
-          contentFit="cover"
-        />
-        <View className="absolute inset-0 bg-black/30" />
-      </View>
-      <View className="p-4">
-        <Text className="text-white font-bold text-xl mb-1" numberOfLines={1}>
-          {itinerary.title}
-        </Text>
-        <Text className="text-zinc-400 text-sm">
-          {formatShortDate(itinerary.starts_at)} • {stopCountLabel(itinerary)}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
 /** Activity tab: a planned date, styled like a ticket. */
 export function UpcomingDateCard({itinerary}: {itinerary: Itinerary}) {
   const start = new Date(itinerary.starts_at);

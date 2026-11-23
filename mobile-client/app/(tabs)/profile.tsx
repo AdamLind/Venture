@@ -11,10 +11,13 @@ import TabHeader, {
   useTabRefresh,
 } from "@/components/ui/TabHeader";
 import {useProfileStore} from "@/src/store/useProfileStore";
-import {budgetLabel, displayName, hasHomeArea} from "@/src/lib/profile";
+import {displayName, hasHomeArea} from "@/src/lib/profile";
+import {DATES_FOR_TITLES, type EarnedTitle, earnedTitles, titleLayout} from "@/utils/titles";
+import {showInfo} from "@/src/lib/notify";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {groupItineraries} from "@/src/lib/dates";
-import {PastDateCard, UpNextCard} from "@/components/dates/DateCards";
+import {UpNextCard} from "@/components/dates/DateCards";
+import MemoriesGrid from "@/components/dates/MemoriesGrid";
 import {MyIdeaRow} from "@/components/ideas/IdeaRows";
 import SavedList from "@/components/ideas/SavedList";
 import {useSavedStore} from "@/src/store/useSavedStore";
@@ -23,21 +26,21 @@ import {showIdeaActions} from "@/src/lib/ideaActions";
 import type {IdeaVisibility} from "@/types/ideas";
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
 
-type Tab = "past" | "bucket" | "ideas";
+type Tab = "memories" | "bucket" | "ideas";
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 const TABS: {key: Tab; label: string}[] = [
-  {key: "past", label: "Past Dates"},
+  {key: "memories", label: "Memories"},
   {key: "bucket", label: "Saved"},
   {key: "ideas", label: "My Ideas"},
 ];
 
 const EMPTY_STATES: Record<Tab, {icon: IconName; title: string; body: string}> =
   {
-    past: {
-      icon: "time-outline",
-      title: "No past dates yet",
-      body: "Dates you finish will show up here.",
+    memories: {
+      icon: "images-outline",
+      title: "No memories yet",
+      body: "Dates you go on show up here, with the photos you take during them.",
     },
     bucket: {
       icon: "bookmark-outline",
@@ -65,13 +68,71 @@ const IDEA_SECTIONS: {title: string; status: IdeaVisibility}[] = [
 ];
 const ATTENTION_COLOR = "#fb923c";
 
-function Chip({icon, label}: {icon: IconName; label: string}) {
+const TITLE_COLOR = "#fbbf24";
+
+/** One title: the main one (the hardest) is bigger and gold */
+function TitlePill({
+  title,
+  main,
+  onPress,
+}: {
+  title: Pick<EarnedTitle, "label" | "icon">;
+  main: boolean;
+  onPress: () => void;
+}) {
   return (
-    <View className="bg-zinc-900 px-3 py-1.5 rounded-xl border border-zinc-800 flex-row items-center gap-1.5">
-      <Ionicons name={icon} size={12} color="#a1a1aa" />
-      <Text className="text-zinc-300 text-xs font-semibold" numberOfLines={1}>
-        {label}
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityHint="How you earned it"
+      className={`flex-row items-center rounded-full border active:opacity-70 ${
+        main ? "gap-1.5 px-3.5 py-2" : "gap-1 px-2.5 py-1.5 bg-zinc-900 border-zinc-800"
+      }`}
+      style={main ? {backgroundColor: "rgba(251,191,36,0.12)", borderColor: "rgba(251,191,36,0.45)"} : undefined}
+    >
+      <Ionicons name={title.icon} size={main ? 15 : 12} color={main ? TITLE_COLOR : "#a1a1aa"} />
+      <Text
+        className={main ? "text-sm font-extrabold" : "text-zinc-300 text-xs font-semibold"}
+        style={main ? {color: TITLE_COLOR} : undefined}
+        numberOfLines={1}
+      >
+        {title.label}
       </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Titles earned from your finished dates (#84), up to three: the hardest
+ * in the middle, the next on the left, the third on the right.
+ */
+function TitlesRow({titles, finished}: {titles: EarnedTitle[]; finished: number}) {
+  const shown = titleLayout(titles);
+  if (!shown.length) {
+    // Not enough dates yet, or nothing in common yet
+    const early = finished < DATES_FOR_TITLES;
+    return (
+      <View className="flex-row justify-center mt-4">
+        <TitlePill
+          title={{label: early ? "New to Venture" : "Still exploring", icon: early ? "sparkles" : "compass"}}
+          main={false}
+          onPress={() =>
+            showInfo(
+              early ? "Titles come from your dates" : "Still exploring",
+              early
+                ? `Finish ${DATES_FOR_TITLES - finished} more ${DATES_FOR_TITLES - finished === 1 ? "date" : "dates"} to start earning them.`
+                : "Titles come from what your dates have in common. Keep going.",
+            )
+          }
+        />
+      </View>
+    );
+  }
+  return (
+    <View className="flex-row flex-wrap items-center justify-center gap-2 mt-4">
+      {shown.map(({title, main}) => (
+        <TitlePill key={title.id} title={title} main={main} onPress={() => showInfo(title.label, title.because)} />
+      ))}
     </View>
   );
 }
@@ -135,7 +196,7 @@ export default function ProfileScreen() {
   const error = useProfileStore((s) => s.error);
   const reload = useProfileStore((s) => s.reload);
 
-  const [activeTab, setActiveTab] = useState<Tab>("past");
+  const [activeTab, setActiveTab] = useState<Tab>("memories");
   const header = useTabHeader();
   const reloadDates = useItineraryStore((s) => s.reload);
   const savedItems = useSavedStore((s) => s.items);
@@ -170,6 +231,17 @@ export default function ProfileScreen() {
     [itineraries],
   );
   const upNext = active ?? upcoming[0] ?? null;
+  const finishedCount = itineraries.filter((i) => i.status === "COMPLETED").length;
+  const titles = useMemo(
+    () =>
+      earnedTitles(
+        itineraries,
+        preferences && hasHomeArea(preferences)
+          ? {latitude: preferences.home_lat as number, longitude: preferences.home_lng as number}
+          : null,
+      ),
+    [itineraries, preferences],
+  );
 
   if (!profile || !preferences) {
     return (
@@ -204,7 +276,6 @@ export default function ProfileScreen() {
     );
   }
 
-  const goToPlanningDefaults = () => router.push("/settings/planning");
   const empty = EMPTY_STATES[activeTab];
 
   return (
@@ -248,34 +319,8 @@ export default function ProfileScreen() {
           {/* CONNECTIONS (#35): your partner, then everyone (only you see the count) */}
           <ConnectionsRow />
 
-          {/* Planning style, from saved defaults (only visible to you) */}
-          <Pressable
-            onPress={goToPlanningDefaults}
-            accessibilityLabel="Edit planning defaults"
-            className="flex-row flex-wrap justify-center gap-2 mt-4"
-          >
-            <Chip
-              icon="wallet-outline"
-              label={budgetLabel(preferences.default_budget)}
-            />
-            <Chip
-              icon={
-                preferences.default_modality === "GO_OUT"
-                  ? "walk-outline"
-                  : "home-outline"
-              }
-              label={
-                preferences.default_modality === "GO_OUT" ? "Go Out" : "Stay In"
-              }
-            />
-            <Chip
-              icon="navigate-outline"
-              label={`${preferences.default_travel_miles} mi`}
-            />
-            {hasHomeArea(preferences) && preferences.home_label && (
-              <Chip icon="location-outline" label={preferences.home_label} />
-            )}
-          </Pressable>
+          {/* TITLES earned from your dates (#84); planning defaults stay in Settings */}
+          <TitlesRow titles={titles} finished={finishedCount} />
         </View>
 
         {/* --- ACTIONS --- */}
@@ -370,12 +415,8 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {activeTab === "past" && past.length > 0 ? (
-          <View className="gap-4">
-            {past.map((itinerary) => (
-              <PastDateCard key={itinerary.itinerary_id} itinerary={itinerary} />
-            ))}
-          </View>
+        {activeTab === "memories" && past.length > 0 ? (
+          <MemoriesGrid dates={past} />
         ) : activeTab === "bucket" && (savedIdeas.length > 0 || partnerSaves > 0) ? (
           <SavedList />
         ) : activeTab === "ideas" && myIdeas.length > 0 ? (

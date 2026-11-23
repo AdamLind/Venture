@@ -4,7 +4,11 @@
 //   Now card ... the stop that matters right now, with one main button that
 //                follows the moment: Get directions -> I'm here -> Done
 //   Timeline ... every stop and travel leg; finished stops get a check
-//   Wrap up .... a short recap, then the date moves to Past Dates
+//   Wrap up .... a short recap and an end-of-date photo, then the date moves
+//                to Memories
+//   Photos ..... the camera's always there during the date, and once per
+//                stop a "Time for a photo" prompt shows for a few minutes
+//                (#38, app/capture.tsx)
 //
 // The clock moves the date along on its own (a stop is "done" once its time
 // is up), and "I'm here" / "Done" let you run ahead of the schedule.
@@ -71,11 +75,17 @@ import {
 import {showError, showInfo} from "@/src/lib/notify";
 import {type ChoiceOption, choose, confirm} from "@/src/lib/sheets";
 import {formatMoney} from "@/utils/money";
+import {useCaptureStore, useDatePhotos} from "@/src/store/useCaptureStore";
+import {useProfileStore} from "@/src/store/useProfileStore";
+import type {CaptureKind} from "@/src/lib/captures";
 
 const BLUE = "#3b82f6";
 // Settles quickly without bouncing past the snap point
 const SHEET_SPRING = {damping: 30, stiffness: 300, mass: 0.9, overshootClamping: true};
 const GREEN = "#22c55e";
+const PHOTO_COLOR = "#fbbf24";
+/** A "Time for a photo" prompt shows this long */
+const PROMPT_MS = 5 * 60_000;
 /** "The list hasn't reached its top yet" (a pull there scrolls, not the sheet) */
 const NOT_AT_TOP = -1e9;
 
@@ -411,6 +421,54 @@ export default function ActiveDateScreen() {
 
   // ─── Leaving ─────────────────────────────────────────────────────────────
   const close = () => (router.canGoBack() ? router.back() : router.replace("/"));
+
+  // ─── Photos (#38) ────────────────────────────────────────────────────────
+  const myUserId = useProfileStore((s) => s.userId);
+  const photos = useDatePhotos(itineraryId);
+  const loadPhotos = useCaptureStore((s) => s.load);
+  useEffect(() => {
+    if (itineraryId != null) loadPhotos([itineraryId]);
+  }, [itineraryId, loadPhotos]);
+  const myPhotos = photos.filter((p) => p.user_id === myUserId);
+  const myEndPhoto = myPhotos.find((p) => p.kind === "END") ?? null;
+
+  // A photo is "at" the stop you're at, else the last one you've been to,
+  // else the first (before it starts)
+  const photoStop =
+    (focus && isArrived(focus) ? focus : [...stops].reverse().find((s) => isArrived(s))) ?? stops[0] ?? null;
+  const openCamera = (kind: CaptureKind, slot: TimeSlot | null = photoStop) => {
+    if (itineraryId == null) return;
+    tap();
+    router.push({
+      pathname: "/capture",
+      params: {
+        itineraryId: String(itineraryId),
+        kind,
+        ...(kind === "STOP" && slot?.activity ? {ideaId: String(idOf(slot)), label: slot.activity.title} : {}),
+      },
+    });
+  };
+
+  // "Time for a photo": once per stop, at a varied moment while you're there
+  // (15–55% of the way in, the same for everyone on the date), for a few
+  // minutes. Not if you've taken one there, or said not now
+  const [notNow, setNotNow] = useState<number[]>([]);
+  let prompt: {slot: TimeSlot; minutesLeft: number} | null = null;
+  if (itineraryId != null && focus && isArrived(focus) && now >= focus.startTime) {
+    const id = idOf(focus);
+    const length = focus.endTime - focus.startTime;
+    const share = 0.15 + ((itineraryId * 31 + id * 17) % 41) / 100;
+    const at = Math.min(focus.startTime + Math.max(3 * 60_000, length * share), focus.endTime - 60_000);
+    const left = at + PROMPT_MS - now;
+    const tookOne = myPhotos.some((p) => p.activity_id === id);
+    if (now >= at && left > 0 && !tookOne && !notNow.includes(id)) {
+      prompt = {slot: focus, minutesLeft: Math.max(1, Math.ceil(left / 60_000))};
+    }
+  }
+  const promptId = prompt ? idOf(prompt.slot) : null;
+  useEffect(() => {
+    if (promptId != null) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  }, [promptId]);
 
   const finishDate = async () => {
     setFinishing(true);
@@ -943,6 +1001,55 @@ export default function ActiveDateScreen() {
             </Text>
           </View>
 
+          {/* THE END-OF-DATE PHOTO (#42), and the ones from the date */}
+          {itineraryId != null && (
+            <View className="gap-2.5">
+              {myEndPhoto ? (
+                <View className="flex-row items-center gap-3 bg-zinc-900/80 border border-zinc-800 rounded-2xl p-2.5">
+                  <Image
+                    source={{uri: myEndPhoto.thumbUrl ?? undefined, cacheKey: myEndPhoto.thumb_path ?? undefined}}
+                    style={{width: 56, height: 56, borderRadius: 12}}
+                    contentFit="cover"
+                  />
+                  <View className="flex-1">
+                    <Text className="text-white font-semibold">Your end-of-date photo</Text>
+                    <Text className="text-zinc-400 text-sm">It&apos;s this date&apos;s cover in Memories</Text>
+                  </View>
+                  <Ionicons name="checkmark-circle" size={20} color={GREEN} />
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() => openCamera("END")}
+                  accessibilityRole="button"
+                  className="flex-row items-center gap-3 rounded-2xl p-4 border active:opacity-80"
+                  style={{backgroundColor: "rgba(251,191,36,0.1)", borderColor: "rgba(251,191,36,0.35)"}}
+                >
+                  <View className="w-11 h-11 rounded-full items-center justify-center" style={{backgroundColor: PHOTO_COLOR}}>
+                    <Ionicons name="camera" size={22} color="black" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-white font-bold text-base">One last photo</Text>
+                    <Text className="text-zinc-300 text-sm">It becomes this date&apos;s cover in Memories</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#a1a1aa" />
+                </Pressable>
+              )}
+              {photos.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 8}}>
+                  {photos.map((p) => (
+                    <Image
+                      key={p.capture_id}
+                      source={{uri: p.thumbUrl ?? undefined, cacheKey: p.thumb_path ?? undefined}}
+                      style={{width: 72, height: 96, borderRadius: 12, backgroundColor: "#18181b"}}
+                      contentFit="cover"
+                      accessibilityLabel="Photo from the date"
+                    />
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          )}
+
           <View className="flex-row bg-zinc-900/80 border border-zinc-800 rounded-3xl">
             {[
               {label: "Stops", value: `${visited.length}/${stops.length}`},
@@ -1058,7 +1165,7 @@ export default function ActiveDateScreen() {
               className="h-14 bg-white rounded-full items-center justify-center active:opacity-80"
             >
               <Text className="text-black font-extrabold text-base">
-                {finishing ? "Saving…" : "Finish & save to Past Dates"}
+                {finishing ? "Saving…" : "Finish & save to Memories"}
               </Text>
             </Pressable>
             {!allDone && (
@@ -1166,6 +1273,27 @@ export default function ActiveDateScreen() {
           </GlassSurface>
         </Pressable>
         <View className="flex-row gap-2">
+          {/* The camera: always here during the date (#38) */}
+          {itineraryId != null && (
+            <Pressable
+              onPress={() => openCamera("STOP")}
+              accessibilityRole="button"
+              accessibilityLabel={`Take a photo${photos.length ? `. ${photos.length} so far` : ""}`}
+              className="active:opacity-70"
+            >
+              <GlassSurface style={styles.glassButton}>
+                <Ionicons name="camera-outline" size={21} color="white" />
+              </GlassSurface>
+              {photos.length > 0 && (
+                <View
+                  className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full items-center justify-center"
+                  style={{backgroundColor: PHOTO_COLOR}}
+                >
+                  <Text className="text-black text-[11px] font-extrabold">{photos.length}</Text>
+                </View>
+              )}
+            </Pressable>
+          )}
           {/* Outdoors or out of signal: tell someone where you'll be (#81) */}
           {sharePlanWorthIt && (
             <Pressable
@@ -1193,6 +1321,44 @@ export default function ActiveDateScreen() {
           )}
         </View>
       </View>
+
+      {/* "TIME FOR A PHOTO" (#41): for a few minutes, once per stop */}
+      {prompt && (
+        <View
+          pointerEvents="box-none"
+          style={{position: "absolute", top: insets.top + 60, left: 16, right: 16, alignItems: "center"}}
+        >
+          <GlassSurface style={{borderRadius: 24}}>
+            <View className="flex-row items-center pl-1.5 pr-1 py-1.5 gap-1">
+              <Pressable
+                onPress={() => openCamera("STOP", prompt.slot)}
+                accessibilityRole="button"
+                accessibilityLabel={`Time for a photo at ${prompt.slot.activity?.title}. ${prompt.minutesLeft} minutes left`}
+                className="flex-row items-center gap-2.5 active:opacity-70"
+              >
+                <View className="w-9 h-9 rounded-full items-center justify-center" style={{backgroundColor: PHOTO_COLOR}}>
+                  <Ionicons name="camera" size={18} color="black" />
+                </View>
+                <View>
+                  <Text className="text-white font-bold text-sm">Time for a photo</Text>
+                  <Text className="text-zinc-300 text-xs">
+                    {prompt.minutesLeft} min left · {prompt.slot.activity?.title}
+                  </Text>
+                </View>
+              </Pressable>
+              <Pressable
+                onPress={() => setNotNow((ids) => [...ids, idOf(prompt.slot)])}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Not now"
+                className="w-8 h-8 ml-1 rounded-full items-center justify-center active:opacity-60"
+              >
+                <Ionicons name="close" size={16} color="#d4d4d8" />
+              </Pressable>
+            </View>
+          </GlassSurface>
+        </View>
+      )}
 
       {/* THE SHEET */}
       <Reanimated.View

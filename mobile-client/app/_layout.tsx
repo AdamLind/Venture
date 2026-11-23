@@ -206,6 +206,11 @@ function InitialLayout() {
 
         {/* ACTIVE DATE SCREEN */}
         <Stack.Screen name="active-date/index" options={{headerShown: false, animation: "slide_from_bottom"}} />
+        {/* THE LIVE DATE CAMERA (#40), over the live date */}
+        <Stack.Screen
+          name="capture"
+          options={{headerShown: false, presentation: "fullScreenModal", contentStyle: {backgroundColor: "#000"}}}
+        />
 
         {/* ONBOARDING (first sign-in until onboarded_at is set) */}
         <Stack.Screen
