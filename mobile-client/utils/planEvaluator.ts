@@ -73,12 +73,15 @@ export const PENALTY = {
   // date of 6): suggestions leave these out; one added anyway is a nudge
   groupSize: 25,
   // The date's arc: it warms up, then winds down. Livening up after a calm,
-  // close stop (stargazing, a spa) breaks the mood, and the end is what a
-  // date is remembered by: an active stop after it (climbing) more than an
-  // upbeat one (an escape room). Below the rules about hours and meals, so
-  // it decides the order when those don't
+  // close stop (stargazing, a spa) breaks the mood a little mid-date; ending
+  // on it is what's remembered, so that costs a lot more: a bit more than a
+  // stop at the wrong time of day (better an escape room early than last).
+  // An active stop (climbing) more than an upbeat one (an escape room).
+  // Still below the hard rules (closed, two dinners in a row)
   windsBackUpActive: 15,
   windsBackUpUpbeat: 10,
+  endsWoundUpActive: 40,
+  endsWoundUpUpbeat: 35,
 };
 
 export const LIMITS = {
@@ -398,25 +401,29 @@ export function evaluatePlan(
     }
 
     // The arc: a workout or an upbeat stop after a calm one (anywhere before)
-    // winds the date back up
-    const lift = isWorkout(activity)
-      ? PENALTY.windsBackUpActive
-      : feelOf(activity) === "UPBEAT"
-        ? PENALTY.windsBackUpUpbeat
-        : 0;
-    if (lift > 0) {
+    // winds the date back up; as the last stop, it ends the date that way
+    const workout = isWorkout(activity);
+    const lively = workout || feelOf(activity) === "UPBEAT";
+    if (lively) {
       const calm = stops
         .slice(0, i)
         .reverse()
         .find((s) => isCalmStop(s.activity));
       if (calm) {
+        const last = i === stops.length - 1;
         add({
           kind: "WINDS_BACK_UP",
           severity: "soft",
           stopId: id,
           relatedIds: [idOf(calm)],
-          message: `Better before ${calm.activity!.title}`,
-          penalty: lift,
+          message: last ? "Re-energizes the end of the date" : `Better before ${calm.activity!.title}`,
+          penalty: last
+            ? workout
+              ? PENALTY.endsWoundUpActive
+              : PENALTY.endsWoundUpUpbeat
+            : workout
+              ? PENALTY.windsBackUpActive
+              : PENALTY.windsBackUpUpbeat,
         });
       }
     }

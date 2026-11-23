@@ -37,6 +37,7 @@ import {useProfileStore} from "@/src/store/useProfileStore";
 import {IDEA_STATUS} from "@/src/lib/ideas";
 import {useStaffStore} from "@/src/store/useStaffStore";
 import type {IdeaVisibility} from "@/types/ideas";
+import {formatMoney} from "@/utils/money";
 
 // Shape for the map's floating preview card (GlassSurface takes style, not className)
 const glassStyles = StyleSheet.create({
@@ -81,7 +82,7 @@ const CARD_PILL = {
 const formatPrice = (priceString: string | number): string => {
   const price =
     typeof priceString === "number" ? priceString : parseFloat(priceString);
-  return isNaN(price) || price === 0 ? "Free" : `$${price.toFixed(2)}`;
+  return isNaN(price) || price === 0 ? "Free" : formatMoney(price);
 };
 
 // PostGIS EWKB Hex Parser

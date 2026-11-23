@@ -26,8 +26,6 @@ import {
   ActivityIndicator,
   BackHandler,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -38,6 +36,17 @@ import * as Haptics from "expo-haptics";
 import {Image} from "expo-image";
 import {useLocalSearchParams, useRouter} from "expo-router";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
+import Reanimated, {
+  KeyboardState,
+  scrollTo,
+  useAnimatedKeyboard,
+  useAnimatedReaction,
+  useAnimatedRef,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+} from "react-native-reanimated";
+import {scheduleOnRN} from "react-native-worklets";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import Ionicons from "@expo/vector-icons/build/Ionicons";
@@ -76,6 +85,7 @@ import {confirm} from "@/src/lib/sheets";
 import ActivityTagsSelector from "@/components/home/ActivityTagsSelector";
 import {BaseActivity} from "@/types/activities";
 import {showDone, showError} from "@/src/lib/notify";
+import {formatMoney} from "@/utils/money";
 
 // Where an idea's photos live in storage (strip to get the file path)
 const PHOTO_PATH_MARKER = "/storage/v1/object/public/activities/";
@@ -290,6 +300,42 @@ export default function CreateScreen() {
   const [tagsKey, setTagsKey] = useState(0);
   const [step, setStep] = useState(0);
   const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  // --- The keyboard ---
+  // The page's bottom edge follows the keyboard frame by frame (on the UI
+  // thread), so Next rides on top of it instead of catching up behind it.
+  // Next keeps its own bottom space, so the page only moves up once the
+  // keyboard reaches it. iOS: Android resizes the window itself.
+  // (Reanimated's keyboard hook; react-native-keyboard-controller would do
+  // the same, once it's in the app)
+  const keyboard = useAnimatedKeyboard();
+  const footerBottom = Math.max(insets.bottom, 16) + 8;
+  // (plain values only in the worklets below: they run on the UI thread)
+  const followKeyboard = process.env.EXPO_OS === "ios";
+  const keyboardLift = useDerivedValue(() =>
+    followKeyboard ? Math.max(0, keyboard.height.get() + 8 - footerBottom) : 0,
+  );
+  const pageStyle = useAnimatedStyle(() => ({paddingBottom: keyboardLift.get()}));
+  // Typing the name: the page stays scrolled to its bottom while the
+  // keyboard comes up, so the hint and "What makes a good idea?" show above
+  // it, not just the box. Every frame: the space left is the page without
+  // the keyboard, less the keyboard
+  const animatedScrollRef = useAnimatedRef<Reanimated.ScrollView>();
+  const pinToBottom = useSharedValue(false);
+  const contentHeightUI = useSharedValue(0);
+  const fullViewportUI = useSharedValue(0);
+  useAnimatedReaction(
+    () => keyboardLift.get(),
+    (lift) => {
+      if (!pinToBottom.get()) return;
+      const room = fullViewportUI.get() - lift;
+      scrollTo(animatedScrollRef, 0, Math.max(0, contentHeightUI.get() - room), false);
+    },
+  );
+  const pinNameToBottom = () => {
+    pinToBottom.set(true);
+    // The keyboard's already up (back to the box): there now
+    if (Keyboard.isVisible()) scrollRef.current?.scrollToEnd({animated: true});
+  };
 
   // --- The answers (required ones start unanswered) ---
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -415,6 +461,23 @@ export default function CreateScreen() {
   const [contentHeight, setContentHeight] = useState(0);
   const [whereGroupY, setWhereGroupY] = useState(0);
   const [placeListY, setPlaceListY] = useState(0);
+  // The visible height (for fitting the places list) is kept once the
+  // keyboard has settled: while it moves, the height changes every frame,
+  // and re-rendering this screen each time would be wasted work
+  const latestViewport = useRef(0);
+  const keyboardMoving = () => {
+    const state = keyboard.state.get();
+    return state === KeyboardState.OPENING || state === KeyboardState.CLOSING;
+  };
+  const keepViewport = () => setViewportHeight(latestViewport.current);
+  useAnimatedReaction(
+    () => keyboard.state.get(),
+    (state, previous) => {
+      if (state !== previous && (state === KeyboardState.OPEN || state === KeyboardState.CLOSED)) {
+        scheduleOnRN(keepViewport);
+      }
+    },
+  );
   // A row's real height on this device (measured from one shown); the
   // "Add a new place" row is the same shape
   const [rowHeight, setRowHeight] = useState(62);
@@ -1014,7 +1077,7 @@ export default function CreateScreen() {
           ? `Around ${HOLIDAYS.filter((h) => holidays.includes(h.id)).map((h) => h.label).join(" or ")}`
           : null;
   const whenText = [timeOfDay.map((t) => TIME_OF_DAY_LABEL[t]).join(", ") || null, yearText].filter(Boolean).join(" · ");
-  const priceText = paid === false ? "Free" : paid && parseFloat(price) > 0 ? `$${parseFloat(price)}` : null;
+  const priceText = paid === false ? "Free" : paid && parseFloat(price) > 0 ? formatMoney(parseFloat(price)) : null;
   const peopleText =
     groupSize === "CUSTOM"
       ? minPeople && maxPeople
@@ -1091,6 +1154,8 @@ export default function CreateScreen() {
           placeholderTextColor="#71717a"
           returnKeyType="next"
           onSubmitEditing={next}
+          onFocus={pinNameToBottom}
+          onBlur={() => pinToBottom.set(false)}
           className={`text-white text-[17px] font-semibold px-4 py-4 rounded-2xl border ${fieldBox(missing("title"))}`}
         />
         <Hint text="Short and specific: “Sunset hike to the overlook”, not “Fun outing”." />
@@ -2050,11 +2115,7 @@ export default function CreateScreen() {
         : "Next";
 
   return (
-    <KeyboardAvoidingView
-      className="flex-1"
-      style={{backgroundColor: "#09090b"}}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <Reanimated.View className="flex-1" style={[{backgroundColor: "#09090b"}, pageStyle]}>
       {/* HEADER: back (or close), progress, step count */}
       <View className="flex-row items-center gap-3 px-5 pb-3" style={{paddingTop: insets.top + 10}}>
         <Pressable
@@ -2110,10 +2171,22 @@ export default function CreateScreen() {
 
       {/* A solid page: it only scrolls when a step is taller than the screen
           (a small phone), and never bounces */}
-      <ScrollView
-        ref={scrollRef}
-        onLayout={(e) => setViewportHeight(e.nativeEvent.layout.height)}
-        onContentSizeChange={(_, height) => setContentHeight(height)}
+      <Reanimated.ScrollView
+        ref={(node) => {
+          scrollRef.current = node as React.ComponentRef<typeof ScrollView> | null;
+          animatedScrollRef(node);
+        }}
+        onLayout={(e) => {
+          const height = e.nativeEvent.layout.height;
+          // Its height without the keyboard (for keeping the name in view)
+          fullViewportUI.set(height + keyboardLift.get());
+          latestViewport.current = height;
+          if (!keyboardMoving()) setViewportHeight(height);
+        }}
+        onContentSizeChange={(_, height) => {
+          setContentHeight(height);
+          contentHeightUI.set(height);
+        }}
         scrollEnabled={contentHeight > viewportHeight + 1}
         bounces={false}
         alwaysBounceVertical={false}
@@ -2124,12 +2197,12 @@ export default function CreateScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {body[key]}
-      </ScrollView>
+      </Reanimated.ScrollView>
 
       {/* NEXT / REVIEW / SUBMIT (stepping aside while searching for a place) */}
       <View
         className="px-5 pt-3"
-        style={{paddingBottom: Math.max(insets.bottom, 16) + 8, display: placeSearchOpen ? "none" : "flex"}}
+        style={{paddingBottom: footerBottom, display: placeSearchOpen ? "none" : "flex"}}
       >
         <Pressable
           onPress={key === "review" ? handleSubmit : next}
@@ -2160,7 +2233,7 @@ export default function CreateScreen() {
       {/* Pop-ups and toasts over this screen (#86: it's a modal, so it has
           its own; leaving, toasts show from the screen below) */}
       <Overlays toasts={!leaving} />
-    </KeyboardAvoidingView>
+    </Reanimated.View>
   );
 }
 

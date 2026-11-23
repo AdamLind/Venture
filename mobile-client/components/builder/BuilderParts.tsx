@@ -12,6 +12,7 @@ import {useSavedStore} from "@/src/store/useSavedStore";
 import {SAVED_COLOR} from "@/components/ideas/SaveButton";
 import {spotLabel} from "@/utils/bestPlacement";
 import type {TravelLeg} from "@/types/itinerary";
+import {formatMoney} from "@/utils/money";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -259,7 +260,7 @@ function StopCardView({
       <View className="items-end gap-2">
         <View className="bg-zinc-800 px-2 py-1 rounded-lg">
           <Text className="text-zinc-200 text-xs font-bold">
-            {price === 0 ? "Free" : `$${price}`}
+            {price === 0 ? "Free" : formatMoney(price)}
           </Text>
         </View>
         {onRemove && (
@@ -477,7 +478,7 @@ function ActivityChips({
     <View className="flex-row flex-wrap gap-1.5">
       <Chip
         icon="wallet-outline"
-        text={item.totalCost === 0 ? "Free" : `$${item.totalCost} for ${headCount}`}
+        text={item.totalCost === 0 ? "Free" : `${formatMoney(item.totalCost)} for ${headCount}`}
         tone={item.fitStatus === "OVER_BUDGET" ? "danger" : "default"}
       />
       <Chip

@@ -13,20 +13,26 @@
 //
 // Ideas posted before these were asked get what the old fields said: the
 // Active type (or Strenuous) was a workout, everything else wasn't; feel is
-// guessed from the tags only when they clearly say calm, else unknown.
+// guessed from the tags when they clearly say it (lively tags win: romantic
+// says what a date is for, not its energy), else unknown.
 
 export type Feel = "CALM" | "UPBEAT";
 export type Exertion = "NONE" | "LIGHT" | "HARD";
 
-/** Tags that clearly mean calm and close (src/constants/tags.ts); games can be cozy or upbeat */
+/** Tags that clearly mean calm and close (src/constants/tags.ts) */
 const CALM_TAGS = ["romantic", "spa", "views"];
-const PLAYFUL_TAGS = ["games", "board games"];
+/** Tags that clearly mean lively: an escape room, the arcade, a game, a show */
+const LIVELY_TAGS = ["games", "sports", "adventure", "comedy", "music", "festivals"];
+/** Could go either way (board games can be cozy or competitive): no guess */
+const EITHER_TAGS = ["board games"];
 
 /** How it feels, or null if unknown (no arc rule for it) */
 export function feelOf(activity: any): Feel | null {
   if (activity?.feel === "CALM" || activity?.feel === "UPBEAT") return activity.feel;
   const tags: string[] = Array.isArray(activity?.tags) ? activity.tags : [];
-  if (tags.some((t) => CALM_TAGS.includes(t)) && !tags.some((t) => PLAYFUL_TAGS.includes(t))) return "CALM";
+  if (tags.some((t) => LIVELY_TAGS.includes(t))) return "UPBEAT";
+  if (tags.some((t) => EITHER_TAGS.includes(t))) return null;
+  if (tags.some((t) => CALM_TAGS.includes(t))) return "CALM";
   return null;
 }
 

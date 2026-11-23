@@ -55,6 +55,7 @@ import {
   tagLabel,
 } from "@/src/constants/tags";
 import {showError, showInfo} from "@/src/lib/notify";
+import {formatMoney} from "@/utils/money";
 
 export default function PlanScreen() {
   const router = useRouter();
@@ -182,7 +183,9 @@ export default function PlanScreen() {
   // picking a time yourself clears the note
   // The start it picked (for the note), until you pick one yourself
   const [timeNote, setTimeNote] = useState<Date | null>(null);
-  const [findingTime, setFindingTime] = useState(false);
+  // Still working them out until the search has finished for these ideas
+  const [foundFor, setFoundFor] = useState<string | null>(null);
+  const findingTime = seeds.length > 0 && foundFor !== seedKey;
   useEffect(() => {
     if (!seeds.length) return;
     let active = true;
@@ -204,8 +207,11 @@ export default function PlanScreen() {
       const activities = (
         await Promise.all(seeds.map((x) => fetchActivityForPlan(x.idea_id, prefsNow)))
       ).filter((a): a is NonNullable<typeof a> => !!a);
-      if (!active || !activities.length) return;
-      setFindingTime(true);
+      if (!active) return;
+      if (!activities.length) {
+        setFoundFor(seedKey);
+        return;
+      }
       // The forecast over the days searched (no wait past a couple of
       // seconds: without it, the search just skips the weather rules)
       const DAYS = 3;
@@ -228,7 +234,7 @@ export default function PlanScreen() {
         weatherAt: weather ? weatherLookup(weather) : null,
       });
       if (!active) return;
-      setFindingTime(false);
+      setFoundFor(seedKey);
       // The ideas in the order that fits that time best (the builder starts from it)
       const rank = (id: number) => best.order.indexOf(id);
       const current = usePlanSeedStore.getState().seeds;
@@ -241,7 +247,7 @@ export default function PlanScreen() {
       } else {
         setTimeNote(null);
       }
-    })();
+    })().catch(() => active && setFoundFor(seedKey));
     return () => {
       active = false;
     };
@@ -515,15 +521,15 @@ export default function PlanScreen() {
   const goingOut = modality === ActivityLocation.GoOut;
   const budgetSummary = isCustomBudget
     ? customBudget != null
-      ? `$${customBudget}`
+      ? formatMoney(customBudget)
       : "Exact budget"
     : (BUDGET_TIERS.find((tier) => tier.value === budgetTier)?.label ??
-      `$${budgetTier}`);
+      formatMoney(budgetTier));
   const planSummary = [
     socialType === "Group-Date" ? "Group date" : socialType,
     goingOut ? "Going out" : "Staying in",
     durationHours === null ? "Open-ended" : `${durationHours}h`,
-    seedCost > 0 ? `${budgetSummary} + $${seedCost}` : budgetSummary,
+    seedCost > 0 ? `${budgetSummary} + ${formatMoney(seedCost)}` : budgetSummary,
   ].join(" · ");
   const locationHint = location
     ? "Using your current location"
@@ -612,9 +618,19 @@ export default function PlanScreen() {
           {/* --- STARTING WITH ("Plan a date with this / these") --- */}
           {seeds.length > 0 && (
             <View className="bg-zinc-900 border border-zinc-800 rounded-3xl p-3 gap-3">
-              <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest px-1">
-                {seeds.length > 1 ? `Starting with ${seeds.length} ideas` : "Starting with"}
-              </Text>
+              <View className="flex-row items-center justify-between px-1">
+                <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">
+                  {seeds.length > 1 ? `Starting with ${seeds.length} ideas` : "Starting with"}
+                </Text>
+                {/* Still working out their best order (and time). A native
+                    spinner: it keeps turning while the search runs */}
+                {findingTime && (
+                  <View className="flex-row items-center gap-1.5" accessibilityLiveRegion="polite">
+                    <Text className="text-zinc-500 text-[11px]">{seeds.length > 1 ? "Finding the best order" : "Finding the best time"}</Text>
+                    <ActivityIndicator size="small" color="#a1a1aa" style={{transform: [{scale: 0.8}]}} />
+                  </View>
+                )}
+              </View>
               {seeds.map((x) => {
                 // Just when it's best: the builder judges the order and times
                 const bestTime = bestTimeLabel(x.time_of_day);
@@ -631,7 +647,7 @@ export default function PlanScreen() {
                       </Text>
                       <Text className="text-zinc-400 text-sm" numberOfLines={1}>
                         {[
-                          x.est_price_per_person > 0 ? `$${x.est_price_per_person}/person` : "Free",
+                          x.est_price_per_person > 0 ? `${formatMoney(x.est_price_per_person)}/person` : "Free",
                           x.est_duration_minutes
                             ? ideaDuration({est_duration_minutes: x.est_duration_minutes})
                             : null,

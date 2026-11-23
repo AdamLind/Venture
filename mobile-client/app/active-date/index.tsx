@@ -70,6 +70,7 @@ import {
 } from "@/components/builder/BuilderParts";
 import {showError, showInfo} from "@/src/lib/notify";
 import {type ChoiceOption, choose, confirm} from "@/src/lib/sheets";
+import {formatMoney} from "@/utils/money";
 
 const BLUE = "#3b82f6";
 // Settles quickly without bouncing past the snap point
@@ -572,7 +573,7 @@ export default function ActiveDateScreen() {
   if (allDone) {
     eyebrow = "That's a wrap";
     eyebrowColor = GREEN;
-    detail = `${stops.length} ${stops.length === 1 ? "stop" : "stops"} · $${spent}`;
+    detail = `${stops.length} ${stops.length === 1 ? "stop" : "stops"} · ${formatMoney(spent)}`;
   } else if (notStarted) {
     eyebrow = `Starts in ${countdown(dateStart - now)}`;
     eyebrowColor = BLUE;
@@ -946,7 +947,7 @@ export default function ActiveDateScreen() {
             {[
               {label: "Stops", value: `${visited.length}/${stops.length}`},
               {label: "Time out", value: formatMinutes(minutesOut)},
-              {label: "Spent", value: `$${spent}`},
+              {label: "Spent", value: formatMoney(spent)},
             ].map((stat, i) => (
               <View
                 key={stat.label}

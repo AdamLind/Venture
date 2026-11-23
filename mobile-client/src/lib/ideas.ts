@@ -4,6 +4,7 @@
 import type {Ionicons} from "@expo/vector-icons";
 import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import type {IdeaSummary, IdeaVisibility} from "@/types/ideas";
+import {formatMoney} from "@/utils/money";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -27,7 +28,7 @@ export function ideaImage(
 /** "Free", "$25 pp" */
 export function ideaPrice(idea: Pick<IdeaSummary, "est_price_per_person">) {
   const price = Number(idea.est_price_per_person) || 0;
-  return price === 0 ? "Free" : `$${Math.round(price)} pp`;
+  return price === 0 ? "Free" : `${formatMoney(price)} pp`;
 }
 
 /** "45 min", "2h", "1h 30m" */

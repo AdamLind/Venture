@@ -35,6 +35,7 @@ import {useStaffStore} from "@/src/store/useStaffStore";
 import {RULE_BY_ID, isRuleId, type RuleId} from "@/src/lib/ideaGuidelines";
 import {SAFETY_DISCLAIMER, needsSafetyLine, riskLabelsOf} from "@/src/lib/safety";
 import {tagLabel} from "@/src/constants/tags";
+import {formatMoney} from "@/utils/money";
 
 export default function IdeaDetailScreen() {
   const router = useRouter();
@@ -442,7 +443,7 @@ export default function IdeaDetailScreen() {
               <Text className="text-white font-bold text-lg">
                 {idea.est_price_per_person === 0
                   ? "Free"
-                  : `$${idea.est_price_per_person}/pp`}
+                  : `${formatMoney(idea.est_price_per_person)}/pp`}
               </Text>
             </View>
 

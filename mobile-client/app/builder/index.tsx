@@ -75,6 +75,7 @@ import Reanimated from "react-native-reanimated";
 import {GestureDetector} from "react-native-gesture-handler";
 import {showError, showInfo} from "@/src/lib/notify";
 import {confirm} from "@/src/lib/sheets";
+import {formatMoney} from "@/utils/money";
 
 /** How far out an open-ended date's timeline runs (it never fills up) */
 const OPEN_ENDED_ROOM_MS = 48 * 3_600_000;
@@ -764,7 +765,7 @@ export default function BuilderScreen() {
   };
   const stopCount = stopSlots.length;
   const stopsLabel = `${stopCount} ${stopCount === 1 ? "stop" : "stops"}`;
-  const budgetLeftLabel = `$${Math.max(0, remainingBudget)} left`;
+  const budgetLeftLabel = `${formatMoney(Math.max(0, remainingBudget))} left`;
   const firstPicks =
     placed.length === 0
       ? sortedActivities.filter((a) => a.fitStatus === "FITS_NOW").slice(0, 8)
@@ -981,8 +982,8 @@ export default function BuilderScreen() {
               <StatTile
                 icon="wallet-outline"
                 label="Budget"
-                value={`$${Math.max(0, remainingBudget)}`}
-                sub={`left of $${availableBudget}`}
+                value={formatMoney(Math.max(0, remainingBudget))}
+                sub={`left of ${formatMoney(availableBudget)}`}
                 progress={availableBudget > 0 ? spentBudget / availableBudget : 0}
               />
               <StatTile
@@ -1122,7 +1123,7 @@ export default function BuilderScreen() {
               <View className="flex-row border-t border-zinc-800">
                 {[
                   {label: "Stops", value: String(stopCount)},
-                  {label: "Total", value: `$${spentBudget}`},
+                  {label: "Total", value: formatMoney(spentBudget)},
                   {
                     label: "Flex time",
                     value: isInfinite ? "∞" : formatMinutes(flexTime),
@@ -1199,7 +1200,7 @@ export default function BuilderScreen() {
         >
           <View className="flex-1 pr-3">
             <Text className="text-white font-extrabold text-base">
-              ${spentBudget}
+              {formatMoney(spentBudget)}
               <Text className="text-zinc-400 font-semibold text-sm">
                 {" "}
                 total · {stopsLabel}

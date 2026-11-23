@@ -7,6 +7,7 @@ import type {
   UserPreferences,
   UserProfile,
 } from "@/types/profile";
+import {formatMoney} from "@/utils/money";
 
 export const MIN_AGE = 16; // keep in sync with private.user_preferences_guard()
 
@@ -59,7 +60,7 @@ export function initials(profile: PublicProfile | null): string {
 
 export function budgetLabel(budget: number): string {
   const tier = BUDGET_TIERS.find((t) => t.value === budget);
-  return tier ? tier.label : `$${budget}`;
+  return tier ? tier.label : formatMoney(budget);
 }
 
 /** Whole years between a "YYYY-MM-DD" birthdate (or Date) and today. */
