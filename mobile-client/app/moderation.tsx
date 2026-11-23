@@ -1,18 +1,12 @@
 // app/moderation.tsx
 // The moderation queue (#26): ideas waiting for review (oldest first), ideas
-// with open reports (most reported first), and the log of decisions.
-// Opening one shows the idea as everyone will see it, with the staff review
-// panel on top. Staff only (Settings shows the way in).
+// and people with open reports (most reported first, #76), and the log of
+// decisions. Opening an idea shows it as everyone will see it, with the
+// staff review panel on top; opening a person shows their review page
+// (app/reported-person/[id].tsx). Staff only (Settings shows the way in).
 
 import React, {useCallback, useState} from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  Text,
-  View,
-} from "react-native";
+import {ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View} from "react-native";
 import Toast from "@/src/lib/toast";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {useFocusEffect, useRouter} from "expo-router";
@@ -20,32 +14,43 @@ import {Image} from "expo-image";
 import {Ionicons} from "@expo/vector-icons";
 
 import ScreenHeader from "@/components/ui/ScreenHeader";
+import Avatar from "@/components/profile/Avatar";
 import {ideaImage} from "@/src/lib/ideas";
 import {
   REPORT_REASON_LABEL,
   type LogEntry,
   type QueueIdea,
   type ReportedIdea,
+  type ReportedPerson,
   type SuspendedAccount,
   ago,
   fetchLog,
   fetchReported,
+  fetchReportedPeople,
   fetchSuspended,
   fetchToReview,
   logLine,
+  PERSON_ACTIONS,
   setSuspension,
 } from "@/src/lib/moderation";
 import {useProfileStore} from "@/src/store/useProfileStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
 import {showError} from "@/src/lib/notify";
 import {confirm} from "@/src/lib/sheets";
+import {PERSON_REPORT_REASON_LABEL} from "@/src/lib/reportPerson";
 
 type Tab = "review" | "reported" | "suspended" | "log";
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
+/** The Reported tab: ideas and people, together */
+type ReportedItem = ({kind: "idea"} & ReportedIdea) | ({kind: "person"} & ReportedPerson);
 
 const EMPTY: Record<Tab, {icon: IconName; title: string; body: string}> = {
   review: {icon: "checkmark-done-outline", title: "All caught up", body: "New ideas show up here when they're posted."},
-  reported: {icon: "flag-outline", title: "No open reports", body: "Reported ideas show up here, most reported first."},
+  reported: {
+    icon: "flag-outline",
+    title: "No open reports",
+    body: "Reported ideas and people show up here, most reported first.",
+  },
   suspended: {
     icon: "ban-outline",
     title: "Nobody's suspended",
@@ -63,7 +68,7 @@ export default function ModerationScreen() {
 
   const [tab, setTab] = useState<Tab>("review");
   const [toReview, setToReview] = useState<QueueIdea[] | null>(null);
-  const [reported, setReported] = useState<ReportedIdea[] | null>(null);
+  const [reported, setReported] = useState<ReportedItem[] | null>(null);
   const [log, setLog] = useState<LogEntry[] | null>(null);
   const [suspended, setSuspended] = useState<SuspendedAccount[] | null>(null);
   const [lifting, setLifting] = useState<string | null>(null);
@@ -72,14 +77,20 @@ export default function ModerationScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [a, b, c, d] = await Promise.all([
+      const [a, ideas, people, c, d] = await Promise.all([
         fetchToReview(),
         fetchReported(),
+        fetchReportedPeople(),
         fetchLog(),
         fetchSuspended(),
       ]);
       setToReview(a);
-      setReported(b);
+      setReported(
+        [
+          ...ideas.map((idea) => ({kind: "idea" as const, ...idea})),
+          ...people.map((person) => ({kind: "person" as const, ...person})),
+        ].sort((x, y) => y.reports.length - x.reports.length),
+      );
       setLog(c);
       setSuspended(d);
       setError(null);
@@ -126,6 +137,7 @@ export default function ModerationScreen() {
 
   const open = (ideaId: number) =>
     router.push({pathname: "/idea/[id]", params: {id: String(ideaId), review: "1", from: "queue"}});
+  const openPerson = (userId: string) => router.push({pathname: "/reported-person/[id]", params: {id: userId}});
 
   if (!role) {
     return (
@@ -194,7 +206,13 @@ export default function ModerationScreen() {
         <FlatList
           data={data}
           keyExtractor={(item) =>
-            String(tab === "log" ? item.action_id : tab === "suspended" ? item.user_id : item.idea_id)
+            tab === "log"
+              ? String(item.action_id)
+              : tab === "suspended"
+                ? item.user_id
+                : tab === "reported" && item.kind === "person"
+                  ? `person-${item.user_id}`
+                  : String(item.idea_id)
           }
           contentContainerClassName="px-5 pb-16 gap-3"
           contentContainerStyle={data.length === 0 ? {flexGrow: 1} : undefined}
@@ -215,7 +233,11 @@ export default function ModerationScreen() {
                 onPress={() => open(item.idea_id)}
               />
             ) : tab === "reported" ? (
-              <ReportedRow idea={item} onPress={() => open(item.idea_id)} />
+              item.kind === "person" ? (
+                <ReportedPersonRow person={item} onPress={() => openPerson(item.user_id)} />
+              ) : (
+                <ReportedRow idea={item} onPress={() => open(item.idea_id)} />
+              )
             ) : tab === "suspended" ? (
               <SuspendedRow
                 account={item}
@@ -227,7 +249,13 @@ export default function ModerationScreen() {
               <LogRow
                 entry={item}
                 myUsername={myUsername}
-                onPress={item.idea_id ? () => open(item.idea_id) : undefined}
+                onPress={
+                  item.idea_id
+                    ? () => open(item.idea_id)
+                    : item.user_id && PERSON_ACTIONS.includes(item.action)
+                      ? () => openPerson(item.user_id)
+                      : undefined
+                }
               />
             )
           }
@@ -238,9 +266,7 @@ export default function ModerationScreen() {
 }
 
 function Thumb({idea}: {idea: {image_urls: string[] | null}}) {
-  return (
-    <Image source={{uri: ideaImage(idea)}} style={{width: 56, height: 56, borderRadius: 14}} contentFit="cover" />
-  );
+  return <Image source={{uri: ideaImage(idea)}} style={{width: 56, height: 56, borderRadius: 14}} contentFit="cover" />;
 }
 
 function ReviewRow({
@@ -275,9 +301,7 @@ function ReviewRow({
             <Text className="text-orange-200 text-xs font-bold">New place</Text>
           </View>
         )}
-        {mine && !canReviewOwn && (
-          <Text className="text-zinc-500 text-xs">Someone else needs to review it</Text>
-        )}
+        {mine && !canReviewOwn && <Text className="text-zinc-500 text-xs">Someone else needs to review it</Text>}
       </View>
       <View className="items-end gap-1">
         <Text className="text-amber-400 text-xs font-bold">{ago(idea.submitted_at ?? idea.created_at)}</Text>
@@ -321,6 +345,41 @@ function ReportedRow({idea, onPress}: {idea: ReportedIdea; onPress: () => void})
           </View>
         </View>
         <Text className="text-zinc-500 text-xs">{ago(idea.reports[0]?.created_at ?? null)}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+/** Someone reported: their photo and name (what's often reported), and why */
+function ReportedPersonRow({person, onPress}: {person: ReportedPerson; onPress: () => void}) {
+  const reasons = [...new Set(person.reports.map((r) => r.reason))];
+  return (
+    <Pressable
+      onPress={onPress}
+      className="flex-row items-center bg-zinc-900 border border-zinc-800 rounded-3xl p-3 gap-3 active:opacity-80"
+    >
+      <Avatar
+        profile={{username: person.username ?? "?", profile_image_url: person.profile_image_url}}
+        size={56}
+        small
+      />
+      <View className="flex-1 gap-1">
+        <View className="flex-row items-center gap-1.5">
+          <Ionicons name="person" size={12} color="#a1a1aa" />
+          <Text className="text-white font-bold text-base flex-shrink" numberOfLines={1}>
+            {person.username ? `@${person.username}` : "Someone"}
+          </Text>
+        </View>
+        <Text className="text-zinc-400 text-sm" numberOfLines={1}>
+          {reasons.map((r) => PERSON_REPORT_REASON_LABEL[r] ?? r).join(", ")}
+        </Text>
+      </View>
+      <View className="items-end gap-1">
+        <View className="flex-row items-center gap-1 bg-red-500/15 rounded-full px-2 py-0.5">
+          <Ionicons name="flag" size={11} color="#fca5a5" />
+          <Text className="text-red-300 text-xs font-extrabold">{person.reports.length}</Text>
+        </View>
+        <Text className="text-zinc-500 text-xs">{ago(person.reports[0]?.created_at ?? null)}</Text>
       </View>
     </Pressable>
   );
@@ -373,15 +432,7 @@ function SuspendedRow({
   );
 }
 
-function LogRow({
-  entry,
-  myUsername,
-  onPress,
-}: {
-  entry: LogEntry;
-  myUsername: string | null;
-  onPress?: () => void;
-}) {
+function LogRow({entry, myUsername, onPress}: {entry: LogEntry; myUsername: string | null; onPress?: () => void}) {
   return (
     <Pressable
       onPress={onPress}

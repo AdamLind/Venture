@@ -1,6 +1,7 @@
 // src/store/useNotificationStore.ts
 // In-app notifications (public.notifications): review decisions on your
-// ideas, what happened to your reports, and (staff) reported ideas (#76).
+// ideas, what happened to your reports, what a moderator removed from your
+// profile, and (staff) reported ideas and people (#76).
 // Staff alerts only show while Staff tools is on.
 // Loaded by the root layout after sign-in and kept live with a realtime
 // subscription, so the bell's dot appears as soon as a decision lands.
@@ -13,6 +14,7 @@ import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {useStaffStore, useStaffTools} from "@/src/store/useStaffStore";
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
+import {useProfileStore} from "@/src/store/useProfileStore";
 
 export type NotificationKind =
   | "IDEA_PUBLISHED"
@@ -34,7 +36,16 @@ export type NotificationKind =
   /** Dates (#36): itinerary_id is the date, actor who did it */
   | "DATE_INVITE"
   | "DATE_INVITE_ACCEPTED"
-  | "DATE_COMMENT";
+  | "DATE_COMMENT"
+  /** Staff: someone was reported (actor: who) */
+  | "PERSON_REPORTED"
+  /** Your report about someone (actor): looked at, and acted on or not */
+  | "PERSON_REPORT_ACTIONED"
+  | "PERSON_REPORT_DISMISSED"
+  /** A moderator removed your photo or name, or reset your username (note: why) */
+  | "PHOTO_REMOVED"
+  | "NAME_REMOVED"
+  | "USERNAME_RESET";
 
 /** About a shared date */
 export const isDateKind = (kind: NotificationKind) =>
@@ -48,7 +59,16 @@ export const isPersonKind = (kind: NotificationKind) =>
   kind === "PARTNER_ACCEPTED";
 
 /** Kinds only staff get; shown while Staff tools is on */
-export const isStaffKind = (kind: NotificationKind) => kind === "IDEA_REPORTED";
+export const STAFF_KINDS: NotificationKind[] = ["IDEA_REPORTED", "PERSON_REPORTED"];
+export const isStaffKind = (kind: NotificationKind) => STAFF_KINDS.includes(kind);
+
+/** Shows who it's about (their photo) */
+export const showsActor = (kind: NotificationKind) =>
+  isPersonKind(kind) ||
+  isDateKind(kind) ||
+  kind === "PERSON_REPORTED" ||
+  kind === "PERSON_REPORT_ACTIONED" ||
+  kind === "PERSON_REPORT_DISMISSED";
 
 export interface AppNotification {
   notification_id: number;
@@ -63,6 +83,7 @@ export interface AppNotification {
   seen_at: string | null;
   activities?: {image_urls: string[] | null} | null;
   /** Who it's about (people kinds) */
+  actor_id?: string | null;
   actor?: {username: string | null; profile_image_url: string | null} | null;
 }
 
@@ -84,7 +105,7 @@ interface NotificationState {
 }
 
 const SELECT = `
-  notification_id, kind, idea_id, itinerary_id, idea_title, note, created_at, seen_at,
+  notification_id, kind, idea_id, itinerary_id, idea_title, note, created_at, seen_at, actor_id,
   activities ( image_urls ),
   actor:users!notifications_actor_id_fkey ( username, profile_image_url )
 `;
@@ -146,7 +167,17 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       set({status: "error", error: friendlyError(error)});
       return;
     }
-    set({items: (data ?? []) as unknown as AppNotification[], status: "ready"});
+    const items = (data ?? []) as unknown as AppNotification[];
+    set({items, status: "ready"});
+
+    // A moderator changed your profile: show it as it is now, and delete
+    // the removed photo's files (only you can)
+    const unseen = items.filter((n) => !n.seen_at);
+    if (unseen.some((n) => n.kind === "PHOTO_REMOVED" || n.kind === "NAME_REMOVED" || n.kind === "USERNAME_RESET")) {
+      const profile = useProfileStore.getState();
+      await profile.reload();
+      if (unseen.some((n) => n.kind === "PHOTO_REMOVED")) await profile.removeStrayAvatars();
+    }
   },
 
   reload: async () => {
@@ -162,12 +193,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     const seenAt = new Date().toISOString();
     set({items: items.map((n) => (marks(n) ? {...n, seen_at: seenAt} : n))});
 
-    let query = supabase
-      .from("notifications")
-      .update({seen_at: seenAt})
-      .eq("user_id", userId)
-      .is("seen_at", null);
-    if (!includeStaff) query = query.neq("kind", "IDEA_REPORTED");
+    let query = supabase.from("notifications").update({seen_at: seenAt}).eq("user_id", userId).is("seen_at", null);
+    if (!includeStaff) query = query.not("kind", "in", `(${STAFF_KINDS.join(",")})`);
     const {error} = await query;
     if (error) console.warn("Couldn't mark notifications seen:", error.message);
   },
@@ -188,7 +215,5 @@ export function useVisibleNotifications() {
 /** How many notifications are new (for the bell's dot). */
 export const useUnseenCount = () => {
   const showStaff = useStaffTools();
-  return useNotificationStore(
-    (s) => s.items.filter((n) => !n.seen_at && (showStaff || !isStaffKind(n.kind))).length,
-  );
+  return useNotificationStore((s) => s.items.filter((n) => !n.seen_at && (showStaff || !isStaffKind(n.kind))).length);
 };

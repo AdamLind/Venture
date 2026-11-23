@@ -1,14 +1,6 @@
 // app/settings/index.tsx
 import React, {useEffect, useState} from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  ScrollView,
-  ActivityIndicator,
-  Switch,
-  Linking,
-} from "react-native";
+import {View, Text, Pressable, ScrollView, ActivityIndicator, Switch, Linking} from "react-native";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
@@ -53,11 +45,7 @@ function Row({
       className="flex-row items-center gap-3 px-4 py-4 active:bg-zinc-800"
     >
       <Ionicons name={icon} size={20} color={color} />
-      <Text
-        className={`flex-1 text-base font-semibold ${destructive ? "text-red-400" : "text-white"}`}
-      >
-        {label}
-      </Text>
+      <Text className={`flex-1 text-base font-semibold ${destructive ? "text-red-400" : "text-white"}`}>{label}</Text>
       {loading ? (
         <ActivityIndicator color={color} />
       ) : (
@@ -67,9 +55,7 @@ function Row({
               {value}
             </Text>
           ) : null}
-          {onPress && !destructive && (
-            <Ionicons name="chevron-forward" size={18} color="#52525b" />
-          )}
+          {onPress && !destructive && <Ionicons name="chevron-forward" size={18} color="#52525b" />}
         </>
       )}
     </Pressable>
@@ -79,12 +65,8 @@ function Row({
 function Section({title, children}: {title: string; children: React.ReactNode}) {
   return (
     <View className="gap-2">
-      <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider px-2">
-        {title}
-      </Text>
-      <View className="bg-zinc-900 rounded-3xl border border-zinc-800 overflow-hidden">
-        {children}
-      </View>
+      <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider px-2">{title}</Text>
+      <View className="bg-zinc-900 rounded-3xl border border-zinc-800 overflow-hidden">{children}</View>
     </View>
   );
 }
@@ -122,8 +104,8 @@ function StaffSection() {
         </View>
       </Section>
       <Text className="text-zinc-500 text-xs px-2">
-        Off, the app looks the way it does for everyone. On, reports and review
-        options show on Explore and idea pages, with a badge on Profile.
+        Off, the app looks the way it does for everyone. On, reports and review options show on Explore and idea pages,
+        with a badge on Profile.
       </Text>
     </View>
   );
@@ -226,8 +208,8 @@ function DeviceAccountsSection() {
         <Row icon="person-add-outline" label="Add an account" onPress={onAdd} />
       </Section>
       <Text className="text-zinc-500 text-xs px-2">
-        For testing: switch accounts without signing out. Long press one to remove it. Signing out removes
-        that account from this list.
+        For testing: switch accounts without signing out. Long press one to remove it. Signing out removes that account
+        from this list.
       </Text>
     </View>
   );
@@ -262,25 +244,14 @@ export default function SettingsScreen() {
       <ScreenHeader title="Settings" />
       <ScrollView contentContainerClassName="px-5 pt-4 pb-16 gap-8">
         {/* Suspended (#76): say so, and why */}
-        {suspension && session?.user.id && (
-          <SuspensionNotice userId={session.user.id} suspension={suspension} />
-        )}
+        {suspension && session?.user.id && <SuspensionNotice userId={session.user.id} suspension={suspension} />}
 
         <StaffSection />
 
-
         <Section title="Profile">
-          <Row
-            icon="person-outline"
-            label="Edit profile"
-            onPress={() => router.push("/settings/edit-profile")}
-          />
+          <Row icon="person-outline" label="Edit profile" onPress={() => router.push("/settings/edit-profile")} />
           <Divider />
-          <Row
-            icon="options-outline"
-            label="Planning defaults"
-            onPress={() => router.push("/settings/planning")}
-          />
+          <Row icon="options-outline" label="Planning defaults" onPress={() => router.push("/settings/planning")} />
           <Divider />
           <Row
             icon="eye-off-outline"
@@ -291,17 +262,11 @@ export default function SettingsScreen() {
         </Section>
 
         <Section title="Help">
-          <Row
-            icon="book-outline"
-            label="Idea guidelines"
-            onPress={() => router.push("/guidelines")}
-          />
+          <Row icon="book-outline" label="Idea guidelines" onPress={() => router.push("/guidelines")} />
           <Divider />
-          <Row
-            icon="document-text-outline"
-            label="Terms of use"
-            onPress={() => router.push("/terms")}
-          />
+          <Row icon="document-text-outline" label="Terms of use" onPress={() => router.push("/terms")} />
+          <Divider />
+          <Row icon="lock-closed-outline" label="Privacy policy" onPress={() => router.push("/privacy")} />
           <Divider />
           <Row
             icon="chatbubble-outline"
@@ -316,13 +281,7 @@ export default function SettingsScreen() {
         <Section title="Account">
           <Row icon="mail-outline" label="Email" value={session?.user.email} />
           <Divider />
-          <Row
-            icon="log-out-outline"
-            label="Sign out"
-            destructive
-            loading={signingOut}
-            onPress={confirmSignOut}
-          />
+          <Row icon="log-out-outline" label="Sign out" destructive loading={signingOut} onPress={confirmSignOut} />
         </Section>
 
         <Section title="Danger zone">

@@ -18,7 +18,7 @@ interface StaffState {
   role: StaffRole | null;
   /** Staff tools on: review extras inline (idea pages, Explore, the tab badge) */
   toolsOn: boolean;
-  /** Ideas waiting for review, and ideas with open reports */
+  /** Ideas waiting for review, and ideas and people with open reports */
   counts: {toReview: number; reported: number};
   /** Open reports per idea, for flags on Explore cards (staff tools on) */
   reportedIdeas: Map<number, number>;
@@ -45,11 +45,7 @@ export const useStaffStore = create<StaffState>((set, get) => ({
 
   load: async (userId) => {
     set({...initialState, userId});
-    const {data, error} = await supabase
-      .from("staff")
-      .select("role")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const {data, error} = await supabase.from("staff").select("role").eq("user_id", userId).maybeSingle();
     if (get().userId !== userId) return;
     // Not fatal: no staff tools this session
     if (error) {
@@ -88,11 +84,13 @@ export const useStaffStore = create<StaffState>((set, get) => ({
     // Moderators can't review their own ideas, so they aren't waiting on them
     if (role !== "ADMIN") pending = pending.neq("user_id", userId);
 
-    const [pendingResult, reportsResult] = await Promise.all([
+    const [pendingResult, reportsResult, peopleResult] = await Promise.all([
       pending,
       supabase.from("idea_reports").select("idea_id").eq("status", "OPEN"),
+      supabase.from("user_reports").select("reported_id").eq("status", "OPEN"),
     ]);
     if (get().userId !== userId) return;
+    const reportedPeople = new Set((peopleResult.data ?? []).map((row) => row.reported_id as string)).size;
 
     const reportedIdeas = new Map<number, number>();
     for (const row of reportsResult.data ?? []) {
@@ -101,7 +99,8 @@ export const useStaffStore = create<StaffState>((set, get) => ({
     set({
       counts: {
         toReview: pendingResult.count ?? get().counts.toReview,
-        reported: reportsResult.error ? get().counts.reported : reportedIdeas.size,
+        reported:
+          reportsResult.error || peopleResult.error ? get().counts.reported : reportedIdeas.size + reportedPeople,
       },
       reportedIdeas: reportsResult.error ? get().reportedIdeas : reportedIdeas,
     });

@@ -4,13 +4,7 @@
 // shows your QR code. No search, no browsing: people connect by code.
 
 import React, {useCallback, useState} from "react";
-import {
-  ActivityIndicator,
-  Animated,
-  Pressable,
-  Text,
-  View,
-} from "react-native";
+import {ActivityIndicator, Animated, Pressable, Text, View} from "react-native";
 import {useFocusEffect, useRouter} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
 import Toast from "@/src/lib/toast";
@@ -33,6 +27,7 @@ import {usePartnerDatesStore} from "@/src/store/usePartnerDatesStore";
 import {useBlockStore} from "@/src/store/useBlockStore";
 import {choose, confirm} from "@/src/lib/sheets";
 import {showError} from "@/src/lib/notify";
+import {reportPerson} from "@/src/lib/reportPerson";
 
 const PARTNER_COLOR = "#f472b6";
 
@@ -135,13 +130,23 @@ export default function ConnectionsScreen() {
   };
 
   const askPartner = (c: Connection) =>
-    run(
-      c.user_id,
-      async () => {
-        const result = await requestPartner(c.user_id);
-        toast(result === "LINKED" ? `You and @${c.username} are linked` : `Asked @${c.username}`);
-      },
+    run(c.user_id, async () => {
+      const result = await requestPartner(c.user_id);
+      toast(result === "LINKED" ? `You and @${c.username} are linked` : `Asked @${c.username}`);
+    });
+
+  // Report them (#76). Its sheets show over theirs; it closes once you've
+  // sent it (or backed out of what comes after)
+  const report = async (c: Connection) => {
+    const outcome = await reportPerson(
+      {id: c.user_id, username: c.username},
+      {context: "CONNECTION"},
+      {connected: true},
     );
+    if (outcome === "CANCELLED") return false;
+    if (outcome === "FORGOT") await reload();
+    return true;
+  };
 
   // What you can do with a connection (in their sheet). A confirmation
   // shows over the sheet (#86); it closes once you've decided
@@ -157,9 +162,22 @@ export default function ConnectionsScreen() {
           ? [{label: `Make @${c.username} your person`, icon: "heart-outline" as const, run: then(() => askPartner(c))}]
           : []),
       ...(c.is_partner
-        ? [{label: "Unlink as your person", icon: "heart-dislike-outline" as const, destructive: true, run: then(() => confirmEndPartner(c))}]
+        ? [
+            {
+              label: "Unlink as your person",
+              icon: "heart-dislike-outline" as const,
+              destructive: true,
+              run: then(() => confirmEndPartner(c)),
+            },
+          ]
         : []),
-      {label: `Forget @${c.username}`, icon: "person-remove-outline" as const, destructive: true, run: then(() => confirmForget(c))},
+      {
+        label: `Forget @${c.username}`,
+        icon: "person-remove-outline" as const,
+        destructive: true,
+        run: then(() => confirmForget(c)),
+      },
+      {label: `Report @${c.username}`, icon: "flag-outline" as const, destructive: true, run: then(() => report(c))},
     ];
   };
   const openMenu = (c: Connection) => setSheetFor(c);
@@ -275,7 +293,9 @@ export default function ConnectionsScreen() {
                       request={r}
                       first={incoming.length === 0 && i === 0}
                       busy={busy === `req-${r.request_id}`}
-                      onCancel={() => run(`req-${r.request_id}`, () => cancelRequest(r.request_id), "Request cancelled")}
+                      onCancel={() =>
+                        run(`req-${r.request_id}`, () => cancelRequest(r.request_id), "Request cancelled")
+                      }
                     />
                   ))}
                 </View>
@@ -350,7 +370,11 @@ function RequestRow({
   const partner = request.kind === "PARTNER";
   return (
     <View className={`flex-row items-center gap-3 px-4 py-3 ${first ? "" : "border-t border-zinc-800"}`}>
-      <Avatar profile={{username: request.other.username ?? "?", profile_image_url: request.other.profile_image_url}} size={40} small />
+      <Avatar
+        profile={{username: request.other.username ?? "?", profile_image_url: request.other.profile_image_url}}
+        size={40}
+        small
+      />
       <View className="flex-1">
         <Text className="text-white font-semibold" numberOfLines={1}>
           {name}
@@ -400,7 +424,11 @@ function OutgoingRow({
   const name = request.other.username ? `@${request.other.username}` : "Someone";
   return (
     <View className={`flex-row items-center gap-3 px-4 py-3 ${first ? "" : "border-t border-zinc-800"}`}>
-      <Avatar profile={{username: request.other.username ?? "?", profile_image_url: request.other.profile_image_url}} size={40} small />
+      <Avatar
+        profile={{username: request.other.username ?? "?", profile_image_url: request.other.profile_image_url}}
+        size={40}
+        small
+      />
       <View className="flex-1">
         <Text className="text-white font-semibold" numberOfLines={1}>
           {name}

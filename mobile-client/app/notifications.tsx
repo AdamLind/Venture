@@ -17,12 +17,14 @@ import {ideaImage} from "@/src/lib/ideas";
 import {
   isDateKind,
   isPersonKind,
+  showsActor,
   useNotificationStore,
   useVisibleNotifications,
   type AppNotification,
   type NotificationKind,
 } from "@/src/store/useNotificationStore";
 import {useStaffStore} from "@/src/store/useStaffStore";
+import {useProfileStore} from "@/src/store/useProfileStore";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -40,15 +42,13 @@ const KIND: Record<
     icon: "create",
     color: "#fb923c",
     title: "A reviewer asked for changes",
-    body: (n) =>
-      `"${n.idea_title ?? "Your idea"}": ${n.note ?? "Edit it and resubmit to go live."}`,
+    body: (n) => `"${n.idea_title ?? "Your idea"}": ${n.note ?? "Edit it and resubmit to go live."}`,
   },
   IDEA_REJECTED: {
     icon: "close-circle",
     color: "#f87171",
     title: "Your idea wasn't approved",
-    body: (n) =>
-      `"${n.idea_title ?? "Your idea"}"${n.note ? `: ${n.note}` : " won't be published."}`,
+    body: (n) => `"${n.idea_title ?? "Your idea"}"${n.note ? `: ${n.note}` : " won't be published."}`,
   },
   IDEA_HELD: {
     icon: "eye-off",
@@ -118,28 +118,72 @@ const KIND: Record<
     body: (n) =>
       `"${n.idea_title ?? "That idea"}" is within our guidelines, so it's staying up. It's still hidden for you.`,
   },
+  PERSON_REPORTED: {
+    icon: "flag",
+    color: "#f87171",
+    title: "Someone was reported",
+    body: (n) => `${who(n)}${n.note ? `: ${n.note}` : ""}`,
+  },
+  // Never what happened to them: that's between them and us
+  PERSON_REPORT_ACTIONED: {
+    icon: "shield-checkmark",
+    color: "#34d399",
+    title: "Thanks for your report",
+    body: (n) => `We looked into your report about ${who(n, "them")} and took action.`,
+  },
+  PERSON_REPORT_DISMISSED: {
+    icon: "shield-checkmark",
+    color: "#a1a1aa",
+    title: "We looked at your report",
+    body: (n) =>
+      `We didn't find anything against our guidelines from ${who(n, "them")}. You can still forget or block them.`,
+  },
+  PHOTO_REMOVED: {
+    icon: "image",
+    color: "#fb923c",
+    title: "Your photo was removed",
+    body: (n) => `A moderator took it down${n.note ? `: ${n.note}` : "."} You can add a new one in Edit profile.`,
+  },
+  NAME_REMOVED: {
+    icon: "person",
+    color: "#fb923c",
+    title: "Your name was removed",
+    body: (n) => `A moderator removed it${n.note ? `: ${n.note}` : "."} You can add a new one in Edit profile.`,
+  },
+  USERNAME_RESET: {
+    icon: "text",
+    color: "#fb923c",
+    title: "Pick a new username",
+    body: (n) => `A moderator reset yours${n.note ? `: ${n.note}` : "."} Choose a new one in Edit profile.`,
+  },
 };
 
 /** "@sam", or "Someone" once you can't see them (a declined request) */
-const who = (n: AppNotification) => (n.actor?.username ? `@${n.actor.username}` : "Someone");
+const who = (n: AppNotification, fallback = "Someone") => (n.actor?.username ? `@${n.actor.username}` : fallback);
 
-/** Where a notification goes: people go to Connections, staff alerts open
- *  the review; a report that was acted on goes nowhere (the idea's gone) */
-function openNotification(n: AppNotification) {
-  if (isPersonKind(n.kind)) {
-    router.push("/connections");
-    return;
-  }
+/** Where a notification goes (null: nowhere). People go to Connections,
+ *  staff alerts open the review, a change to your profile opens Edit
+ *  profile; a report that was acted on goes nowhere (the idea's gone) */
+function destination(n: AppNotification): (() => void) | null {
+  if (isPersonKind(n.kind)) return () => router.push("/connections");
   if (isDateKind(n.kind)) {
-    if (n.itinerary_id) router.push({pathname: "/itinerary/[id]", params: {id: String(n.itinerary_id)}});
-    return;
+    const id = n.itinerary_id;
+    return id ? () => router.push({pathname: "/itinerary/[id]", params: {id: String(id)}}) : null;
   }
-  if (!n.idea_id || n.kind === "REPORT_ACTIONED") return;
+  if (n.kind === "PERSON_REPORTED") {
+    const id = n.actor_id;
+    return id ? () => router.push({pathname: "/reported-person/[id]", params: {id}}) : null;
+  }
+  if (n.kind === "PHOTO_REMOVED" || n.kind === "NAME_REMOVED" || n.kind === "USERNAME_RESET") {
+    return () => router.push("/settings/edit-profile");
+  }
+  if (n.kind === "PERSON_REPORT_ACTIONED" || n.kind === "PERSON_REPORT_DISMISSED") return null;
+  const ideaId = n.idea_id;
+  if (!ideaId || n.kind === "REPORT_ACTIONED") return null;
   if (n.kind === "IDEA_REPORTED") {
-    router.push({pathname: "/idea/[id]", params: {id: String(n.idea_id), review: "1"}});
-    return;
+    return () => router.push({pathname: "/idea/[id]", params: {id: String(ideaId), review: "1"}});
   }
-  openIdea(n.idea_id);
+  return () => openIdea(ideaId);
 }
 
 /** "now", "5m", "3h", "2d", "Nov 3" */
@@ -153,23 +197,29 @@ function timeAgo(iso: string) {
 }
 
 function NotificationRow({item, isNew}: {item: AppNotification; isNew: boolean}) {
+  const myProfile = useProfileStore((s) => s.profile);
   const kind = KIND[item.kind];
   // A kind this version doesn't know (a newer server): skip it
   if (!kind) return null;
+  const open = destination(item);
+  // About your own profile: your photo (as it is now)
+  const aboutMe = item.kind === "PHOTO_REMOVED" || item.kind === "NAME_REMOVED" || item.kind === "USERNAME_RESET";
   return (
     <Pressable
-      onPress={() => openNotification(item)}
-      disabled={
-        isDateKind(item.kind)
-          ? !item.itinerary_id
-          : !isPersonKind(item.kind) && (!item.idea_id || item.kind === "REPORT_ACTIONED")
-      }
+      onPress={open ?? undefined}
+      disabled={!open}
       className={`flex-row items-start gap-3 p-3 rounded-3xl active:opacity-80 ${
         isNew ? "bg-zinc-900 border border-zinc-800" : ""
       }`}
     >
       <View>
-        {isPersonKind(item.kind) || isDateKind(item.kind) ? (
+        {aboutMe ? (
+          <Avatar
+            profile={myProfile ? {username: myProfile.username, profile_image_url: myProfile.profile_image_url} : null}
+            size={52}
+            small
+          />
+        ) : showsActor(item.kind) ? (
           <Avatar
             profile={
               item.actor?.username
@@ -252,9 +302,7 @@ export default function NotificationsScreen() {
       <ScreenHeader title="Notifications" />
       <ScrollView
         contentContainerStyle={{paddingHorizontal: 16, paddingTop: 8, paddingBottom: 48}}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="white" />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="white" />}
       >
         {items.length === 0 ? (
           <View className="items-center py-20 px-8">
@@ -270,9 +318,7 @@ export default function NotificationsScreen() {
           <View className="gap-6">
             {fresh.length > 0 && (
               <View className="gap-2">
-                <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider px-2">
-                  New
-                </Text>
+                <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider px-2">New</Text>
                 {fresh.map((n) => (
                   <NotificationRow key={n.notification_id} item={n} isNew />
                 ))}
@@ -280,9 +326,7 @@ export default function NotificationsScreen() {
             )}
             {earlier.length > 0 && (
               <View className="gap-1">
-                <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider px-2 mb-1">
-                  Earlier
-                </Text>
+                <Text className="text-zinc-500 text-xs font-bold uppercase tracking-wider px-2 mb-1">Earlier</Text>
                 {earlier.map((n) => (
                   <NotificationRow key={n.notification_id} item={n} isNew={false} />
                 ))}

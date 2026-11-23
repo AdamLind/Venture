@@ -5,12 +5,7 @@
 import {create} from "zustand";
 import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
-import type {
-  PreferencesUpdate,
-  ProfileUpdate,
-  UserPreferences,
-  UserProfile,
-} from "@/types/profile";
+import type {PreferencesUpdate, ProfileUpdate, UserPreferences, UserProfile} from "@/types/profile";
 
 type Status = "idle" | "loading" | "ready" | "error";
 
@@ -30,6 +25,9 @@ interface ProfileState {
   /** Uploads a local JPEG to the avatars bucket and saves its URL. */
   /** The photo (1080 px) and its thumbnail (256 px: src/lib/images.ts) */
   uploadAvatar: (localUri: string, thumbUri?: string) => Promise<void>;
+  /** Deletes your photo files that aren't your photo anymore (a moderator
+   *  removed it, #76: only your account can delete your files). Best effort */
+  removeStrayAvatars: () => Promise<void>;
   clear: () => void;
 }
 
@@ -56,16 +54,8 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     set({userId, status: "loading", error: null});
 
     const [profileRes, prefsRes, namesRes] = await Promise.all([
-      supabase
-        .from("users")
-        .select(PROFILE_COLUMNS)
-        .eq("user_id", userId)
-        .maybeSingle(),
-      supabase
-        .from("user_preferences")
-        .select("*")
-        .eq("user_id", userId)
-        .maybeSingle(),
+      supabase.from("users").select(PROFILE_COLUMNS).eq("user_id", userId).maybeSingle(),
+      supabase.from("user_preferences").select("*").eq("user_id", userId).maybeSingle(),
       supabase.rpc("my_name"),
     ]);
 
@@ -77,9 +67,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       if (error) console.error("Profile load failed:", error);
       set({
         status: "error",
-        error: error
-          ? friendlyError(error)
-          : "We couldn't find your profile. Try again, or sign out and back in.",
+        error: error ? friendlyError(error) : "We couldn't find your profile. Try again, or sign out and back in.",
       });
       return;
     }
@@ -177,6 +165,22 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
           if (error) console.warn("Old avatar cleanup failed:", error.message);
         });
     }
+  },
+
+  removeStrayAvatars: async () => {
+    const {userId, profile} = get();
+    if (!userId) return;
+    const current = profile?.profile_image_url?.split(AVATAR_PATH_MARKER)[1] ?? null;
+    const keep = new Set(current ? [current, current.replace(/\.jpg$/, "_thumb.jpg")] : []);
+    const {data, error} = await supabase.storage.from("avatars").list(userId, {limit: 1000});
+    if (error || !data) return;
+    const stray = data
+      .filter((f) => f.id)
+      .map((f) => `${userId}/${f.name}`)
+      .filter((path) => !keep.has(path));
+    if (!stray.length) return;
+    const {error: removeError} = await supabase.storage.from("avatars").remove(stray);
+    if (removeError) console.warn("Removed photo cleanup failed:", removeError.message);
   },
 
   clear: () => set(initialState),

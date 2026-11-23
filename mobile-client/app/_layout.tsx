@@ -1,9 +1,5 @@
 import {useEffect} from "react";
-import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider,
-} from "expo-router/react-navigation";
+import {DarkTheme, DefaultTheme, ThemeProvider} from "expo-router/react-navigation";
 import {useFonts} from "expo-font";
 import {Stack, useRouter, useSegments} from "expo-router";
 import {StatusBar} from "expo-status-bar";
@@ -73,12 +69,7 @@ function InitialLayout() {
   const itineraryUserId = useItineraryStore((s) => s.userId);
   const loadItineraries = useItineraryStore((s) => s.load);
   useEffect(() => {
-    if (
-      userId &&
-      onboarded &&
-      profileStatus === "ready" &&
-      itineraryUserId !== userId
-    ) {
+    if (userId && onboarded && profileStatus === "ready" && itineraryUserId !== userId) {
       loadItineraries(userId);
     }
   }, [userId, onboarded, profileStatus, itineraryUserId, loadItineraries]);
@@ -158,23 +149,10 @@ function InitialLayout() {
       // ✅ Logged in and set up -> push to tabs
       router.replace("/(tabs)/explore");
     }
-  }, [
-    session,
-    initialized,
-    segments,
-    fontsReady,
-    profileStatus,
-    profileUserId,
-    userId,
-    onboarded,
-    router,
-  ]);
+  }, [session, initialized, segments, fontsReady, profileStatus, profileUserId, userId, onboarded, router]);
 
   // Signed in, but the profile isn't loaded yet (or failed to load)
-  const showProfileGate =
-    !!session &&
-    (!hasProfile || profileUserId !== userId) &&
-    profileStatus !== "ready";
+  const showProfileGate = !!session && (!hasProfile || profileUserId !== userId) && profileStatus !== "ready";
 
   // Set up, but hasn't accepted the current terms
   const acceptedTermsVersion = preferences?.terms_version ?? null;
@@ -197,10 +175,7 @@ function InitialLayout() {
         <Stack.Screen name="(auth)/login" options={{headerShown: false}} />
 
         {/* Tabs Group */}
-        <Stack.Screen
-          name="(tabs)"
-          options={{headerShown: false, title: "", animation: "none"}}
-        />
+        <Stack.Screen name="(tabs)" options={{headerShown: false, title: "", animation: "none"}} />
 
         {/* CREATE SCREEN */}
         <Stack.Screen
@@ -230,10 +205,7 @@ function InitialLayout() {
         />
 
         {/* ACTIVE DATE SCREEN */}
-        <Stack.Screen
-          name="active-date/index"
-          options={{headerShown: false, animation: "slide_from_bottom"}}
-        />
+        <Stack.Screen name="active-date/index" options={{headerShown: false, animation: "slide_from_bottom"}} />
 
         {/* ONBOARDING (first sign-in until onboarded_at is set) */}
         <Stack.Screen
@@ -243,29 +215,22 @@ function InitialLayout() {
 
         {/* SETTINGS */}
         <Stack.Screen name="settings/index" options={{headerShown: false}} />
-        <Stack.Screen
-          name="settings/edit-profile"
-          options={{headerShown: false}}
-        />
+        <Stack.Screen name="settings/edit-profile" options={{headerShown: false}} />
         <Stack.Screen name="settings/planning" options={{headerShown: false}} />
-        <Stack.Screen
-          name="settings/delete-account"
-          options={{headerShown: false}}
-        />
-        <Stack.Screen
-          name="settings/hidden-ideas"
-          options={{headerShown: false}}
-        />
+        <Stack.Screen name="settings/delete-account" options={{headerShown: false}} />
+        <Stack.Screen name="settings/hidden-ideas" options={{headerShown: false}} />
         {/* CONNECTIONS (#35): the list, Add someone, and opening someone's link */}
         <Stack.Screen name="connections" options={{headerShown: false}} />
         <Stack.Screen name="connections/add" options={{headerShown: false}} />
         <Stack.Screen name="connect/[code]" options={{headerShown: false, animation: "fade"}} />
 
-        {/* TERMS OF USE (Settings › Help) */}
+        {/* TERMS OF USE and PRIVACY POLICY (Settings › Help) */}
         <Stack.Screen name="terms" options={{headerShown: false}} />
+        <Stack.Screen name="privacy" options={{headerShown: false}} />
 
-        {/* MODERATION (staff only) */}
+        {/* MODERATION (staff only), and a reported person's review (#76) */}
         <Stack.Screen name="moderation" options={{headerShown: false}} />
+        <Stack.Screen name="reported-person/[id]" options={{headerShown: false}} />
 
         {/* IDEA GUIDELINES (#85): a sheet, so it opens over the post form */}
         <Stack.Screen
@@ -291,18 +256,9 @@ function InitialLayout() {
         <View className="absolute inset-0 bg-black items-center justify-center px-8">
           {profileStatus === "error" ? (
             <>
-              <Text className="text-white font-bold text-xl text-center">
-                {"Couldn't load your profile"}
-              </Text>
-              {profileError && (
-                <Text className="text-zinc-400 text-base text-center mt-2">
-                  {profileError}
-                </Text>
-              )}
-              <Pressable
-                onPress={reloadProfile}
-                className="bg-white rounded-2xl px-8 py-3.5 mt-8 active:opacity-80"
-              >
+              <Text className="text-white font-bold text-xl text-center">{"Couldn't load your profile"}</Text>
+              {profileError && <Text className="text-zinc-400 text-base text-center mt-2">{profileError}</Text>}
+              <Pressable onPress={reloadProfile} className="bg-white rounded-2xl px-8 py-3.5 mt-8 active:opacity-80">
                 <Text className="text-black font-extrabold">Try again</Text>
               </Pressable>
               <Pressable onPress={signOut} className="mt-4 py-2">

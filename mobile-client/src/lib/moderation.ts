@@ -1,13 +1,16 @@
 // src/lib/moderation.ts
 // The moderation queue and decisions (#26). Reads go through RLS (staff see
 // ideas submitted for review, never private ones); decisions go through
-// review_idea() / resolve_reports(), which check the role and log who did it.
+// review_idea() / resolve_reports() / handle_person_reports(), which check
+// the role and log who did it. People can be reported too (#76): their
+// photo, their name, how they treat others.
 
 import {supabase} from "@/src/supabase";
 import {friendlyError} from "@/src/lib/profile";
 import type {RuleId} from "@/src/lib/ideaGuidelines";
 import {useStaffStore} from "@/src/store/useStaffStore";
 import type {IdeaVisibility} from "@/types/ideas";
+import type {PersonReportReason} from "@/src/lib/reportPerson";
 
 export type Decision = "APPROVE" | "REQUEST_CHANGES" | "REJECT";
 export type ReportReason = "INAPPROPRIATE" | "SPAM" | "UNSAFE" | "AGE_RATING" | "OTHER";
@@ -46,11 +49,32 @@ export interface ReportedIdea extends Omit<QueueIdea, "submitted_at" | "place" |
   held: boolean;
 }
 
+export interface PersonReport {
+  reason: PersonReportReason;
+  details: string | null;
+  /** From their connection sheet, or a date */
+  context: "CONNECTION" | "DATE";
+  created_at: string;
+}
+
+export interface ReportedPerson {
+  user_id: string;
+  username: string | null;
+  profile_image_url: string | null;
+  reports: PersonReport[];
+}
+
+/** What a moderator does about a person's reports */
+export type PersonOutcome = "REMOVE_PHOTO" | "REMOVE_NAME" | "RESET_USERNAME" | "SUSPEND" | "RESOLVED" | "DISMISSED";
+
 export interface LogEntry {
   action_id: number;
   action: string;
   idea_id: number | null;
   idea_title: string | null;
+  /** Who it was about (people: suspensions, photos, names) */
+  user_id: string | null;
+  subject: string | null;
   moderator: string | null;
   note: string | null;
   detail: Record<string, unknown> | null;
@@ -162,10 +186,22 @@ export async function fetchReported(): Promise<ReportedIdea[]> {
 }
 
 const LOG_COLUMNS = `
-  action_id, action, idea_id, note, detail, created_at,
+  action_id, action, idea_id, user_id, note, detail, created_at,
   moderator:users!moderation_actions_moderator_id_fkey ( username ),
+  subject:users!moderation_actions_user_id_fkey ( username ),
   idea:activities ( title )
 `;
+
+/** Actions about a person rather than an idea */
+export const PERSON_ACTIONS = [
+  "SUSPEND",
+  "UNSUSPEND",
+  "REMOVE_PHOTO",
+  "REMOVE_NAME",
+  "RESET_USERNAME",
+  "RESOLVE_PERSON_REPORTS",
+  "DISMISS_PERSON_REPORTS",
+];
 
 function toLogEntry(row: any): LogEntry {
   return {
@@ -173,6 +209,8 @@ function toLogEntry(row: any): LogEntry {
     action: row.action,
     idea_id: row.idea_id,
     idea_title: row.idea?.title ?? null,
+    user_id: row.user_id ?? null,
+    subject: row.subject?.username ?? null,
     moderator: row.moderator?.username ?? null,
     note: row.note,
     detail: row.detail,
@@ -288,6 +326,92 @@ export async function resolveReports(ideaId: number, outcome: "RESOLVED" | "DISM
   useStaffStore.getState().refreshCounts();
 }
 
+/** People with open reports, most reported first (#76). */
+export async function fetchReportedPeople(): Promise<ReportedPerson[]> {
+  const {data, error} = await supabase
+    .from("user_reports")
+    .select(
+      `reason, details, context, created_at,
+       person:users!user_reports_reported_id_fkey ( user_id, username, profile_image_url )`,
+    )
+    .eq("status", "OPEN")
+    .order("created_at", {ascending: false})
+    .limit(500);
+  if (error) throw new Error(friendlyError(error));
+
+  const byPerson = new Map<string, ReportedPerson>();
+  for (const row of (data ?? []) as any[]) {
+    const person = row.person;
+    // Their account is gone (its reports went with it)
+    if (!person) continue;
+    let entry = byPerson.get(person.user_id);
+    if (!entry) {
+      entry = {...person, reports: []} as ReportedPerson;
+      byPerson.set(person.user_id, entry);
+    }
+    entry.reports.push({reason: row.reason, details: row.details, context: row.context, created_at: row.created_at});
+  }
+  return [...byPerson.values()].sort((a, b) => b.reports.length - a.reports.length);
+}
+
+export interface PersonReview {
+  /** Their name too (what you see of a connection): it may be what's reported */
+  person: Omit<ReportedPerson, "reports"> & {first_name: string | null; last_name: string | null};
+  reports: PersonReport[];
+  history: LogEntry[];
+  suspended: boolean;
+  /** Staff can't be suspended (an admin removes the role first) */
+  isStaff: boolean;
+}
+
+/** One person's profile, open reports and history, for their review page.
+ *  null: nothing to show (no reports about them, or the account is gone). */
+export async function fetchPersonReview(userId: string): Promise<PersonReview | null> {
+  const [person, reports, history, suspension, staff] = await Promise.all([
+    // Names aren't readable from users; moderators get them for someone
+    // with reports (or suspended)
+    supabase.rpc("person_for_review", {p_user_id: userId}).maybeSingle(),
+    supabase
+      .from("user_reports")
+      .select("reason, details, context, created_at")
+      .eq("reported_id", userId)
+      .eq("status", "OPEN")
+      .order("created_at", {ascending: false}),
+    supabase
+      .from("moderation_actions")
+      .select(LOG_COLUMNS)
+      .eq("user_id", userId)
+      .in("action", PERSON_ACTIONS)
+      .order("created_at", {ascending: false})
+      .limit(20),
+    supabase.from("account_suspensions").select("user_id").eq("user_id", userId).maybeSingle(),
+    supabase.from("staff").select("user_id").eq("user_id", userId).maybeSingle(),
+  ]);
+  if (person.error) throw new Error(friendlyError(person.error));
+  if (reports.error) throw new Error(friendlyError(reports.error));
+  if (history.error) throw new Error(friendlyError(history.error));
+  if (!person.data) return null;
+  return {
+    person: person.data as PersonReview["person"],
+    reports: (reports.data ?? []) as PersonReport[],
+    history: (history.data ?? []).map(toLogEntry),
+    suspended: !!suspension.data,
+    isStaff: !!staff.data,
+  };
+}
+
+/** Remove their photo, reset their username, suspend them, or close their
+ *  reports. Every outcome closes their open reports. Throws a readable Error. */
+export async function handlePersonReports(userId: string, outcome: PersonOutcome, note?: string | null) {
+  const {error} = await supabase.rpc("handle_person_reports", {
+    p_user_id: userId,
+    p_outcome: outcome,
+    p_note: note?.trim() || null,
+  });
+  if (error) throw new Error(error.message || friendlyError(error));
+  useStaffStore.getState().refreshCounts();
+}
+
 const ACTION_LABEL: Record<string, string> = {
   APPROVE: "approved",
   REQUEST_CHANGES: "asked for changes on",
@@ -300,6 +424,30 @@ const ACTION_LABEL: Record<string, string> = {
   SUSPEND: "suspended",
   UNSUSPEND: "lifted the suspension on",
 };
+
+/** About a person: "@sam removed @kit's photo" */
+const PERSON_LABEL: Record<string, (who: string) => string> = {
+  REMOVE_PHOTO: (who) => `removed ${who}'s photo`,
+  REMOVE_NAME: (who) => `removed ${who}'s name`,
+  RESET_USERNAME: (who) => `reset ${who}'s username`,
+  RESOLVE_PERSON_REPORTS: (who) => `resolved reports about ${who}`,
+  DISMISS_PERSON_REPORTS: (who) => `dismissed reports about ${who}`,
+};
+
+/** On a person's page, where the person goes without saying */
+const PERSON_HISTORY_LABEL: Record<string, string> = {
+  SUSPEND: "suspended them",
+  UNSUSPEND: "lifted their suspension",
+  REMOVE_PHOTO: "removed their photo",
+  REMOVE_NAME: "removed their name",
+  RESET_USERNAME: "reset their username",
+  RESOLVE_PERSON_REPORTS: "resolved reports",
+  DISMISS_PERSON_REPORTS: "dismissed reports",
+};
+
+/** " (was @oldname)" after a username reset */
+const wasNamed = (entry: LogEntry) =>
+  entry.action === "RESET_USERNAME" && typeof entry.detail?.from === "string" ? ` (was @${entry.detail.from})` : "";
 
 /** How many people reported it, for an automatic hold */
 const heldAfter = (entry: LogEntry) => {
@@ -319,11 +467,13 @@ const HISTORY_LABEL: Record<string, string> = {
 };
 
 const whoDid = (entry: LogEntry, myUsername?: string | null) =>
-  entry.moderator
-    ? entry.moderator === myUsername
-      ? "You"
-      : `@${entry.moderator}`
-    : "A moderator";
+  entry.moderator ? (entry.moderator === myUsername ? "You" : `@${entry.moderator}`) : "A moderator";
+
+/** "You removed their photo", on a person's page */
+export function personHistoryLine(entry: LogEntry, myUsername?: string | null) {
+  const what = PERSON_HISTORY_LABEL[entry.action] ?? entry.action.toLowerCase();
+  return `${whoDid(entry, myUsername)} ${what}${wasNamed(entry)}`;
+}
 
 /** "You asked for changes" */
 export function historyLine(entry: LogEntry, myUsername?: string | null) {
@@ -337,14 +487,18 @@ export function logLine(entry: LogEntry, myUsername?: string | null) {
     return `“${entry.idea_title ?? "An idea"}” was hidden automatically${heldAfter(entry)}`;
   }
   const who = whoDid(entry, myUsername);
+  const person = entry.subject ? `@${entry.subject}` : "someone";
+  if (PERSON_LABEL[entry.action]) return `${who} ${PERSON_LABEL[entry.action](person)}${wasNamed(entry)}`;
   if (entry.action === "SUSPEND" || entry.action === "UNSUSPEND") {
-    const target = entry.idea_id ? `the creator of “${entry.idea_title ?? "an idea"}”` : "an account";
+    const target = entry.subject
+      ? person
+      : entry.idea_id
+        ? `the creator of “${entry.idea_title ?? "an idea"}”`
+        : "an account";
     return `${who} ${ACTION_LABEL[entry.action]} ${target}`;
   }
   const what = ACTION_LABEL[entry.action] ?? entry.action.toLowerCase();
-  const onIdea = entry.idea_id
-    ? ` “${entry.idea_title ?? "a private idea"}”`
-    : "";
+  const onIdea = entry.idea_id ? ` “${entry.idea_title ?? "a private idea"}”` : "";
   return `${who} ${what}${entry.action.endsWith("_STAFF") ? "" : onIdea}`;
 }
 

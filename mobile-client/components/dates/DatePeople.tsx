@@ -1,16 +1,10 @@
 // components/dates/DatePeople.tsx
 // Who's on a date (#36), with their roles. The owner invites connections
-// and changes or removes people; everyone else can leave.
+// and changes or removes people; everyone else can leave. Anyone can report
+// someone else on it (#76).
 
 import React, {useState} from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import {ActivityIndicator, Modal, Pressable, ScrollView, Text, View} from "react-native";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 import {router} from "expo-router";
 import {Ionicons} from "@expo/vector-icons";
@@ -33,6 +27,7 @@ import type {DateRole} from "@/types/dates";
 import {showDone, showError} from "@/src/lib/notify";
 import {type SheetIcon, afterSheetCloses, choose, confirm} from "@/src/lib/sheets";
 import Overlays from "@/components/sheets/Overlays";
+import {reportPerson} from "@/src/lib/reportPerson";
 
 const STATUS_NOTE: Record<string, string> = {PENDING: "Invited", DECLINED: "Declined"};
 
@@ -52,6 +47,7 @@ export default function DatePeople({
 }) {
   const [inviting, setInviting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const connections = useConnectionsStore((s) => s.connections);
 
   const run = async (key: string, action: () => Promise<unknown>, done?: string) => {
     setBusy(key);
@@ -66,33 +62,59 @@ export default function DatePeople({
     }
   };
 
-  // The owner's options for one person
+  // The owner's "Remove from date"
+  const removeItem = (m: DateMember, name: string) => ({
+    label: "Remove from date",
+    icon: "person-remove-outline" as SheetIcon,
+    destructive: true,
+    run: async () => {
+      const ok = await confirm({
+        title: `Remove ${name}?`,
+        message: "They won't see this date anymore.",
+        confirmLabel: "Remove",
+        destructive: true,
+      });
+      if (ok) run(m.user_id, () => removeFromDate(itineraryId, m.user_id), `Removed ${name}`);
+    },
+  });
+
+  // What you can do about someone else on it: the owner changes their role
+  // or removes them; anyone can report them
   const openMenu = async (m: DateMember) => {
     const name = memberName(m);
+    const manage = isOwner && m.role !== "OWNER";
+    const report = async () => {
+      const outcome = await reportPerson(
+        {id: m.user_id, username: m.username},
+        {context: "DATE", itineraryId},
+        {connected: connections.some((c) => c.user_id === m.user_id)},
+      );
+      if (outcome === "FORGOT") onChanged();
+    };
     const items: {label: string; icon: SheetIcon; destructive?: boolean; run: () => void}[] = [
-      ...INVITE_ROLES.filter((r) => r !== m.role).map((r) => ({
-        label: ROLE_LABEL[r],
-        icon: (r === "EDITOR" ? "create-outline" : r === "COMMENTER" ? "chatbubble-outline" : "eye-outline") as SheetIcon,
-        run: () => run(m.user_id, () => setDateRole(itineraryId, m.user_id, r), `${name}: ${ROLE_LABEL[r].toLowerCase()}`),
-      })),
+      ...(manage ? INVITE_ROLES : [])
+        .filter((r) => r !== m.role)
+        .map((r) => ({
+          label: ROLE_LABEL[r],
+          icon: (r === "EDITOR"
+            ? "create-outline"
+            : r === "COMMENTER"
+              ? "chatbubble-outline"
+              : "eye-outline") as SheetIcon,
+          run: () =>
+            run(m.user_id, () => setDateRole(itineraryId, m.user_id, r), `${name}: ${ROLE_LABEL[r].toLowerCase()}`),
+        })),
+      ...(manage ? [removeItem(m, name)] : []),
       {
-        label: "Remove from date",
-        icon: "person-remove-outline",
+        label: m.username ? `Report @${m.username}` : "Report",
+        icon: "flag-outline",
         destructive: true,
-        run: async () => {
-          const ok = await confirm({
-            title: `Remove ${name}?`,
-            message: "They won't see this date anymore.",
-            confirmLabel: "Remove",
-            destructive: true,
-          });
-          if (ok) run(m.user_id, () => removeFromDate(itineraryId, m.user_id), `Removed ${name}`);
-        },
+        run: report,
       },
     ];
     const picked = await choose({
       title: name,
-      message: `${ROLE_LABEL[m.role]} now`,
+      message: manage ? `${ROLE_LABEL[m.role]} now` : ROLE_LABEL[m.role],
       options: items.map((item, i) => ({label: item.label, icon: item.icon, destructive: item.destructive, value: i})),
     });
     if (picked != null) items[picked].run();
@@ -123,15 +145,17 @@ export default function DatePeople({
         ) : (
           shown.map((m, i) => {
             const me = m.user_id === myUserId;
-            const canManage = isOwner && !me && m.role !== "OWNER";
+            // Anyone else you can see (not someone you've forgotten): the
+            // owner manages them, everyone can report them
+            const canOpen = !me && !m.masked;
             return (
               <Pressable
                 key={m.user_id}
-                onPress={canManage ? () => openMenu(m) : undefined}
-                disabled={!canManage || busy === m.user_id}
-                accessibilityRole={canManage ? "button" : undefined}
+                onPress={canOpen ? () => openMenu(m) : undefined}
+                disabled={!canOpen || busy === m.user_id}
+                accessibilityRole={canOpen ? "button" : undefined}
                 className={`flex-row items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-zinc-800" : ""} ${
-                  canManage ? "active:bg-zinc-800" : ""
+                  canOpen ? "active:bg-zinc-800" : ""
                 }`}
               >
                 <Avatar
@@ -150,7 +174,7 @@ export default function DatePeople({
                 </View>
                 {busy === m.user_id ? (
                   <ActivityIndicator color="#a1a1aa" />
-                ) : canManage ? (
+                ) : canOpen ? (
                   <Ionicons name="ellipsis-horizontal" size={18} color="#71717a" />
                 ) : null}
               </Pressable>
@@ -261,7 +285,10 @@ function InviteSheet({
           </View>
         </View>
 
-        <ScrollView contentContainerClassName="px-5 pt-5 gap-6" contentContainerStyle={{paddingBottom: insets.bottom + 32}}>
+        <ScrollView
+          contentContainerClassName="px-5 pt-5 gap-6"
+          contentContainerStyle={{paddingBottom: insets.bottom + 32}}
+        >
           {/* ROLE */}
           <View className="gap-2">
             <Text className="text-zinc-400 text-sm font-bold ml-1">THEY CAN</Text>
@@ -293,10 +320,7 @@ function InviteSheet({
                     ? "Everyone you're connected with is already on this date."
                     : "Connect with someone first, then invite them to your dates."}
                 </Text>
-                <Pressable
-                  onPress={addSomeone}
-                  className="bg-white rounded-full px-5 py-2.5 active:opacity-80"
-                >
+                <Pressable onPress={addSomeone} className="bg-white rounded-full px-5 py-2.5 active:opacity-80">
                   <Text className="text-black font-bold">Add someone</Text>
                 </Pressable>
               </View>

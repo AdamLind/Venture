@@ -9,7 +9,7 @@
 // the new version.
 
 /** Changing this asks everyone to accept again */
-export const TERMS_VERSION = "2026-11-17-draft";
+export const TERMS_VERSION = "2026-11-22-draft";
 
 /** Shown as a banner until the lawyer-reviewed text is in */
 export const TERMS_IS_DRAFT = true;
@@ -25,7 +25,7 @@ export const TERMS_SECTIONS: {title: string; body: string}[] = [
   },
   {
     title: "No objectionable content or abuse",
-    body: "There's no tolerance for objectionable content or abusive users. Don't post anything sexual, hateful, harassing, illegal or dangerous, and don't use Venture to harm, threaten or spam anyone. Anyone can report an idea; our moderators look at reports within 24 hours, remove content that breaks the rules, and can suspend accounts that do.",
+    body: "There's no tolerance for objectionable content or abusive users. Don't post anything sexual, hateful, harassing, illegal or dangerous, and don't use Venture to harm, threaten or spam anyone. Anyone can report an idea or a person; our moderators look at reports within 24 hours, remove content that breaks the rules (including photos, names and usernames), and can suspend accounts that do.",
   },
   {
     title: "What you post",
@@ -41,7 +41,11 @@ export const TERMS_SECTIONS: {title: string; body: string}[] = [
   },
   {
     title: "Blocking and reporting",
-    body: "You can block a creator to stop seeing their ideas, and report any idea from its ••• menu. Reports are confidential.",
+    body: "You can block a creator to stop seeing their ideas, or forget and block a connection. You can report any idea from its ••• menu, and any person from their connection sheet or a date you're both on. Reports are confidential: nobody is told who reported them.",
+  },
+  {
+    title: "Your privacy",
+    body: "How we collect, use and protect your information is in our privacy policy.",
   },
   {
     title: "Your account",
