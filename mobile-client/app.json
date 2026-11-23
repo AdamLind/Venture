@@ -1,19 +1,22 @@
 {
   "expo": {
-    "name": "date-picker",
-    "slug": "date-picker",
+    "name": "Venture",
+    "slug": "venture",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "datepicker",
-    "userInterfaceStyle": "automatic",
+    "scheme": "venture",
+    "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#000000"
       }
     },
     "web": {
@@ -29,7 +32,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#000000"
         }
       ],
       "expo-font",
@@ -41,12 +44,32 @@
         "expo-camera",
         {
           "cameraPermission": "Venture uses the camera to take photos during your dates, and to scan a friend's code so you can connect.",
-          "recordAudioAndroid": false
+          "recordAudioAndroid": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Venture uses your location to plan dates from where you are, find places near you, and keep a date on track while it's happening.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "locationAlwaysAndWhenInUsePermission": "Venture uses your location to plan dates from where you are, find places near you, and keep a date on track while it's happening.",
+          "locationAlwaysPermission": "Venture uses your location to plan dates from where you are, find places near you, and keep a date on track while it's happening."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Venture uses your photos to add a picture to your profile or to an idea you share.",
+          "cameraPermission": false,
+          "microphonePermission": false
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "backgroundColor": "#000000"
   }
 }
