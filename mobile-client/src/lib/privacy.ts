@@ -26,7 +26,7 @@ export const PRIVACY_SECTIONS: {title: string; body: string}[] = [
   },
   {
     title: "Where you are",
-    body: "If you allow it, Venture uses your location while you're using the app: to plan a date from where you are, find places near you, and keep a date on track while it's happening. It never uses your location in the background. You can also save a home area to plan from instead. The starting point of a plan is saved with that date.",
+    body: "If you allow it, Venture uses your location while you're using the app: to plan a date from where you are, find places near you, and keep a date on track while it's happening. It never uses your location in the background. You can also save a home area to plan from instead. Where a date starts is saved with it while it's coming up or happening (for travel times), and removed once it's over.",
   },
   {
     title: "Your dates",
