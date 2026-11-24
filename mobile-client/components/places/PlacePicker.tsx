@@ -6,7 +6,9 @@
 //   Search ..... places on Venture by name, nearest first (only ones you
 //                may see: nobody's private pins, #77). Empty: what's near
 //   Pin ........ a full-screen map: move it under the pin (where you go or
-//                park). The pin lifts while the map moves
+//                park). The pin lifts while the map moves. Tap the address
+//                bar to look up an address or a landmark (the phone's map
+//                service) and jump there, then nudge it
 //   Details .... name it, and say how to get there if it's not obvious
 //                (its own screen, so the keyboard never covers the map)
 //   Same? ...... places very close or with a similar name: "Is it one of
@@ -65,6 +67,8 @@ const FALLBACK: LatLng = {latitude: 40.2338, longitude: -111.6585};
 const ZOOM = {latitudeDelta: 0.004, longitudeDelta: 0.004};
 /** The name screen's map: about 150 m top to bottom (which building, and what's around it) */
 const PREVIEW_SPAN = 150 / 111_000; // degrees of latitude (~111 km each)
+/** Looking up a spot on the pin map: at most this many to choose from */
+const FIND_MAX = 5;
 /** Text inputs: font size only (a line height pushes one-line text off centre on iOS) */
 const INPUT_TEXT = {fontSize: 16};
 /** Floating glass buttons over the map (like the idea page's) */
@@ -79,6 +83,9 @@ const GLASS_PILL = {
 } as const;
 
 type Step = "search" | "pin" | "details" | "same";
+
+/** A spot the phone's map service found, for the pin map */
+type FoundSpot = LatLng & {label: string; detail: string | null};
 
 /**
  * Moves a map (keeping its zoom) so `coord` shows exactly at `target` (a
@@ -242,7 +249,82 @@ export default function PlacePicker({
     };
   }, [step, pin]);
 
+  // ─── Looking up a spot (the pin map's address bar) ───────────────────────
+  // The phone's own map service (Apple's on iPhone): an address, a town, a
+  // landmark. It returns spots, not places, so each is named by what's there
+  // and the map jumps to it; the pin is still yours to nudge. As-you-type
+  // place search comes with a development build (#78)
+  const [finding, setFinding] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [foundSpots, setFoundSpots] = useState<FoundSpot[] | null>(null);
+  const [findBusy, setFindBusy] = useState(false);
+  const [findError, setFindError] = useState<string | null>(null);
+  const findRequest = useRef(0);
+  const openFind = () => {
+    // Starts from the name you're adding ("Bridal Veil Falls"): often what you'd search
+    setFindQuery(name.trim());
+    setFoundSpots(null);
+    setFindError(null);
+    setFinding(true);
+  };
+  const closeFind = () => {
+    findRequest.current++;
+    Keyboard.dismiss();
+    setFinding(false);
+    setFindBusy(false);
+  };
+  const goToSpot = (spot: LatLng) => {
+    closeFind();
+    mapRef.current?.animateToRegion({latitude: spot.latitude, longitude: spot.longitude, ...ZOOM}, 500);
+  };
+  const runFind = async () => {
+    const wanted = findQuery.trim();
+    if (!wanted) return;
+    const request = ++findRequest.current;
+    setFindBusy(true);
+    setFindError(null);
+    try {
+      const hits = await Location.geocodeAsync(wanted);
+      if (request !== findRequest.current) return;
+      // Nearest first (it doesn't know where you're looking)
+      const spots = hits
+        .map((hit) => ({latitude: hit.latitude, longitude: hit.longitude}))
+        .sort((a, b) => getDistance(pin, a) - getDistance(pin, b))
+        .slice(0, FIND_MAX);
+      if (spots.length === 0) {
+        setFoundSpots([]);
+        setFindError("Nothing found. Try an address, or a landmark and its town.");
+        return;
+      }
+      if (spots.length === 1) {
+        goToSpot(spots[0]);
+        return;
+      }
+      const named = await Promise.all(
+        spots.map(async (spot): Promise<FoundSpot> => {
+          try {
+            const [hit] = await Location.reverseGeocodeAsync(spot);
+            const street = [hit?.streetNumber, hit?.street].filter(Boolean).join(" ");
+            const label = hit?.name || street || hit?.city || "A spot on the map";
+            const area = [hit?.city, hit?.region].filter(Boolean).join(", ");
+            return {...spot, label, detail: area || null};
+          } catch {
+            return {...spot, label: `${spot.latitude.toFixed(4)}, ${spot.longitude.toFixed(4)}`, detail: null};
+          }
+        }),
+      );
+      if (request !== findRequest.current) return;
+      setFoundSpots(named);
+    } catch {
+      if (request !== findRequest.current) return;
+      setFindError("Couldn't look that up. Move the map instead, or try again.");
+    } finally {
+      if (request === findRequest.current) setFindBusy(false);
+    }
+  };
+
   const reset = () => {
+    setFinding(false);
     setStep("search");
     setQuery("");
     setName("");
@@ -434,7 +516,9 @@ export default function PlacePicker({
       presentationStyle="fullScreen"
       statusBarTranslucent
       onRequestClose={() =>
-        step === "search" || (addOnly && step === "pin")
+        finding
+          ? closeFind()
+          : step === "search" || (addOnly && step === "pin")
           ? close()
           : setStep(step === "same" ? "details" : step === "details" ? "pin" : "search")
       }
@@ -585,13 +669,29 @@ export default function PlacePicker({
               pointerEvents="box-none"
             >
               <View className="flex-row items-end gap-3" pointerEvents="box-none">
-                <View className="flex-1" pointerEvents="none">
-                  <GlassSurface style={{borderRadius: 22, paddingHorizontal: 16, height: 44, justifyContent: "center"}}>
-                    <Text className="text-zinc-100 text-sm" numberOfLines={1}>
+                {/* Where the pin is; tap to look up an address or landmark */}
+                <Pressable
+                  onPress={openFind}
+                  accessibilityRole="search"
+                  accessibilityLabel={`${address ? `Near ${address}` : "Pin on the map"}. Look up an address or a landmark`}
+                  className="flex-1 active:opacity-80"
+                >
+                  <GlassSurface
+                    style={{
+                      borderRadius: 22,
+                      paddingHorizontal: 16,
+                      height: 44,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <Ionicons name="search" size={15} color="#d4d4d8" />
+                    <Text className="text-zinc-100 text-sm flex-1" numberOfLines={1}>
                       {address ? `Near ${address}` : `${pin.latitude.toFixed(4)}, ${pin.longitude.toFixed(4)}`}
                     </Text>
                   </GlassSurface>
-                </View>
+                </Pressable>
                 {userLocation && (
                   <Pressable
                     onPress={locateMe}
@@ -613,6 +713,94 @@ export default function PlacePicker({
                 <Text className="text-black font-extrabold text-base">Next</Text>
               </Pressable>
             </View>
+
+            {/* Looking up a spot: over the map, which jumps there when you pick one */}
+            {finding && (
+              <View className="absolute inset-0 bg-black/80" style={{paddingTop: insets.top + 8}}>
+                <View className="flex-row items-center gap-3 px-4">
+                  <Pressable
+                    onPress={closeFind}
+                    accessibilityRole="button"
+                    accessibilityLabel="Back to the map"
+                    className="active:opacity-70"
+                  >
+                    <GlassSurface style={GLASS_ROUND}>
+                      <Ionicons name="chevron-back" size={24} color="white" />
+                    </GlassSurface>
+                  </Pressable>
+                  <View className="flex-1 flex-row items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-full px-4 h-11">
+                    <Ionicons name="search" size={16} color="#71717a" />
+                    <TextInput
+                      value={findQuery}
+                      onChangeText={(text) => {
+                        setFindQuery(text);
+                        setFindError(null);
+                      }}
+                      onSubmitEditing={runFind}
+                      autoFocus
+                      selectTextOnFocus
+                      placeholder="An address, or a landmark and town"
+                      placeholderTextColor="#71717a"
+                      returnKeyType="search"
+                      autoCorrect={false}
+                      accessibilityLabel="Look up an address or a landmark"
+                      className="flex-1 text-white"
+                      style={INPUT_TEXT}
+                    />
+                    {findBusy ? (
+                      <ActivityIndicator size="small" color="#71717a" />
+                    ) : findQuery ? (
+                      <Pressable onPress={() => setFindQuery("")} hitSlop={10} accessibilityLabel="Clear">
+                        <Ionicons name="close-circle" size={18} color="#71717a" />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="on-drag"
+                  contentContainerClassName="px-5 pt-4 gap-2.5"
+                  contentContainerStyle={{paddingBottom: insets.bottom + 24}}
+                >
+                  {findError ? (
+                    <Text className="text-zinc-400 text-sm ml-1">{findError}</Text>
+                  ) : foundSpots && foundSpots.length > 0 ? (
+                    <>
+                      <Text className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-0.5 ml-1">
+                        Which one?
+                      </Text>
+                      {foundSpots.map((spot) => (
+                        <Pressable
+                          key={`${spot.latitude},${spot.longitude}`}
+                          onPress={() => goToSpot(spot)}
+                          accessibilityRole="button"
+                          className="flex-row items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-2xl p-3.5 active:opacity-80"
+                        >
+                          <View className="w-10 h-10 rounded-xl bg-zinc-800 items-center justify-center">
+                            <Ionicons name="map-outline" size={18} color={PIN_COLOR} />
+                          </View>
+                          <View className="flex-1">
+                            <Text className="text-white font-bold text-base" numberOfLines={1}>
+                              {spot.label}
+                            </Text>
+                            <Text className="text-zinc-400 text-sm" numberOfLines={1}>
+                              {[spot.detail, distanceLabel(getDistance(pin, spot) * 1609.34)]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={16} color="#52525b" />
+                        </Pressable>
+                      ))}
+                    </>
+                  ) : (
+                    <Text className="text-zinc-500 text-sm ml-1 leading-5">
+                      Search, and the map jumps there. Then move it so the pin is exactly where you go.
+                    </Text>
+                  )}
+                </ScrollView>
+              </View>
+            )}
           </View>
         )}
 
