@@ -43,7 +43,7 @@ really collects (`mobile-client/src/lib/privacy.ts`). Launch checklist: #91.
 > Venture is a date-planning app for people 18 and older. Sign in with the demo account below.
 >
 > **Demo account:** TODO email / TODO password
-> The account's home area is in Provo, Utah, where our ideas are. If you allow location, choose "From home area" on the Plan tab, because ideas near Cupertino don't exist yet.
+> The account's home area is in Provo, Utah, where our ideas are. On the Plan tab, under Where, choose Go Out and then "Start from: Provo" (the home area), because there are no ideas near Cupertino yet.
 >
 > **Things to try:**
 > - Discover: browse ideas; the ••• menu on an idea has Not interested, Block the creator, and Report.

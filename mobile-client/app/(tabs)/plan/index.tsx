@@ -108,6 +108,9 @@ export default function PlanScreen() {
   const partner = usePartner();
   const [modality, setModality] = useState<ActivityLocation>(defaultModality);
   const [location, setLocation] = useState<SimpleLocation | null>(null);
+  // Going out: start from where you are, or from your home area (planning
+  // tonight's date from work; or away from home, like App Review)
+  const [fromHome, setFromHome] = useState(false);
 
   const [startDate, setStartDate] = useState(getRoundedDate(new Date()));
   const [showStartPicker, setShowStartPicker] = useState(false);
@@ -197,7 +200,7 @@ export default function PlanScreen() {
         modality: modality === ActivityLocation.GoOut ? "GO_OUT" : "STAY_IN",
         startDate: startDate.toISOString(),
         endDate: new Date(startDate.getTime() + hours * 3_600_000).toISOString(),
-        currentLocation: location ?? homeLocation,
+        currentLocation: (fromHome && homeLocation) || location || homeLocation,
         homeLocation,
         travelDistance: defaults.default_travel_miles,
         budget: Number.MAX_SAFE_INTEGER,
@@ -356,6 +359,7 @@ export default function PlanScreen() {
     setSurprise(false);
     setModality(defaultModality);
     setLocation(null);
+    setFromHome(false);
     setStartDate(roundedNow);
     setTempStartDate(roundedNow);
     setDurationHours(4);
@@ -444,7 +448,7 @@ export default function PlanScreen() {
 
     handleDiscard();
 
-    let activeLocation = location;
+    let activeLocation = fromHome && homeLocation ? homeLocation : location;
 
     // Just-in-Time Location Fetching if modality is GO_OUT and location is missing
     if (modality === ActivityLocation.GoOut && !activeLocation) {
@@ -531,11 +535,15 @@ export default function PlanScreen() {
     durationHours === null ? "Open-ended" : `${durationHours}h`,
     seedCost > 0 ? `${budgetSummary} + ${formatMoney(seedCost)}` : budgetSummary,
   ].join(" · ");
-  const locationHint = location
-    ? "Using your current location"
-    : homeLocation
-      ? `We'll use your location, or ${defaults.home_label ?? "your home area"} if it's off`
-      : "We'll ask for your location when you start";
+  const homeName = defaults.home_label ?? "your home area";
+  const locationHint =
+    fromHome && homeLocation
+      ? `Planning from ${homeName}`
+      : location
+        ? "Using your current location"
+        : homeLocation
+          ? `We'll use your location, or ${homeName} if it's off`
+          : "We'll ask for your location when you start";
 
   return (
     // Fragment, so the scroll view is the screen's root view (see
@@ -693,7 +701,39 @@ export default function PlanScreen() {
               inOrOut={modality}
               setInOrOut={setModality}
               setLocation={setLocation}
+              onNoLocation={homeLocation ? () => setFromHome(true) : undefined}
             />
+            {/* Where it starts: here, or your home area */}
+            {goingOut && homeLocation && (
+              <View className="flex-row items-center gap-2 px-1">
+                <Text className="text-zinc-500 text-xs">Start from</Text>
+                {[
+                  {home: false, label: "Where you are", icon: "navigate" as const},
+                  {home: true, label: defaults.home_label ?? "Home area", icon: "home" as const},
+                ].map((option) => {
+                  const active = fromHome === option.home;
+                  return (
+                    <Pressable
+                      key={option.label}
+                      onPress={() => setFromHome(option.home)}
+                      accessibilityRole="button"
+                      accessibilityState={{selected: active}}
+                      className={`flex-row items-center gap-1 px-3 py-1.5 rounded-full border shrink ${
+                        active ? "bg-zinc-700 border-zinc-600" : "border-zinc-800 active:bg-zinc-900"
+                      }`}
+                    >
+                      <Ionicons name={option.icon} size={12} color={active ? "white" : "#71717a"} />
+                      <Text
+                        className={`text-xs font-semibold ${active ? "text-white" : "text-zinc-400"}`}
+                        numberOfLines={1}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
             {goingOut && (
               <Text className="text-zinc-500 text-xs px-1">{locationHint}</Text>
             )}

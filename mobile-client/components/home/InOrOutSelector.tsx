@@ -19,10 +19,14 @@ export default function InOrOutSelector({
   inOrOut,
   setInOrOut,
   setLocation,
+  onNoLocation,
 }: {
   inOrOut: ActivityLocation;
   setInOrOut: Dispatch<SetStateAction<ActivityLocation>>;
   setLocation: Dispatch<React.SetStateAction<SimpleLocation | null>>;
+  /** There's a home area to plan from: going out works without your
+   *  location (off, or can't be found), starting from home */
+  onNoLocation?: () => void;
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -51,8 +55,11 @@ export default function InOrOutSelector({
 
     try {
       if (!permissionResponse?.granted) {
+        // Off for good, with a home area to fall back on: don't ask again
+        if (permissionResponse && !permissionResponse.canAskAgain && onNoLocation) return false;
         const result = await requestPermission();
         if (!result.granted) {
+          if (onNoLocation) return false;
           Toast.show({
             type: "error",
             text1: "Location is off",
@@ -97,7 +104,8 @@ export default function InOrOutSelector({
         // 3. Pro UX: Send them to settings if they permanently denied it
         if (
           permissionResponse?.status === Location.PermissionStatus.DENIED &&
-          !permissionResponse.canAskAgain
+          !permissionResponse.canAskAgain &&
+          !onNoLocation
         ) {
           const open = await confirm({
             title: "Location is off",
@@ -111,7 +119,9 @@ export default function InOrOutSelector({
 
         const success = await fetchLocation();
         if (!success) {
-          return;
+          // No location: plan from the home area, if there is one
+          if (!onNoLocation) return;
+          onNoLocation();
         }
       }
 
@@ -127,6 +137,7 @@ export default function InOrOutSelector({
 
         const isPermanentlyDenied =
           isGoOut &&
+          !onNoLocation &&
           permissionResponse?.status === Location.PermissionStatus.DENIED;
 
         return (
