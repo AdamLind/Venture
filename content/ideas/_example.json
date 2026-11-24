@@ -1,0 +1,53 @@
+{
+  "city": "provo",
+  "center": "40.2338, -111.6585",
+  "places": [
+    {
+      "id": "rock-canyon",
+      "name": "Rock Canyon Park",
+      "address": "2620 N Rock Canyon Dr, Provo, UT 84604",
+      "pin": "40.2671, -111.6347",
+      "hours": "Mo-Su 06:00-22:00",
+      "access_note": "Park in the main lot at the top of Rock Canyon Dr; the canyon trail starts past the playground."
+    }
+  ],
+  "ideas": [
+    {
+      "key": "provo/rock-canyon-sunset-walk",
+      "title": "Sunset walk up Rock Canyon",
+      "description": "Walk a mile up the canyon as the walls turn orange, then turn around for city lights on the way down. Easy, free, and quiet enough to actually talk.",
+      "type": "ACTIVE",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "rock-canyon",
+      "price": 0,
+      "minutes": 90,
+      "flexible_length": true,
+      "best_time": ["EVENING"],
+      "months": [4, 5, 6, 7, 8, 9, 10],
+      "weather": "NICE",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [2, 6],
+      "tags": ["walks", "views", "nature"],
+      "photos": [],
+      "notes": "Example only: the pin and hours are rough, check before using."
+    },
+    {
+      "key": "provo/blanket-fort-movie-night",
+      "title": "Blanket fort movie night",
+      "description": "Build a fort out of every blanket and pillow in the house, string some lights inside, and watch a movie you both loved as kids.",
+      "type": "OTHER",
+      "where": "in",
+      "price": 5,
+      "minutes": 150,
+      "best_time": ["EVENING", "LATE_NIGHT"],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [2, 2],
+      "tags": ["movies", "romantic"],
+      "photos": []
+    }
+  ]
+}
