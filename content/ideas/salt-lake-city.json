@@ -368,32 +368,13 @@
       "price": 0,
       "minutes": 75,
       "flexible_length": true,
-      "best_time": [
-        "EVENING"
-      ],
-      "months": [
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11
-      ],
+      "best_time": ["EVENING"],
+      "months": [3, 4, 5, 6, 7, 8, 9, 10, 11],
       "weather": "NICE",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "views",
-        "walks",
-        "nature"
-      ],
+      "people": [2, 8],
+      "tags": ["views", "walks", "nature"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026)."
     },
@@ -407,31 +388,13 @@
       "place": "living-room",
       "price": 0,
       "minutes": 120,
-      "best_time": [
-        "EVENING",
-        "MORNING"
-      ],
-      "months": [
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10
-      ],
+      "best_time": ["EVENING", "MORNING"],
+      "months": [4, 5, 6, 7, 8, 9, 10],
       "weather": "NICE",
       "feel": "UPBEAT",
       "exertion": "HARD",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "views",
-        "adventure",
-        "nature"
-      ],
+      "people": [2, 6],
+      "tags": ["views", "adventure", "nature"],
       "safety_note": "Steep and rocky in places, with little shade. Bring water and a light for the walk down if you stay for dark.",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). The pin is the lookout; set the trailhead pin if you'd rather."
@@ -447,32 +410,13 @@
       "price": 18,
       "minutes": 120,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON",
-        "EVENING"
-      ],
-      "months": [
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10
-      ],
+      "best_time": ["MORNING", "AFTERNOON", "EVENING"],
+      "months": [4, 5, 6, 7, 8, 9, 10],
       "weather": "NICE",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "nature",
-        "walks",
-        "romantic"
-      ],
+      "people": [2, 6],
+      "tags": ["nature", "walks", "romantic"],
       "url": "https://redbuttegarden.org/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Admission is a guess; add hours."
@@ -487,27 +431,13 @@
       "place": "red-butte-amphitheater",
       "price": 60,
       "minutes": 210,
-      "best_time": [
-        "EVENING"
-      ],
-      "months": [
-        6,
-        7,
-        8,
-        9
-      ],
+      "best_time": ["EVENING"],
+      "months": [6, 7, 8, 9],
       "weather": "WARM",
       "feel": "UPBEAT",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "music",
-        "festivals",
-        "romantic"
-      ],
+      "people": [2, 6],
+      "tags": ["music", "festivals", "romantic"],
       "url": "https://redbuttegarden.org/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Ticket prices vary a lot by show (this is a guess)."
@@ -523,21 +453,12 @@
       "price": 22,
       "minutes": 150,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["MORNING", "AFTERNOON", "EVENING"],
       "months": "any",
       "feel": "UPBEAT",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "museums"
-      ],
+      "people": [2, 6],
+      "tags": ["museums"],
       "url": "https://nhmu.utah.edu",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Admission is a guess."
@@ -553,20 +474,12 @@
       "price": 15,
       "minutes": 90,
       "flexible_length": true,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
       "months": "any",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "museums"
-      ],
+      "people": [2, 4],
+      "tags": ["museums"],
       "url": "https://umfa.utah.edu/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap; admission is a guess. Address is descriptive."
@@ -582,29 +495,13 @@
       "price": 8,
       "minutes": 90,
       "flexible_length": true,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
-      "months": [
-        5,
-        6,
-        7,
-        8,
-        9
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
+      "months": [5, 6, 7, 8, 9],
       "weather": "NICE",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "walks",
-        "water",
-        "nature"
-      ],
+      "people": [2, 6],
+      "tags": ["walks", "water", "nature"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Check paddle boat rentals are running and the price."
     },
@@ -619,22 +516,13 @@
       "price": 15,
       "minutes": 105,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON"
-      ],
+      "best_time": ["MORNING", "AFTERNOON"],
       "months": "any",
       "weather": "NICE",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "nature",
-        "walks"
-      ],
+      "people": [2, 6],
+      "tags": ["nature", "walks"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap; admission is a guess."
     },
@@ -649,22 +537,13 @@
       "price": 25,
       "minutes": 180,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON"
-      ],
+      "best_time": ["MORNING", "AFTERNOON"],
       "months": "any",
       "weather": "NICE",
       "feel": "UPBEAT",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "nature",
-        "walks"
-      ],
+      "people": [2, 8],
+      "tags": ["nature", "walks"],
       "url": "https://www.hoglezoo.org/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap; admission is a guess."
@@ -680,33 +559,13 @@
       "price": 0,
       "minutes": 90,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON",
-        "EVENING"
-      ],
-      "months": [
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11
-      ],
+      "best_time": ["MORNING", "AFTERNOON", "EVENING"],
+      "months": [3, 4, 5, 6, 7, 8, 9, 10, 11],
       "weather": "NICE",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "walks",
-        "nature"
-      ],
+      "people": [2, 6],
+      "tags": ["walks", "nature"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
     },
@@ -721,31 +580,13 @@
       "price": 0,
       "minutes": 30,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON"
-      ],
-      "months": [
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10
-      ],
+      "best_time": ["MORNING", "AFTERNOON"],
+      "months": [3, 4, 5, 6, 7, 8, 9, 10],
       "weather": "ANY",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "museums",
-        "walks"
-      ],
+      "people": [2, 6],
+      "tags": ["museums", "walks"],
       "url": "https://www.gilgalgarden.org/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). OpenStreetMap's hours change with the season in a format the app can't read; add them by hand."
@@ -761,23 +602,13 @@
       "price": 12,
       "minutes": 105,
       "flexible_length": true,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
       "months": "any",
       "weather": "NICE",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "nature",
-        "romantic",
-        "casual"
-      ],
+      "people": [2, 8],
+      "tags": ["nature", "romantic", "casual"],
       "url": "https://www.sugarhousepark.org/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours change with the season (unknown here). Address is descriptive."
@@ -793,25 +624,13 @@
       "price": 0,
       "minutes": 75,
       "flexible_length": true,
-      "best_time": [
-        "EVENING",
-        "LATE_NIGHT"
-      ],
-      "holidays": [
-        "CHRISTMAS"
-      ],
+      "best_time": ["EVENING", "LATE_NIGHT"],
+      "holidays": ["CHRISTMAS"],
       "weather": "ANY",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "festivals",
-        "walks",
-        "romantic"
-      ],
+      "people": [2, 8],
+      "tags": ["festivals", "walks", "romantic"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Check where the lights are this year (construction around the temple has moved them some years)."
     },
@@ -826,24 +645,13 @@
       "price": 0,
       "minutes": 60,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["MORNING", "AFTERNOON", "EVENING"],
       "months": "any",
       "weather": "ANY",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "museums",
-        "views",
-        "walks"
-      ],
+      "people": [2, 6],
+      "tags": ["museums", "views", "walks"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Add visiting hours (weekdays and weekends differ)."
     },
@@ -858,29 +666,13 @@
       "price": 15,
       "minutes": 150,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON"
-      ],
-      "months": [
-        5,
-        6,
-        7,
-        8,
-        9,
-        10
-      ],
+      "best_time": ["MORNING", "AFTERNOON"],
+      "months": [5, 6, 7, 8, 9, 10],
       "weather": "NICE",
       "feel": "UPBEAT",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "museums",
-        "walks"
-      ],
+      "people": [2, 8],
+      "tags": ["museums", "walks"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Admission and season are guesses: check them."
     },
@@ -895,32 +687,14 @@
       "price": 0,
       "minutes": 120,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON"
-      ],
-      "months": [
-        6,
-        7,
-        8,
-        9,
-        10
-      ],
+      "best_time": ["MORNING", "AFTERNOON"],
+      "months": [6, 7, 8, 9, 10],
       "weather": "NICE",
       "feel": "UPBEAT",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "nature",
-        "walks",
-        "water"
-      ],
-      "risks": [
-        "WATER"
-      ],
+      "people": [2, 8],
+      "tags": ["nature", "walks", "water"],
+      "risks": ["WATER"],
       "safety_note": "The last bit to the falls is slick rock by moving water: take it slow.",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Uses the summer trailhead. Check canyon fees and parking."
@@ -936,30 +710,13 @@
       "price": 0,
       "minutes": 60,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON",
-        "EVENING"
-      ],
-      "months": [
-        6,
-        7,
-        8,
-        9,
-        10
-      ],
+      "best_time": ["MORNING", "AFTERNOON", "EVENING"],
+      "months": [6, 7, 8, 9, 10],
       "weather": "NICE",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "nature",
-        "water",
-        "walks"
-      ],
+      "people": [2, 8],
+      "tags": ["nature", "water", "walks"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026)."
     },
@@ -974,31 +731,14 @@
       "price": 40,
       "minutes": 150,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON"
-      ],
-      "months": [
-        6,
-        7,
-        8,
-        9,
-        10
-      ],
+      "best_time": ["MORNING", "AFTERNOON"],
+      "months": [6, 7, 8, 9, 10],
       "weather": "NICE",
       "feel": "UPBEAT",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "views",
-        "adventure"
-      ],
-      "risks": [
-        "HEIGHTS"
-      ],
+      "people": [2, 6],
+      "tags": ["views", "adventure"],
+      "risks": ["HEIGHTS"],
       "safety_note": "It's much colder at the top: bring layers even in summer.",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Ticket price and summer schedule are guesses: check them."
@@ -1014,26 +754,13 @@
       "price": 0,
       "minutes": 150,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON"
-      ],
-      "months": [
-        7,
-        8
-      ],
+      "best_time": ["MORNING", "AFTERNOON"],
+      "months": [7, 8],
       "weather": "NICE",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "nature",
-        "views",
-        "walks"
-      ],
+      "people": [2, 6],
+      "tags": ["nature", "views", "walks"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Check the road and any parking reservations or fees this year."
     },
@@ -1048,32 +775,14 @@
       "price": 8,
       "minutes": 210,
       "flexible_length": true,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
-      "months": [
-        4,
-        5,
-        6,
-        9,
-        10
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
+      "months": [4, 5, 6, 9, 10],
       "weather": "NICE",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "nature",
-        "views",
-        "water"
-      ],
-      "risks": [
-        "REMOTE"
-      ],
+      "people": [2, 6],
+      "tags": ["nature", "views", "water"],
+      "risks": ["REMOTE"],
       "safety_note": "Bring water and bug spray (the gnats can be fierce in late spring), and keep your distance from the bison.",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Price is a guess (day-use fee split two ways). About 40 minutes from downtown."
@@ -1088,20 +797,12 @@
       "place": "log-haven",
       "price": 65,
       "minutes": 120,
-      "best_time": [
-        "EVENING"
-      ],
+      "best_time": ["EVENING"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "upscale",
-        "romantic"
-      ],
+      "people": [2, 4],
+      "tags": ["upscale", "romantic"],
       "url": "https://log-haven.com",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Price is a guess. Reserve ahead."
@@ -1116,21 +817,12 @@
       "place": "ruths-diner",
       "price": 20,
       "minutes": 75,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON"
-      ],
+      "best_time": ["MORNING", "AFTERNOON"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "brunch",
-        "casual"
-      ],
+      "people": [2, 6],
+      "tags": ["brunch", "casual"],
       "url": "https://ruthsdiner.com",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
@@ -1145,21 +837,12 @@
       "place": "red-iguana",
       "price": 22,
       "minutes": 75,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
       "months": "any",
       "feel": "UPBEAT",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "global",
-        "casual"
-      ],
+      "people": [2, 6],
+      "tags": ["global", "casual"],
       "url": "https://www.rediguana.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
@@ -1174,20 +857,12 @@
       "place": "crown-burgers",
       "price": 14,
       "minutes": 45,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
       "months": "any",
       "feel": "UPBEAT",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "casual"
-      ],
+      "people": [2, 6],
+      "tags": ["casual"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. A small local chain."
     },
@@ -1201,20 +876,12 @@
       "place": "hires",
       "price": 15,
       "minutes": 60,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
       "months": "any",
       "feel": "UPBEAT",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "casual"
-      ],
+      "people": [2, 6],
+      "tags": ["casual"],
       "url": "https://hiresbigh.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Check the 'since the 1950s' line."
@@ -1229,20 +896,12 @@
       "place": "the-pie",
       "price": 15,
       "minutes": 75,
-      "best_time": [
-        "EVENING",
-        "LATE_NIGHT"
-      ],
+      "best_time": ["EVENING", "LATE_NIGHT"],
       "months": "any",
       "feel": "UPBEAT",
       "exertion": "NONE",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "casual"
-      ],
+      "people": [2, 8],
+      "tags": ["casual"],
       "url": "https://www.thepie.com",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Check you can still sign the walls."
@@ -1257,20 +916,12 @@
       "place": "takashi",
       "price": 45,
       "minutes": 90,
-      "best_time": [
-        "EVENING"
-      ],
+      "best_time": ["EVENING"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "global",
-        "upscale"
-      ],
+      "people": [2, 4],
+      "tags": ["global", "upscale"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Address and hours to confirm (OpenStreetMap's hours were fixed to be readable). Price is a guess."
     },
@@ -1284,20 +935,12 @@
       "place": "hsl",
       "price": 55,
       "minutes": 105,
-      "best_time": [
-        "EVENING"
-      ],
+      "best_time": ["EVENING"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "upscale",
-        "romantic"
-      ],
+      "people": [2, 4],
+      "tags": ["upscale", "romantic"],
       "url": "https://www.hslrestaurant.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Price is a guess."
@@ -1312,20 +955,12 @@
       "place": "eva",
       "price": 40,
       "minutes": 90,
-      "best_time": [
-        "EVENING"
-      ],
+      "best_time": ["EVENING"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "upscale",
-        "global"
-      ],
+      "people": [2, 4],
+      "tags": ["upscale", "global"],
       "url": "https://www.evaslc.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Price is a guess."
@@ -1341,20 +976,12 @@
       "price": 15,
       "minutes": 60,
       "flexible_length": true,
-      "best_time": [
-        "MORNING"
-      ],
+      "best_time": ["MORNING"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "brunch",
-        "cafes"
-      ],
+      "people": [2, 4],
+      "tags": ["brunch", "cafes"],
       "url": "https://www.evasbakeryslc.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
@@ -1369,20 +996,12 @@
       "place": "pago",
       "price": 45,
       "minutes": 105,
-      "best_time": [
-        "EVENING"
-      ],
+      "best_time": ["EVENING"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "upscale",
-        "romantic"
-      ],
+      "people": [2, 4],
+      "tags": ["upscale", "romantic"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Add the street address. Price is a guess."
     },
@@ -1397,21 +1016,12 @@
       "price": 18,
       "minutes": 60,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON"
-      ],
+      "best_time": ["MORNING", "AFTERNOON"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "brunch",
-        "cafes"
-      ],
+      "people": [2, 6],
+      "tags": ["brunch", "cafes"],
       "url": "https://publikcoffee.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
@@ -1426,20 +1036,12 @@
       "place": "mazza",
       "price": 25,
       "minutes": 75,
-      "best_time": [
-        "EVENING"
-      ],
+      "best_time": ["EVENING"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "global",
-        "casual"
-      ],
+      "people": [2, 6],
+      "tags": ["global", "casual"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Price is a guess."
     },
@@ -1454,23 +1056,13 @@
       "price": 18,
       "minutes": 90,
       "flexible_length": true,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
       "months": "any",
       "weather": "ANY",
       "feel": "UPBEAT",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "global",
-        "casual",
-        "walks"
-      ],
+      "people": [2, 6],
+      "tags": ["global", "casual", "walks"],
       "url": "https://spitz-restaurant.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
@@ -1485,20 +1077,12 @@
       "place": "pretty-bird",
       "price": 15,
       "minutes": 45,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
       "months": "any",
       "feel": "UPBEAT",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "casual"
-      ],
+      "people": [2, 6],
+      "tags": ["casual"],
       "url": "https://prettybirdchicken.com",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
@@ -1514,20 +1098,12 @@
       "price": 20,
       "minutes": 75,
       "flexible_length": true,
-      "best_time": [
-        "AFTERNOON"
-      ],
+      "best_time": ["AFTERNOON"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "desserts",
-        "casual"
-      ],
+      "people": [2, 4],
+      "tags": ["desserts", "casual"],
       "url": "https://caputos.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). This is the Holladay store; check its chocolate selection matches the downtown one."
@@ -1542,21 +1118,12 @@
       "place": "gourmandise",
       "price": 12,
       "minutes": 45,
-      "best_time": [
-        "EVENING",
-        "AFTERNOON"
-      ],
+      "best_time": ["EVENING", "AFTERNOON"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "desserts",
-        "cafes"
-      ],
+      "people": [2, 6],
+      "tags": ["desserts", "cafes"],
       "url": "https://www.gourmandise.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
@@ -1572,22 +1139,13 @@
       "price": 10,
       "minutes": 60,
       "flexible_length": true,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
       "months": "any",
       "weather": "ANY",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "desserts",
-        "walks"
-      ],
+      "people": [2, 4],
+      "tags": ["desserts", "walks"],
       "url": "https://hatchfamilychocolates.com",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
@@ -1602,22 +1160,12 @@
       "place": "leatherbys",
       "price": 10,
       "minutes": 45,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING",
-        "LATE_NIGHT"
-      ],
+      "best_time": ["AFTERNOON", "EVENING", "LATE_NIGHT"],
       "months": "any",
       "feel": "UPBEAT",
       "exertion": "NONE",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "desserts",
-        "casual"
-      ],
+      "people": [2, 8],
+      "tags": ["desserts", "casual"],
       "url": "https://leatherbys.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. A small local chain: there are other locations."
@@ -1633,21 +1181,12 @@
       "price": 7,
       "minutes": 75,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["MORNING", "AFTERNOON", "EVENING"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "cafes"
-      ],
+      "people": [2, 4],
+      "tags": ["cafes"],
       "url": "https://www.sugarhousecoffee.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
@@ -1662,27 +1201,12 @@
       "place": "delta-center",
       "price": 45,
       "minutes": 180,
-      "best_time": [
-        "EVENING"
-      ],
-      "months": [
-        10,
-        11,
-        12,
-        1,
-        2,
-        3,
-        4
-      ],
+      "best_time": ["EVENING"],
+      "months": [10, 11, 12, 1, 2, 3, 4],
       "feel": "UPBEAT",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "sports"
-      ],
+      "people": [2, 8],
+      "tags": ["sports"],
       "url": "https://www.deltacenter.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Ticket prices vary a lot (this is a guess)."
@@ -1697,30 +1221,13 @@
       "place": "america-first-field",
       "price": 35,
       "minutes": 165,
-      "best_time": [
-        "EVENING"
-      ],
-      "months": [
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10
-      ],
+      "best_time": ["EVENING"],
+      "months": [3, 4, 5, 6, 7, 8, 9, 10],
       "weather": "ANY",
       "feel": "UPBEAT",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "sports",
-        "festivals"
-      ],
+      "people": [2, 8],
+      "tags": ["sports", "festivals"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Ticket prices vary (this is a guess)."
     },
@@ -1734,20 +1241,12 @@
       "place": "eccles",
       "price": 70,
       "minutes": 180,
-      "best_time": [
-        "EVENING"
-      ],
+      "best_time": ["EVENING"],
       "months": "any",
       "feel": "UPBEAT",
       "exertion": "NONE",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "theater",
-        "music"
-      ],
+      "people": [2, 4],
+      "tags": ["theater", "music"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Ticket prices vary a lot by show (this is a guess)."
     },
@@ -1761,20 +1260,12 @@
       "place": "abravanel",
       "price": 40,
       "minutes": 150,
-      "best_time": [
-        "EVENING"
-      ],
+      "best_time": ["EVENING"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        4
-      ],
-      "tags": [
-        "music",
-        "theater"
-      ],
+      "people": [2, 4],
+      "tags": ["music", "theater"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Ticket prices vary (this is a guess)."
     },
@@ -1788,24 +1279,12 @@
       "place": "capitol-theatre",
       "price": 60,
       "minutes": 150,
-      "best_time": [
-        "EVENING",
-        "AFTERNOON"
-      ],
-      "holidays": [
-        "CHRISTMAS"
-      ],
+      "best_time": ["EVENING", "AFTERNOON"],
+      "holidays": ["CHRISTMAS"],
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "theater",
-        "music",
-        "festivals"
-      ],
+      "people": [2, 6],
+      "tags": ["theater", "music", "festivals"],
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Address from memory: confirm. Ticket prices vary (this is a guess)."
     },
@@ -1819,20 +1298,12 @@
       "place": "wiseguys",
       "price": 25,
       "minutes": 120,
-      "best_time": [
-        "EVENING",
-        "LATE_NIGHT"
-      ],
+      "best_time": ["EVENING", "LATE_NIGHT"],
       "months": "any",
       "feel": "UPBEAT",
       "exertion": "NONE",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "comedy"
-      ],
+      "people": [2, 8],
+      "tags": ["comedy"],
       "url": "https://www.wiseguyscomedy.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Show times vary (OpenStreetMap's hours weren't readable). Check the age rating of each show."
@@ -1848,21 +1319,12 @@
       "price": 12,
       "minutes": 105,
       "flexible_length": true,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
       "months": "any",
       "feel": "CALM",
       "exertion": "NONE",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "museums",
-        "movies"
-      ],
+      "people": [2, 6],
+      "tags": ["museums", "movies"],
       "url": "http://www.clarkplanetarium.org",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Show price is a guess."
@@ -1878,22 +1340,12 @@
       "price": 30,
       "minutes": 150,
       "flexible_length": true,
-      "best_time": [
-        "MORNING",
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["MORNING", "AFTERNOON", "EVENING"],
       "months": "any",
       "feel": "UPBEAT",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "nature",
-        "museums"
-      ],
+      "people": [2, 6],
+      "tags": ["nature", "museums"],
       "url": "https://livingplanetaquarium.org/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Admission is a guess."
@@ -1909,28 +1361,13 @@
       "price": 12,
       "minutes": 90,
       "flexible_length": true,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
-      "months": [
-        11,
-        12,
-        1,
-        2
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
+      "months": [11, 12, 1, 2],
       "weather": "COLD",
       "feel": "UPBEAT",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        8
-      ],
-      "tags": [
-        "sports",
-        "festivals",
-        "romantic"
-      ],
+      "people": [2, 8],
+      "tags": ["sports", "festivals", "romantic"],
       "url": "https://www.thegallivancenter.com/",
       "photos": [],
       "notes": "Pin from OpenStreetMap (Nov 2026). Check the rink's season, hours and rental price."
@@ -1946,23 +1383,13 @@
       "price": 40,
       "minutes": 210,
       "flexible_length": true,
-      "best_time": [
-        "AFTERNOON",
-        "EVENING"
-      ],
+      "best_time": ["AFTERNOON", "EVENING"],
       "months": "any",
       "weather": "ANY",
       "feel": "CALM",
       "exertion": "LIGHT",
-      "people": [
-        2,
-        6
-      ],
-      "tags": [
-        "walks",
-        "views",
-        "romantic"
-      ],
+      "people": [2, 6],
+      "tags": ["walks", "views", "romantic"],
       "photos": [],
       "notes": "About 35 minutes from Salt Lake. Price covers dinner (a guess). Pin is the Park City Museum on Main Street."
     }
