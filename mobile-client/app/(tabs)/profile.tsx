@@ -25,6 +25,9 @@ import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {showIdeaActions} from "@/src/lib/ideaActions";
 import type {IdeaVisibility} from "@/types/ideas";
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
+import {useConnectionActions} from "@/hooks/useConnectionActions";
+import ConnectionSheet from "@/components/connections/ConnectionSheet";
+import type {Connection} from "@/src/lib/connections";
 import {badgeCount} from "@/src/lib/text";
 
 type Tab = "memories" | "bucket" | "ideas";
@@ -141,17 +144,16 @@ function TitlesRow({titles, finished}: {titles: EarnedTitle[]; finished: number}
 /**
  * Your partner (#35), as a badge on your photo: their picture and a heart
  * on its lower edge, so your own handle stands alone under your name. Opens
- * Connections.
+ * their sheet, as on Connections.
  */
-function PartnerBadge() {
-  const router = useRouter();
+function PartnerBadge({onOpen}: {onOpen: (partner: Connection) => void}) {
   const partner = useConnectionsStore((s) => s.connections.find((c) => c.is_partner) ?? null);
   if (!partner) return null;
   return (
     <Pressable
-      onPress={() => router.push("/connections")}
+      onPress={() => onOpen(partner)}
       accessibilityRole="button"
-      accessibilityLabel={`Your partner, @${partner.username}. Open connections`}
+      accessibilityLabel={`Your partner, @${partner.username}. Open their details`}
       hitSlop={6}
       className="active:opacity-80"
       style={{position: "absolute", right: -10, bottom: -4}}
@@ -223,6 +225,10 @@ function ConnectionsButton() {
 
 export default function ProfileScreen() {
   const router = useRouter();
+  // Your partner's sheet (from the badge on your photo), with the same
+  // actions as on Connections
+  const [sheetFor, setSheetFor] = useState<Connection | null>(null);
+  const {actionsFor} = useConnectionActions();
   const profile = useProfileStore((s) => s.profile);
   const preferences = useProfileStore((s) => s.preferences);
   const status = useProfileStore((s) => s.status);
@@ -343,7 +349,7 @@ export default function ProfileScreen() {
               <Avatar profile={profile} size={112} />
             </Pressable>
             {/* Your partner, on your photo's edge (#35) */}
-            <PartnerBadge />
+            <PartnerBadge onOpen={setSheetFor} />
           </View>
 
           <Text className="text-white font-bold text-2xl mt-4 tracking-tight">
@@ -547,6 +553,11 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      <ConnectionSheet
+        connection={sheetFor}
+        actions={sheetFor ? actionsFor(sheetFor, () => setSheetFor(null)) : []}
+        onClose={() => setSheetFor(null)}
+      />
     </Animated.ScrollView>
   );
 }
