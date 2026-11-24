@@ -21,8 +21,9 @@
 //     lowers the sheet (no lifting your finger). While the sheet moves the
 //     list holds still
 //   - let go and it settles at the nearer height, or the way you flicked it.
-//     Pulled below 75%, a quarter of the way down (or a flick) closes it,
-//     carrying on at your speed; otherwise it springs back
+//     Pulled below 75%, a quarter of the way down (or a flick) closes it;
+//     otherwise it goes back up. Each carries on at your finger's speed and
+//     eases to a stop (no spring starting from still)
 //   - `expanded` raises or lowers it from outside (the builder raises it when
 //     you tap the search box); `onExpandedChange` hears where you left it
 // All of that runs on the UI thread (Reanimated + gesture handler), so the
@@ -38,7 +39,6 @@ import Reanimated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
 import {scheduleOnRN} from "react-native-worklets";
@@ -57,8 +57,11 @@ const CLOSE_SHARE = 0.25;
 /** Points per second: a flick closes it, or moves it to the other height */
 const CLOSE_VELOCITY = 900;
 const FLICK_VELOCITY = 600;
-/** Springing back, or to a height, after a drag */
-const SPRING_BACK = {damping: 24, stiffness: 240, overshootClamping: true};
+/** Settling after a drag: at least this fast (points per second), and
+ *  between these lengths (ms) */
+const SETTLE_MIN_SPEED = 1200;
+const SETTLE_MIN_MS = 140;
+const SETTLE_MAX_MS = 320;
 /** A move this far either way starts a drag (taps and small wobbles don't) */
 const DRAG_START = 8;
 
@@ -186,7 +189,19 @@ export default function PickerSheet({
     sheetMoved.set(true);
   };
 
-  // Let go: close (carrying on at your speed), spring back, or settle at a height
+  // Settling after a drag carries on at your finger's speed and eases to a
+  // stop: an ease-out starts at twice its average speed, so the length that
+  // starts at your speed is 2 × distance / speed. `towards` is your speed in
+  // the direction it's going (points per second; moving the other way, or
+  // barely moving, it goes at SETTLE_MIN_SPEED)
+  const settle = (distance: number, towards: number) => {
+    "worklet";
+    const speed = Math.max(towards, SETTLE_MIN_SPEED) / 1000; // points per ms
+    const duration = Math.min(SETTLE_MAX_MS, Math.max(SETTLE_MIN_MS, (2 * Math.abs(distance)) / speed));
+    return {duration, easing: Easing.out(Easing.quad)};
+  };
+
+  // Let go: close, spring back, or settle at a height, all at your speed
   const release = (velocityY: number) => {
     "worklet";
     if (!sheetMoved.get()) return;
@@ -194,18 +209,15 @@ export default function PickerSheet({
     const pulled = dragY.get();
     if (pulled > 0) {
       if (pulled > baseHeight * CLOSE_SHARE || velocityY > CLOSE_VELOCITY) {
-        // Ease-out starts at twice its average speed: match the flick
-        const remaining = Math.max(0, baseHeight - pulled);
-        const speed = Math.max(velocityY, 1200) / 1000; // points per ms
-        const duration = Math.min(320, Math.max(140, (2 * remaining) / speed));
         dragY.set(
-          withTiming(baseHeight, {duration, easing: Easing.out(Easing.quad)}, (finished) => {
+          withTiming(baseHeight, settle(baseHeight - pulled, velocityY), (finished) => {
             // Only now tell the builder (its re-render would hold up the slide)
             if (finished) scheduleOnRN(onClose);
           }),
         );
       } else {
-        dragY.set(withSpring(0, SPRING_BACK));
+        // Back up to the usual height (up is negative velocity)
+        dragY.set(withTiming(0, settle(pulled, -velocityY)));
       }
       if (growTarget.get() !== 0) {
         growTarget.set(0);
@@ -215,7 +227,9 @@ export default function PickerSheet({
     }
     const target =
       velocityY < -FLICK_VELOCITY ? 1 : velocityY > FLICK_VELOCITY ? 0 : grow.get() > 0.5 ? 1 : 0;
-    grow.set(withSpring(target, SPRING_BACK));
+    // Going up is negative velocity
+    const distance = Math.abs(target - grow.get()) * span;
+    grow.set(withTiming(target, settle(distance, target === 1 ? -velocityY : velocityY)));
     if (growTarget.get() !== target) {
       growTarget.set(target);
       if (onExpandedChange) scheduleOnRN(onExpandedChange, target === 1);
