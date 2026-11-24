@@ -1,0 +1,1970 @@
+{
+  "city": "salt-lake-city",
+  "center": "40.7608, -111.8910",
+  "places": [
+    {
+      "id": "ensign-peak",
+      "name": "Ensign Peak Trailhead",
+      "address": "Ensign Vista Dr, Salt Lake City, UT",
+      "pin": "40.79177, -111.88822",
+      "hours": "unknown"
+    },
+    {
+      "id": "living-room",
+      "name": "The Living Room (lookout)",
+      "address": "Above the University of Utah, Salt Lake City, UT",
+      "pin": "40.76662, -111.81170",
+      "hours": "unknown",
+      "access_note": "The pin is the lookout itself; the trail starts near Red Butte Garden, off Colorow Road."
+    },
+    {
+      "id": "red-butte",
+      "name": "Red Butte Garden",
+      "address": "300 South Wakara Way, Salt Lake City, UT",
+      "pin": "40.76922, -111.82209",
+      "hours": "unknown"
+    },
+    {
+      "id": "red-butte-amphitheater",
+      "name": "Red Butte Garden Amphitheater",
+      "address": "300 South Wakara Way, Salt Lake City, UT",
+      "pin": "40.76680, -111.82668",
+      "hours": "unknown"
+    },
+    {
+      "id": "nhmu",
+      "name": "Natural History Museum of Utah",
+      "address": "301 South Wakara Way, Salt Lake City, UT",
+      "pin": "40.76413, -111.82271",
+      "hours": "Th-Tu 10:00-17:00; We 10:00-21:00"
+    },
+    {
+      "id": "umfa",
+      "name": "Utah Museum of Fine Arts",
+      "address": "University of Utah, Salt Lake City, UT",
+      "pin": "40.76024, -111.84317",
+      "hours": "Mo off; Tu 10:00-17:00; We 10:00-20:00; Th-Su 10:00-17:00"
+    },
+    {
+      "id": "liberty-park",
+      "name": "Liberty Park",
+      "address": "Liberty Park, Salt Lake City, UT",
+      "pin": "40.74573, -111.87403",
+      "hours": "05:00-23:00"
+    },
+    {
+      "id": "tracy-aviary",
+      "name": "Tracy Aviary",
+      "address": "589 East 1300 South, Salt Lake City, UT",
+      "pin": "40.74304, -111.87513",
+      "hours": "Mo-Su 09:00-17:00"
+    },
+    {
+      "id": "hogle-zoo",
+      "name": "Utah's Hogle Zoo",
+      "address": "2600 East Sunnyside Avenue, Salt Lake City, UT",
+      "pin": "40.74951, -111.81595",
+      "hours": "Mo-Su 09:00-18:00"
+    },
+    {
+      "id": "memory-grove",
+      "name": "Memory Grove Park",
+      "address": "480 North Canyon Road, Salt Lake City, UT",
+      "pin": "40.77723, -111.88479",
+      "hours": "05:00-23:00"
+    },
+    {
+      "id": "gilgal",
+      "name": "Gilgal Sculpture Garden",
+      "address": "749 East 500 South, Salt Lake City, UT",
+      "pin": "40.75913, -111.86930",
+      "hours": "unknown"
+    },
+    {
+      "id": "sugar-house-park",
+      "name": "Sugar House Park",
+      "address": "Sugar House Park, Salt Lake City, UT",
+      "pin": "40.72238, -111.84789",
+      "hours": "unknown"
+    },
+    {
+      "id": "temple-square",
+      "name": "Temple Square",
+      "address": "North Temple, Salt Lake City, UT",
+      "pin": "40.77043, -111.89253",
+      "hours": "unknown"
+    },
+    {
+      "id": "capitol",
+      "name": "Utah State Capitol",
+      "address": "350 North State Street, Salt Lake City, UT",
+      "pin": "40.77743, -111.88822",
+      "hours": "unknown"
+    },
+    {
+      "id": "this-is-the-place",
+      "name": "This Is the Place Heritage Park",
+      "address": "This Is the Place Heritage Park, Salt Lake City, UT",
+      "pin": "40.75403, -111.81770",
+      "hours": "unknown"
+    },
+    {
+      "id": "donut-falls",
+      "name": "Donut Falls Trailhead",
+      "address": "Donut Falls Trailhead Road, Big Cottonwood Canyon, UT",
+      "pin": "40.63932, -111.65131",
+      "hours": "unknown"
+    },
+    {
+      "id": "silver-lake",
+      "name": "Silver Lake Trailhead (Brighton)",
+      "address": "Big Cottonwood Canyon Road, Brighton, UT",
+      "pin": "40.60349, -111.58465",
+      "hours": "unknown"
+    },
+    {
+      "id": "snowbird",
+      "name": "Snowbird",
+      "address": "Little Cottonwood Canyon Road, Snowbird, UT",
+      "pin": "40.58106, -111.65684",
+      "hours": "unknown"
+    },
+    {
+      "id": "alta",
+      "name": "Alta Ski Area (Albion Basin)",
+      "address": "10520 Little Cottonwood Road, Alta, UT",
+      "pin": "40.58824, -111.63840",
+      "hours": "unknown",
+      "access_note": "Albion Basin is up the gravel road past the Alta lodges; the road opens in summer only."
+    },
+    {
+      "id": "antelope-island",
+      "name": "Antelope Island State Park",
+      "address": "Antelope Island State Park, Syracuse, UT",
+      "pin": "40.95872, -112.22545",
+      "hours": "unknown",
+      "access_note": "Reached by the causeway from Syracuse; the pin is the middle of the park."
+    },
+    {
+      "id": "log-haven",
+      "name": "Log Haven",
+      "address": "6451 East Millcreek Canyon Road, Salt Lake City, UT",
+      "pin": "40.69832, -111.72665",
+      "hours": "Mo-Fr 17:00-21:00; Sa-Su 10:00-14:00,17:30-21:00"
+    },
+    {
+      "id": "ruths-diner",
+      "name": "Ruth's Diner",
+      "address": "4160 East Emigration Canyon Road, Salt Lake City, UT",
+      "pin": "40.76171, -111.78060",
+      "hours": "Mo,Th,Su 08:00-21:00; Fr-Sa 08:00-22:00; Tu,We off"
+    },
+    {
+      "id": "red-iguana",
+      "name": "Red Iguana",
+      "address": "736 West North Temple, Salt Lake City, UT",
+      "pin": "40.77185, -111.91249",
+      "hours": "Mo-Th,Su 11:00-21:00; Fr-Sa 11:00-22:00"
+    },
+    {
+      "id": "crown-burgers",
+      "name": "Crown Burgers",
+      "address": "118 North 300 West, Salt Lake City, UT",
+      "pin": "40.77211, -111.89924",
+      "hours": "Mo-Sa 10:00-22:30"
+    },
+    {
+      "id": "hires",
+      "name": "Hires Big H",
+      "address": "425 South 700 East, Salt Lake City, UT",
+      "pin": "40.76009, -111.87073",
+      "hours": "Mo-Th 10:30-20:00; Fr-Sa 10:30-22:00"
+    },
+    {
+      "id": "the-pie",
+      "name": "The Pie Pizzeria Underground",
+      "address": "1320 East 200 South, Salt Lake City, UT",
+      "pin": "40.76478, -111.85299",
+      "hours": "Mo-Sa 11:00-23:00; Su 12:00-22:00"
+    },
+    {
+      "id": "takashi",
+      "name": "Takashi",
+      "address": "18 West Market Street, Salt Lake City, UT",
+      "pin": "40.76188, -111.89182",
+      "hours": "Mo-Fr 11:30-14:00,18:30-22:00; Sa 18:30-22:00"
+    },
+    {
+      "id": "hsl",
+      "name": "HSL",
+      "address": "418 East 200 South, Salt Lake City, UT",
+      "pin": "40.76472, -111.87874",
+      "hours": "Tu-Th 17:00-21:00; Fr-Sa 17:00-22:00"
+    },
+    {
+      "id": "eva",
+      "name": "Eva",
+      "address": "317 South Main Street, Salt Lake City, UT",
+      "pin": "40.76229, -111.89082",
+      "hours": "Mo-Su 17:00-22:00"
+    },
+    {
+      "id": "evas-bakery",
+      "name": "Eva's Bakery",
+      "address": "155 South Main Street, Salt Lake City, UT",
+      "pin": "40.76572, -111.89083",
+      "hours": "Mo-Sa 07:30-15:30; Su 08:00-15:00"
+    },
+    {
+      "id": "pago",
+      "name": "Pago",
+      "address": "9th and 9th, Salt Lake City, UT",
+      "pin": "40.75020, -111.86564",
+      "hours": "Mo-Su 17:00-21:00"
+    },
+    {
+      "id": "publik-kitchen",
+      "name": "Publik Kitchen",
+      "address": "931 East 900 South, Salt Lake City, UT",
+      "pin": "40.75009, -111.86424",
+      "hours": "Mo-Fr 07:00-14:30; Sa-Su 08:00-14:30"
+    },
+    {
+      "id": "mazza",
+      "name": "Mazza",
+      "address": "1515 South 1500 East, Salt Lake City, UT",
+      "pin": "40.73671, -111.84770",
+      "hours": "Mo-Th 16:30-20:30; Fr,Sa 16:30-21:00; Su off"
+    },
+    {
+      "id": "spitz",
+      "name": "Spitz",
+      "address": "1201 East Wilmington Avenue, Salt Lake City, UT",
+      "pin": "40.72349, -111.85682",
+      "hours": "Su-Th 11:00-21:00; Fr-Sa 11:00-22:00"
+    },
+    {
+      "id": "pretty-bird",
+      "name": "Pretty Bird",
+      "address": "146 South Regent Street, Salt Lake City, UT",
+      "pin": "40.76603, -111.88993",
+      "hours": "Mo-Th 11:00-21:00; Fr-Sa 11:00-22:00"
+    },
+    {
+      "id": "caputos",
+      "name": "Caputo's Market and Deli",
+      "address": "4670 South Holladay Boulevard, Holladay, UT",
+      "pin": "40.66878, -111.82493",
+      "hours": "Mo-Sa 09:00-20:00; Su 10:00-17:00"
+    },
+    {
+      "id": "gourmandise",
+      "name": "Gourmandise",
+      "address": "250 South 300 East, Salt Lake City, UT",
+      "pin": "40.76385, -111.88317",
+      "hours": "Mo-Th 08:00-22:00; Fr-Sa 08:00-23:00; Su 09:00-14:00"
+    },
+    {
+      "id": "hatch",
+      "name": "Hatch Family Chocolates",
+      "address": "376 East 8th Avenue, Salt Lake City, UT",
+      "pin": "40.77829, -111.87819",
+      "hours": "Tu-Th 12:00-21:00; Fr-Sa 12:00-22:00"
+    },
+    {
+      "id": "leatherbys",
+      "name": "Leatherby's Family Creamery",
+      "address": "1872 West 5400 South, Taylorsville, UT",
+      "pin": "40.65416, -111.94215",
+      "hours": "Mo-Th 11:00-23:00; Fr,Sa 11:00-24:00; Su off"
+    },
+    {
+      "id": "sugar-house-coffee",
+      "name": "Sugar House Coffee",
+      "address": "2011 South 1100 East, Salt Lake City, UT",
+      "pin": "40.72645, -111.85905",
+      "hours": "Mo-Fr 07:00-21:00; Sa 07:00-20:00; Su 08:00-20:00"
+    },
+    {
+      "id": "delta-center",
+      "name": "Delta Center",
+      "address": "301 West South Temple, Salt Lake City, UT",
+      "pin": "40.76831, -111.90105",
+      "hours": "unknown"
+    },
+    {
+      "id": "america-first-field",
+      "name": "America First Field",
+      "address": "9256 South State Street, Sandy, UT",
+      "pin": "40.58289, -111.89329",
+      "hours": "unknown"
+    },
+    {
+      "id": "eccles",
+      "name": "Eccles Theater",
+      "address": "131 South Main Street, Salt Lake City, UT",
+      "pin": "40.76630, -111.89036",
+      "hours": "unknown"
+    },
+    {
+      "id": "abravanel",
+      "name": "Abravanel Hall",
+      "address": "123 West South Temple, Salt Lake City, UT",
+      "pin": "40.76862, -111.89491",
+      "hours": "unknown"
+    },
+    {
+      "id": "capitol-theatre",
+      "name": "Capitol Theatre",
+      "address": "50 West 200 South, Salt Lake City, UT",
+      "pin": "40.76554, -111.89261",
+      "hours": "unknown"
+    },
+    {
+      "id": "wiseguys",
+      "name": "Wiseguys Comedy Club",
+      "address": "190 South 400 West, Salt Lake City, UT",
+      "pin": "40.76524, -111.90294",
+      "hours": "unknown"
+    },
+    {
+      "id": "clark-planetarium",
+      "name": "Clark Planetarium",
+      "address": "110 South 400 West, Salt Lake City, UT",
+      "pin": "40.76671, -111.90314",
+      "hours": "Su-Th 10:00-19:00; Fr-Sa 10:00-22:45"
+    },
+    {
+      "id": "aquarium",
+      "name": "Loveland Living Planet Aquarium",
+      "address": "12033 South Lone Peak Parkway, Draper, UT",
+      "pin": "40.53179, -111.89445",
+      "hours": "Mo 10:00-20:00; Tu-Su 10:00-18:00"
+    },
+    {
+      "id": "gallivan-rink",
+      "name": "Gallivan Center Ice Rink",
+      "address": "50 East 200 South, Salt Lake City, UT",
+      "pin": "40.76442, -111.88916",
+      "hours": "unknown"
+    },
+    {
+      "id": "park-city-main",
+      "name": "Park City Main Street",
+      "address": "Main Street, Park City, UT",
+      "pin": "40.64460, -111.49607",
+      "hours": "unknown"
+    }
+  ],
+  "ideas": [
+    {
+      "key": "salt-lake-city/ensign-peak-sunset",
+      "title": "Sunset on Ensign Peak",
+      "description": "A short, steep climb from the Avenues to a little stone monument with the whole valley below: downtown, the Capitol dome, and the Great Salt Lake glowing in the west. Go up 45 minutes before sunset and bring a jacket.",
+      "type": "ACTIVE",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "ensign-peak",
+      "price": 0,
+      "minutes": 75,
+      "flexible_length": true,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "weather": "NICE",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "views",
+        "walks",
+        "nature"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026)."
+    },
+    {
+      "key": "salt-lake-city/living-room-hike",
+      "title": "Hike to the Living Room",
+      "description": "Climb the foothills above the University of Utah to a lookout where people have stacked slabs of rock into couches and chairs. Sit in your stone living room and watch the city lights come on.",
+      "type": "ACTIVE",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "living-room",
+      "price": 0,
+      "minutes": 120,
+      "best_time": [
+        "EVENING",
+        "MORNING"
+      ],
+      "months": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "weather": "NICE",
+      "feel": "UPBEAT",
+      "exertion": "HARD",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "views",
+        "adventure",
+        "nature"
+      ],
+      "safety_note": "Steep and rocky in places, with little shade. Bring water and a light for the walk down if you stay for dark.",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). The pin is the lookout; set the trailhead pin if you'd rather."
+    },
+    {
+      "key": "salt-lake-city/red-butte-garden-stroll",
+      "title": "Stroll Red Butte Garden",
+      "description": "Wander themed gardens, ponds and trails tucked against the foothills, with views over the valley. Spring bulbs, summer roses and fall color each make a different date, so it's worth going back.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "red-butte",
+      "price": 18,
+      "minutes": 120,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "weather": "NICE",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "nature",
+        "walks",
+        "romantic"
+      ],
+      "url": "https://redbuttegarden.org/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Admission is a guess; add hours."
+    },
+    {
+      "key": "salt-lake-city/red-butte-summer-concert",
+      "title": "Summer concert at Red Butte Garden",
+      "description": "Spread a blanket on the lawn of the outdoor amphitheater, pack a picnic, and listen to a touring band as the sun sets behind the city. One of Salt Lake's best summer nights out; tickets go fast.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "red-butte-amphitheater",
+      "price": 60,
+      "minutes": 210,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": [
+        6,
+        7,
+        8,
+        9
+      ],
+      "weather": "WARM",
+      "feel": "UPBEAT",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "music",
+        "festivals",
+        "romantic"
+      ],
+      "url": "https://redbuttegarden.org/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Ticket prices vary a lot by show (this is a guess)."
+    },
+    {
+      "key": "salt-lake-city/natural-history-museum",
+      "title": "Natural History Museum of Utah",
+      "description": "Walk through a hall of real dinosaur skeletons, then work your way up through gems, Native cultures and the Great Basin to a rooftop terrace with views across the valley. Wednesdays it's open late.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "nhmu",
+      "price": 22,
+      "minutes": 150,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "UPBEAT",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "museums"
+      ],
+      "url": "https://nhmu.utah.edu",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Admission is a guess."
+    },
+    {
+      "key": "salt-lake-city/utah-museum-of-fine-arts",
+      "title": "Utah Museum of Fine Arts",
+      "description": "A calm afternoon among art from around the world on the University of Utah campus. Pick one piece each to buy if money were no object, and explain your choice over coffee after.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "umfa",
+      "price": 15,
+      "minutes": 90,
+      "flexible_length": true,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "museums"
+      ],
+      "url": "https://umfa.utah.edu/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap; admission is a guess. Address is descriptive."
+    },
+    {
+      "key": "salt-lake-city/liberty-park-paddle",
+      "title": "Paddle boats and a walk in Liberty Park",
+      "description": "Rent a paddle boat on the pond, feed the ducks, and loop the park under old trees. Grab a snack from a food truck if one's out and people-watch on the lawn.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "liberty-park",
+      "price": 8,
+      "minutes": 90,
+      "flexible_length": true,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "weather": "NICE",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "walks",
+        "water",
+        "nature"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Check paddle boat rentals are running and the price."
+    },
+    {
+      "key": "salt-lake-city/tracy-aviary",
+      "title": "Birds at Tracy Aviary",
+      "description": "One of the oldest aviaries in the country, inside Liberty Park. Walk the paths, catch a free-flight bird show, and see who can spot the most species. Finish with a lap of the park.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "tracy-aviary",
+      "price": 15,
+      "minutes": 105,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON"
+      ],
+      "months": "any",
+      "weather": "NICE",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "nature",
+        "walks"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap; admission is a guess."
+    },
+    {
+      "key": "salt-lake-city/hogle-zoo",
+      "title": "A day at Hogle Zoo",
+      "description": "Spend a relaxed day at the zoo at the mouth of Emigration Canyon. Pick the animal you think the other person is most like before you go, and see if you change your mind by the end.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "hogle-zoo",
+      "price": 25,
+      "minutes": 180,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON"
+      ],
+      "months": "any",
+      "weather": "NICE",
+      "feel": "UPBEAT",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "nature",
+        "walks"
+      ],
+      "url": "https://www.hoglezoo.org/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap; admission is a guess."
+    },
+    {
+      "key": "salt-lake-city/memory-grove-city-creek",
+      "title": "Memory Grove and City Creek Canyon",
+      "description": "Walk through the quiet memorials and gardens of Memory Grove, a few blocks from downtown, then follow the paved road up City Creek Canyon along the stream as far as you like.",
+      "type": "ACTIVE",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "memory-grove",
+      "price": 0,
+      "minutes": 90,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "weather": "NICE",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "walks",
+        "nature"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
+    },
+    {
+      "key": "salt-lake-city/gilgal-sculpture-garden",
+      "title": "Gilgal Sculpture Garden",
+      "description": "A strange, hidden garden in the middle of a city block, full of carved stone sculptures, including a sphinx with a famous face. Small and free, it's a great conversation starter. Pair it with a treat nearby.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "gilgal",
+      "price": 0,
+      "minutes": 30,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON"
+      ],
+      "months": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "weather": "ANY",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "museums",
+        "walks"
+      ],
+      "url": "https://www.gilgalgarden.org/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). OpenStreetMap's hours change with the season in a format the app can't read; add them by hand."
+    },
+    {
+      "key": "salt-lake-city/sugar-house-park-picnic",
+      "title": "Picnic in Sugar House Park",
+      "description": "Pick up sandwiches in Sugar House and spread out on the big lawns by the pond, with the mountains behind. In winter the hill becomes Salt Lake's sledding spot, so bring a sled if there's snow.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "sugar-house-park",
+      "price": 12,
+      "minutes": 105,
+      "flexible_length": true,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "weather": "NICE",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "nature",
+        "romantic",
+        "casual"
+      ],
+      "url": "https://www.sugarhousepark.org/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours change with the season (unknown here). Address is descriptive."
+    },
+    {
+      "key": "salt-lake-city/temple-square-lights",
+      "title": "Christmas lights at Temple Square",
+      "description": "Walk downtown through hundreds of thousands of Christmas lights wrapped around the trees and gardens near Temple Square. Bundle up, get something warm to drink, and wander slowly.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "temple-square",
+      "price": 0,
+      "minutes": 75,
+      "flexible_length": true,
+      "best_time": [
+        "EVENING",
+        "LATE_NIGHT"
+      ],
+      "holidays": [
+        "CHRISTMAS"
+      ],
+      "weather": "ANY",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "festivals",
+        "walks",
+        "romantic"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Check where the lights are this year (construction around the temple has moved them some years)."
+    },
+    {
+      "key": "salt-lake-city/utah-state-capitol",
+      "title": "Explore the Utah State Capitol",
+      "description": "Wander the marble halls and murals of the Capitol, which is free and open to visitors, then step outside for one of the best views down State Street. Come at golden hour for the photos.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "MIXED",
+      "place": "capitol",
+      "price": 0,
+      "minutes": 60,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "weather": "ANY",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "museums",
+        "views",
+        "walks"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Add visiting hours (weekdays and weekends differ)."
+    },
+    {
+      "key": "salt-lake-city/this-is-the-place",
+      "title": "Pioneer village at This Is the Place",
+      "description": "Step into a recreated pioneer town at the mouth of Emigration Canyon: blacksmiths, old shops, wagon rides and sweet treats. Light, silly and good for talking about how you'd have survived.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "this-is-the-place",
+      "price": 15,
+      "minutes": 150,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON"
+      ],
+      "months": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "weather": "NICE",
+      "feel": "UPBEAT",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "museums",
+        "walks"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Admission and season are guesses: check them."
+    },
+    {
+      "key": "salt-lake-city/donut-falls",
+      "title": "Hike to Donut Falls",
+      "description": "An easy, family-friendly trail through the pines of Big Cottonwood Canyon to a waterfall that drops through a hole in the rock. Scramble up close carefully and enjoy the cool canyon air on a hot day.",
+      "type": "ACTIVE",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "donut-falls",
+      "price": 0,
+      "minutes": 120,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON"
+      ],
+      "months": [
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "weather": "NICE",
+      "feel": "UPBEAT",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "nature",
+        "walks",
+        "water"
+      ],
+      "risks": [
+        "WATER"
+      ],
+      "safety_note": "The last bit to the falls is slick rock by moving water: take it slow.",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Uses the summer trailhead. Check canyon fees and parking."
+    },
+    {
+      "key": "salt-lake-city/silver-lake-brighton",
+      "title": "Silver Lake loop at Brighton",
+      "description": "A flat boardwalk loop around a mountain lake at the top of Big Cottonwood Canyon. Watch for moose, look for the trailhead to the higher lakes, and stay for the evening light on the peaks.",
+      "type": "ACTIVE",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "silver-lake",
+      "price": 0,
+      "minutes": 60,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": [
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "weather": "NICE",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "nature",
+        "water",
+        "walks"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026)."
+    },
+    {
+      "key": "salt-lake-city/snowbird-tram",
+      "title": "Ride the Snowbird tram",
+      "description": "Ride the aerial tram from Snowbird to the top of Hidden Peak, around 11,000 feet up, with views across the Wasatch. Walk the ridge, eat something at the top, and ride back down in the evening light.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "snowbird",
+      "price": 40,
+      "minutes": 150,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON"
+      ],
+      "months": [
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "weather": "NICE",
+      "feel": "UPBEAT",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "views",
+        "adventure"
+      ],
+      "risks": [
+        "HEIGHTS"
+      ],
+      "safety_note": "It's much colder at the top: bring layers even in summer.",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Ticket price and summer schedule are guesses: check them."
+    },
+    {
+      "key": "salt-lake-city/albion-basin-wildflowers",
+      "title": "Wildflowers in Albion Basin",
+      "description": "In mid-summer the meadows above Alta explode with wildflowers. Drive the gravel road up, walk the trail to Cecret Lake or just wander the meadows, and take a ridiculous number of photos.",
+      "type": "ACTIVE",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "alta",
+      "price": 0,
+      "minutes": 150,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON"
+      ],
+      "months": [
+        7,
+        8
+      ],
+      "weather": "NICE",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "nature",
+        "views",
+        "walks"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Check the road and any parking reservations or fees this year."
+    },
+    {
+      "key": "salt-lake-city/antelope-island-sunset",
+      "title": "Bison and sunset on Antelope Island",
+      "description": "Drive the causeway across the Great Salt Lake to an island where bison roam free. Look for them along the road, walk out to a beach, and watch one of the biggest sunsets in Utah over the water.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "antelope-island",
+      "price": 8,
+      "minutes": 210,
+      "flexible_length": true,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": [
+        4,
+        5,
+        6,
+        9,
+        10
+      ],
+      "weather": "NICE",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "nature",
+        "views",
+        "water"
+      ],
+      "risks": [
+        "REMOTE"
+      ],
+      "safety_note": "Bring water and bug spray (the gnats can be fierce in late spring), and keep your distance from the bison.",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Price is a guess (day-use fee split two ways). About 40 minutes from downtown."
+    },
+    {
+      "key": "salt-lake-city/log-haven-dinner",
+      "title": "Dinner at Log Haven in Millcreek Canyon",
+      "description": "A 1920s log mansion tucked in the trees up Millcreek Canyon, with a waterfall outside and candlelit dining rooms inside. Dress up, reserve ahead, and take the slow drive up at dusk.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "log-haven",
+      "price": 65,
+      "minutes": 120,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "upscale",
+        "romantic"
+      ],
+      "url": "https://log-haven.com",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Price is a guess. Reserve ahead."
+    },
+    {
+      "key": "salt-lake-city/ruths-diner-breakfast",
+      "title": "Breakfast at Ruth's Diner",
+      "description": "A Salt Lake institution in an old trolley car up Emigration Canyon, famous for its giant biscuits. Go for a late breakfast, sit on the creekside patio when it's warm, and drive the canyon after.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "ruths-diner",
+      "price": 20,
+      "minutes": 75,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "brunch",
+        "casual"
+      ],
+      "url": "https://ruthsdiner.com",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
+    },
+    {
+      "key": "salt-lake-city/red-iguana-mole",
+      "title": "Mole at Red Iguana",
+      "description": "Salt Lake's most famous Mexican restaurant, known for a whole menu of moles. Ask for the sampler, pick two to share, and don't be put off by the line out the door: it moves.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "red-iguana",
+      "price": 22,
+      "minutes": 75,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "UPBEAT",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "global",
+        "casual"
+      ],
+      "url": "https://www.rediguana.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
+    },
+    {
+      "key": "salt-lake-city/crown-burgers-pastrami",
+      "title": "Pastrami burgers at Crown Burgers",
+      "description": "Try the Utah-famous burger topped with a pile of hot pastrami, with fry sauce on the side. Cheap, filling, and a fun way to show someone new what Utah food really is.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "crown-burgers",
+      "price": 14,
+      "minutes": 45,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "UPBEAT",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "casual"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. A small local chain."
+    },
+    {
+      "key": "salt-lake-city/hires-big-h-drive-in",
+      "title": "Root beer and burgers at Hires Big H",
+      "description": "A classic Salt Lake drive-in since the 1950s. Order burgers and root beer in a frosty mug, and pretend for an hour that you're on a date in another decade.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "hires",
+      "price": 15,
+      "minutes": 60,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "UPBEAT",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "casual"
+      ],
+      "url": "https://hiresbigh.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Check the 'since the 1950s' line."
+    },
+    {
+      "key": "salt-lake-city/the-pie-underground",
+      "title": "Pizza at The Pie Underground",
+      "description": "Head down the stairs to a basement pizza place near the University of Utah, where every wall is covered in signatures and drawings. Order a giant pizza to split and add your names to the wall.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "the-pie",
+      "price": 15,
+      "minutes": 75,
+      "best_time": [
+        "EVENING",
+        "LATE_NIGHT"
+      ],
+      "months": "any",
+      "feel": "UPBEAT",
+      "exertion": "NONE",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "casual"
+      ],
+      "url": "https://www.thepie.com",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Check you can still sign the walls."
+    },
+    {
+      "key": "salt-lake-city/takashi-sushi",
+      "title": "Sushi at Takashi",
+      "description": "One of Salt Lake's most loved sushi restaurants, downtown. Sit at the bar if you can, order a few rolls and specials to share, and try one thing neither of you has had before.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "takashi",
+      "price": 45,
+      "minutes": 90,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "global",
+        "upscale"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Address and hours to confirm (OpenStreetMap's hours were fixed to be readable). Price is a guess."
+    },
+    {
+      "key": "salt-lake-city/hsl-dinner",
+      "title": "Dinner at HSL",
+      "description": "A modern American restaurant downtown that's great for an anniversary or a big night. Share small plates, let the server pick a dessert, and take your time.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "hsl",
+      "price": 55,
+      "minutes": 105,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "upscale",
+        "romantic"
+      ],
+      "url": "https://www.hslrestaurant.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Price is a guess."
+    },
+    {
+      "key": "salt-lake-city/eva-small-plates",
+      "title": "Small plates at Eva",
+      "description": "Cozy small plates on Main Street, built for sharing: order a bunch, pass them back and forth, and keep going until you're full. Easy to pair with a show downtown.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "eva",
+      "price": 40,
+      "minutes": 90,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "upscale",
+        "global"
+      ],
+      "url": "https://www.evaslc.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Price is a guess."
+    },
+    {
+      "key": "salt-lake-city/evas-bakery-breakfast",
+      "title": "French pastries at Eva's Bakery",
+      "description": "Start a weekend morning downtown with croissants, quiche and good coffee at a French-style bakery on Main Street, then walk the shops while it's still quiet.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "evas-bakery",
+      "price": 15,
+      "minutes": 60,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "brunch",
+        "cafes"
+      ],
+      "url": "https://www.evasbakeryslc.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
+    },
+    {
+      "key": "salt-lake-city/pago-9th-and-9th",
+      "title": "Farm-to-table dinner at Pago",
+      "description": "A small, warm restaurant in the 9th and 9th neighborhood, cooking with local farms. After dinner, walk the neighborhood's little shops and grab dessert down the street.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "pago",
+      "price": 45,
+      "minutes": 105,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "upscale",
+        "romantic"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Add the street address. Price is a guess."
+    },
+    {
+      "key": "salt-lake-city/publik-kitchen-brunch",
+      "title": "Brunch at Publik Kitchen",
+      "description": "A bright café-kitchen near 9th and 9th for a slow brunch: good toast, eggs and coffee. Linger, then walk over to Liberty Park.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "publik-kitchen",
+      "price": 18,
+      "minutes": 60,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "brunch",
+        "cafes"
+      ],
+      "url": "https://publikcoffee.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
+    },
+    {
+      "key": "salt-lake-city/mazza-lebanese",
+      "title": "Lebanese dinner at Mazza",
+      "description": "Share hummus, falafel and grilled meats at a long-loved Lebanese restaurant on the east side. Order a mezze spread and let each other pick the main dishes.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "mazza",
+      "price": 25,
+      "minutes": 75,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "global",
+        "casual"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Price is a guess."
+    },
+    {
+      "key": "salt-lake-city/spitz-sugar-house",
+      "title": "Döner and a Sugar House stroll",
+      "description": "Grab döner kebabs and fries at Spitz, then walk around Sugar House: the shops, the monument plaza, and the trail along the creek.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "MIXED",
+      "place": "spitz",
+      "price": 18,
+      "minutes": 90,
+      "flexible_length": true,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "weather": "ANY",
+      "feel": "UPBEAT",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "global",
+        "casual",
+        "walks"
+      ],
+      "url": "https://spitz-restaurant.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
+    },
+    {
+      "key": "salt-lake-city/pretty-bird-hot-chicken",
+      "title": "Hot chicken at Pretty Bird",
+      "description": "Nashville hot chicken downtown. Dare each other up the heat scale (with milk on standby) and see who taps out first.",
+      "type": "MEAL",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "pretty-bird",
+      "price": 15,
+      "minutes": 45,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "UPBEAT",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "casual"
+      ],
+      "url": "https://prettybirdchicken.com",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
+    },
+    {
+      "key": "salt-lake-city/caputos-chocolate-picnic",
+      "title": "Chocolate and picnic shopping at Caputo's",
+      "description": "Caputo's is known for its huge wall of craft chocolate. Pick out bars to taste side by side, add cheese, bread and salami, and take it all to a park for a picnic.",
+      "type": "TREAT",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "caputos",
+      "price": 20,
+      "minutes": 75,
+      "flexible_length": true,
+      "best_time": [
+        "AFTERNOON"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "desserts",
+        "casual"
+      ],
+      "url": "https://caputos.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). This is the Holladay store; check its chocolate selection matches the downtown one."
+    },
+    {
+      "key": "salt-lake-city/gourmandise-dessert",
+      "title": "Late dessert at Gourmandise",
+      "description": "End a downtown night at a French bakery with a case full of tarts, cakes and pastries. Pick two you've never heard of and split both.",
+      "type": "TREAT",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "gourmandise",
+      "price": 12,
+      "minutes": 45,
+      "best_time": [
+        "EVENING",
+        "AFTERNOON"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "desserts",
+        "cafes"
+      ],
+      "url": "https://www.gourmandise.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
+    },
+    {
+      "key": "salt-lake-city/hatch-chocolates-avenues",
+      "title": "Hatch Family Chocolates and an Avenues walk",
+      "description": "A tiny chocolate and ice cream shop in the Avenues. Get truffles or a scoop, then wander the steep, tree-lined streets and old houses as the sun goes down.",
+      "type": "TREAT",
+      "where": "out",
+      "environment": "MIXED",
+      "place": "hatch",
+      "price": 10,
+      "minutes": 60,
+      "flexible_length": true,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "weather": "ANY",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "desserts",
+        "walks"
+      ],
+      "url": "https://hatchfamilychocolates.com",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
+    },
+    {
+      "key": "salt-lake-city/leatherbys-sundae",
+      "title": "Giant sundae at Leatherby's",
+      "description": "Order one of Leatherby's famously huge sundaes with two spoons and race to the bottom. An old-fashioned ice cream parlor for when you want something silly and sweet.",
+      "type": "TREAT",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "leatherbys",
+      "price": 10,
+      "minutes": 45,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING",
+        "LATE_NIGHT"
+      ],
+      "months": "any",
+      "feel": "UPBEAT",
+      "exertion": "NONE",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "desserts",
+        "casual"
+      ],
+      "url": "https://leatherbys.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. A small local chain: there are other locations."
+    },
+    {
+      "key": "salt-lake-city/sugar-house-coffee",
+      "title": "Slow afternoon at Sugar House Coffee",
+      "description": "Find a corner table, order something warm, and bring a book each, or a deck of cards. A low-key date for a cold or rainy afternoon.",
+      "type": "TREAT",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "sugar-house-coffee",
+      "price": 7,
+      "minutes": 75,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "cafes"
+      ],
+      "url": "https://www.sugarhousecoffee.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap."
+    },
+    {
+      "key": "salt-lake-city/utah-jazz-game",
+      "title": "Utah Jazz game",
+      "description": "Wear your purple (or your teal) and cheer on the Jazz downtown. Get there early to watch warmups, grab food on the concourse, and make a night of it.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "delta-center",
+      "price": 45,
+      "minutes": 180,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": [
+        10,
+        11,
+        12,
+        1,
+        2,
+        3,
+        4
+      ],
+      "feel": "UPBEAT",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "sports"
+      ],
+      "url": "https://www.deltacenter.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Ticket prices vary a lot (this is a guess)."
+    },
+    {
+      "key": "salt-lake-city/real-salt-lake-match",
+      "title": "Real Salt Lake match",
+      "description": "Join the singing, scarf-waving crowd at a Real Salt Lake soccer game in Sandy. Evening matches in summer are perfect: warm, loud, and the mountains glow behind the stadium.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "america-first-field",
+      "price": 35,
+      "minutes": 165,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "weather": "ANY",
+      "feel": "UPBEAT",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "sports",
+        "festivals"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Ticket prices vary (this is a guess)."
+    },
+    {
+      "key": "salt-lake-city/eccles-broadway-show",
+      "title": "A Broadway show at the Eccles",
+      "description": "Catch a touring Broadway musical at the Eccles Theater on Main Street. Dinner nearby first, dressed up a little, then talk about your favorite song on the walk back to the car.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "eccles",
+      "price": 70,
+      "minutes": 180,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "UPBEAT",
+      "exertion": "NONE",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "theater",
+        "music"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Ticket prices vary a lot by show (this is a guess)."
+    },
+    {
+      "key": "salt-lake-city/utah-symphony-abravanel",
+      "title": "Utah Symphony at Abravanel Hall",
+      "description": "Hear the Utah Symphony in a gold-lit concert hall downtown. Look for a movie-music or pops night if classical isn't usually your thing.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "abravanel",
+      "price": 40,
+      "minutes": 150,
+      "best_time": [
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        4
+      ],
+      "tags": [
+        "music",
+        "theater"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Ticket prices vary (this is a guess)."
+    },
+    {
+      "key": "salt-lake-city/nutcracker-ballet-west",
+      "title": "The Nutcracker at the Capitol Theatre",
+      "description": "Ballet West's Nutcracker has been a Salt Lake Christmas tradition for decades. Dress up, see it at the historic Capitol Theatre, and walk the downtown lights after.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "capitol-theatre",
+      "price": 60,
+      "minutes": 150,
+      "best_time": [
+        "EVENING",
+        "AFTERNOON"
+      ],
+      "holidays": [
+        "CHRISTMAS"
+      ],
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "theater",
+        "music",
+        "festivals"
+      ],
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Address from memory: confirm. Ticket prices vary (this is a guess)."
+    },
+    {
+      "key": "salt-lake-city/wiseguys-comedy",
+      "title": "Stand-up at Wiseguys",
+      "description": "See a stand-up show at Wiseguys near the Gateway. Laughing together is a great date, and it's easy to grab a late dinner after.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "wiseguys",
+      "price": 25,
+      "minutes": 120,
+      "best_time": [
+        "EVENING",
+        "LATE_NIGHT"
+      ],
+      "months": "any",
+      "feel": "UPBEAT",
+      "exertion": "NONE",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "comedy"
+      ],
+      "url": "https://www.wiseguyscomedy.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Show times vary (OpenStreetMap's hours weren't readable). Check the age rating of each show."
+    },
+    {
+      "key": "salt-lake-city/clark-planetarium",
+      "title": "Stars at the Clark Planetarium",
+      "description": "Watch a dome show that flies you through space, then wander the free exhibits about the planets and the sky. Free to walk in; the shows cost a little.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "clark-planetarium",
+      "price": 12,
+      "minutes": 105,
+      "flexible_length": true,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "CALM",
+      "exertion": "NONE",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "museums",
+        "movies"
+      ],
+      "url": "http://www.clarkplanetarium.org",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Show price is a guess."
+    },
+    {
+      "key": "salt-lake-city/living-planet-aquarium",
+      "title": "Loveland Living Planet Aquarium",
+      "description": "Walk under a shark tunnel, watch the penguins, and get close to jellyfish and rays at the aquarium in Draper. Go on a weekday evening when it's quieter.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "INDOOR",
+      "place": "aquarium",
+      "price": 30,
+      "minutes": 150,
+      "flexible_length": true,
+      "best_time": [
+        "MORNING",
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "feel": "UPBEAT",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "nature",
+        "museums"
+      ],
+      "url": "https://livingplanetaquarium.org/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Hours from OpenStreetMap. Admission is a guess."
+    },
+    {
+      "key": "salt-lake-city/gallivan-ice-skating",
+      "title": "Ice skating at the Gallivan Center",
+      "description": "Skate under the city lights on the outdoor rink in the middle of downtown, then warm up with hot chocolate and a walk past the holiday windows.",
+      "type": "ACTIVE",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "gallivan-rink",
+      "price": 12,
+      "minutes": 90,
+      "flexible_length": true,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": [
+        11,
+        12,
+        1,
+        2
+      ],
+      "weather": "COLD",
+      "feel": "UPBEAT",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        8
+      ],
+      "tags": [
+        "sports",
+        "festivals",
+        "romantic"
+      ],
+      "url": "https://www.thegallivancenter.com/",
+      "photos": [],
+      "notes": "Pin from OpenStreetMap (Nov 2026). Check the rink's season, hours and rental price."
+    },
+    {
+      "key": "salt-lake-city/park-city-main-street",
+      "title": "An evening on Park City's Main Street",
+      "description": "Drive up to the old mining town of Park City, walk the steep Main Street of historic buildings, galleries and shops, and pick a place for dinner. In winter, the lights and snow make it feel like a postcard.",
+      "type": "OTHER",
+      "where": "out",
+      "environment": "OUTDOOR",
+      "place": "park-city-main",
+      "price": 40,
+      "minutes": 210,
+      "flexible_length": true,
+      "best_time": [
+        "AFTERNOON",
+        "EVENING"
+      ],
+      "months": "any",
+      "weather": "ANY",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [
+        2,
+        6
+      ],
+      "tags": [
+        "walks",
+        "views",
+        "romantic"
+      ],
+      "photos": [],
+      "notes": "About 35 minutes from Salt Lake. Price covers dinner (a guess). Pin is the Park City Museum on Main Street."
+    }
+  ]
+}
