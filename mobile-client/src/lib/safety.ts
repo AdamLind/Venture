@@ -33,12 +33,23 @@ export const riskLabelText = (value: string) => BY_VALUE[value]?.label ?? value;
 export const SAFETY_NOTE_MAX = 300;
 
 /** Shown where it matters (outdoor or risky ideas), not on every idea, so it isn't tuned out */
-export const SAFETY_DISCLAIMER =
-  "Shared by a Venture user. We don't verify safety or conditions. Check before you go and use your judgment.";
+export const SAFETY_DISCLAIMER = "We don't verify safety or conditions. Check before you go and use your judgment.";
 
-/** Outdoor, or labeled risky: the disclaimer applies */
-export const needsSafetyLine = (idea: {environment?: string | null; risk_labels?: string[] | null}) =>
-  idea.environment === "OUTDOOR" || (idea.risk_labels?.length ?? 0) > 0;
+/** The line for one idea: a user's idea says so; Venture's own (official) ones don't */
+export const safetyDisclaimer = (official: boolean) =>
+  official
+    ? "Conditions change. Check before you go and use your judgment."
+    : `Shared by a Venture user. ${SAFETY_DISCLAIMER}`;
+
+/**
+ * Outdoors when going out, or labeled risky: the disclaimer applies. (Not a
+ * night in the backyard: there's nowhere to "check before you go".)
+ */
+export const needsSafetyLine = (idea: {
+  environment?: string | null;
+  modality?: string | null;
+  risk_labels?: string[] | null;
+}) => (idea.environment === "OUTDOOR" && idea.modality !== "STAY_IN") || (idea.risk_labels?.length ?? 0) > 0;
 
 /** Worth telling someone where you'll be: remote, or outdoors */
 export const worthSharingPlan = (idea: {environment?: string | null; risk_labels?: string[] | null}) =>

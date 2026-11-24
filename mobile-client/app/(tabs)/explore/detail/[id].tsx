@@ -34,7 +34,7 @@ import EditPlaceSheet, {type EditablePlace} from "@/components/places/EditPlaceS
 import ReviewPanel from "@/components/moderation/ReviewPanel";
 import {useStaffStore} from "@/src/store/useStaffStore";
 import {RULE_BY_ID, isRuleId, type RuleId} from "@/src/lib/ideaGuidelines";
-import {SAFETY_DISCLAIMER, needsSafetyLine, riskLabelsOf} from "@/src/lib/safety";
+import {needsSafetyLine, riskLabelsOf, safetyDisclaimer} from "@/src/lib/safety";
 import {tagLabel} from "@/src/constants/tags";
 import {formatMoney} from "@/utils/money";
 
@@ -514,9 +514,10 @@ export default function IdeaDetailScreen() {
             </Text>
           </View>
 
-          {/* GOOD TO KNOW (#81): its risks, the creator's heads-up, and (outdoor
-              or risky ideas only) that we don't verify safety */}
-          {(riskLabelsOf(idea).length > 0 || idea.safety_note || needsSafetyLine(idea)) && (
+          {/* GOOD TO KNOW (#81): its risks and the creator's heads-up, with
+              (outdoor or risky ideas) the line that we don't verify safety.
+              With nothing else to say, that line is a small note instead */}
+          {riskLabelsOf(idea).length > 0 || idea.safety_note ? (
             <View className="bg-zinc-900/80 border border-zinc-800 rounded-3xl p-4 mb-8 gap-3">
               <Text className="text-zinc-400 text-sm font-bold">GOOD TO KNOW</Text>
               {riskLabelsOf(idea).length > 0 && (
@@ -540,10 +541,15 @@ export default function IdeaDetailScreen() {
                 </View>
               ) : null}
               {needsSafetyLine(idea) && (
-                <Text className="text-zinc-500 text-xs leading-5">{SAFETY_DISCLAIMER}</Text>
+                <Text className="text-zinc-500 text-xs leading-5">{safetyDisclaimer(!!idea.users?.official)}</Text>
               )}
             </View>
-          )}
+          ) : needsSafetyLine(idea) ? (
+            <View className="flex-row gap-2 -mt-4 mb-8 px-1">
+              <Ionicons name="information-circle-outline" size={14} color="#71717a" style={{marginTop: 1}} />
+              <Text className="flex-1 text-zinc-500 text-xs leading-5">{safetyDisclaimer(!!idea.users?.official)}</Text>
+            </View>
+          ) : null}
 
           {/* VENUE & MAP */}
           {idea.modality === "GO_OUT" && idea.venues && (
