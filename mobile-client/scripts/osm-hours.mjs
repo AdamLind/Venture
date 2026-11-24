@@ -282,6 +282,19 @@ export const appCanRead = (hours) =>
     .filter(Boolean)
     .every((rule) => RULE.test(rule));
 
+/**
+ * Whether the hours look like real hours. A time that runs past midnight
+ * and closes after 6 AM ("12:00-10:30") is almost always a typo for the
+ * evening (10:30 PM), and the app would call the place open all night.
+ */
+const LATEST_PAST_MIDNIGHT = 6 * 60;
+export const plausibleHours = (hours) =>
+  [...(hours ?? "").matchAll(/(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/g)].every(([, h1, m1, h2, m2]) => {
+    const from = Number(h1) * 60 + Number(m1);
+    const to = Number(h2) * 60 + Number(m2);
+    return to >= from || to <= LATEST_PAST_MIDNIGHT;
+  });
+
 /** When the entry's hours were last checked: its check date, or its last edit */
 function osmCheckedAt(el) {
   const tagged = el.tags["check_date:opening_hours"] || el.tags.check_date;
@@ -297,6 +310,7 @@ export function changesFor(place, el, now) {
   const hours = el.tags.opening_hours?.trim();
   if (!hours) return {patch, note: "matched, no hours in OpenStreetMap"};
   if (hours.length > OSM_HOURS_MAX) return {patch, note: "matched, hours too long"};
+  if (!plausibleHours(hours)) return {patch, note: `matched, skipped hours that look wrong: "${hours}"`};
 
   const checked = osmCheckedAt(el);
   const ours = place.opening_hours;
