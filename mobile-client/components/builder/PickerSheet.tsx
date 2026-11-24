@@ -7,7 +7,8 @@
 //
 // Smooth by construction:
 //   - a fixed height (the list scrolls inside), so it never resizes while
-//     it slides (a loading spinner turning into a long list did)
+//     it slides (a loading spinner turning into a long list did); the one
+//     change is `expanded`, below, once it's open
 //   - while it slides away it keeps showing what it showed when it started
 //     closing (the builder stops ranking suggestions once it's closed, and
 //     the list emptying mid-slide collapsed it)
@@ -24,6 +25,9 @@
 // All of that runs on the UI thread (Reanimated + gesture handler), so the
 // hand-off between scrolling and dragging never waits on JavaScript.
 // Android's back button closes it too.
+//
+// `expanded` (searching) grows it to just under the status bar for more
+// room above the keyboard; it shrinks back when that's turned off.
 
 import React, {useEffect, useState} from "react";
 import {BackHandler, Pressable, StyleSheet, View, useWindowDimensions} from "react-native";
@@ -39,11 +43,15 @@ import Reanimated, {
 } from "react-native-reanimated";
 import {scheduleOnRN} from "react-native-worklets";
 import {GestureDetector, useNativeGesture, usePanGesture} from "react-native-gesture-handler";
+import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 const OPEN_MS = 420;
 const CLOSE_MS = 340;
 /** Share of the screen's height */
 const HEIGHT = 0.75;
+/** Expanded: this far below the status bar */
+const EXPANDED_GAP = 8;
+const EXPAND_MS = 280;
 /** Dragged this share of the way down (or flicked), it closes */
 const CLOSE_SHARE = 0.25;
 /** Points per second */
@@ -61,9 +69,12 @@ export default function PickerSheet({
   header,
   contentContainerStyle,
   children,
+  expanded = false,
 }: {
   visible: boolean;
   onClose: () => void;
+  /** Taller, up to just under the status bar (searching) */
+  expanded?: boolean;
   /** Above the list; dragging it (or the grabber) moves the sheet */
   header?: React.ReactNode;
   /** The list's content style (it scrolls inside the sheet) */
@@ -72,7 +83,16 @@ export default function PickerSheet({
   children: React.ReactNode;
 }) {
   const {height: windowHeight} = useWindowDimensions();
-  const sheetHeight = Math.round(windowHeight * HEIGHT);
+  const insets = useSafeAreaInsets();
+  const baseHeight = Math.round(windowHeight * HEIGHT);
+  const fullHeight = Math.max(baseHeight, windowHeight - insets.top - EXPANDED_GAP);
+  // 0 at its usual height .. 1 expanded
+  const grow = useSharedValue(expanded ? 1 : 0);
+  // (while it closes it keeps its height, like its content)
+  useEffect(() => {
+    if (!visible) return;
+    grow.set(withTiming(expanded ? 1 : 0, {duration: EXPAND_MS, easing: Easing.out(Easing.cubic)}));
+  }, [expanded, visible, grow]);
 
   // Stays mounted while it animates out
   const [mounted, setMounted] = useState(visible);
@@ -102,6 +122,8 @@ export default function PickerSheet({
     if (visible) {
       dragY.set(0);
       scrollY.set(0);
+      // Opens at its usual height, whatever it was when it last closed
+      grow.set(expanded ? 1 : 0);
       progress.set(withTiming(1, {duration: OPEN_MS, easing: Easing.out(Easing.cubic)}));
     } else {
       progress.set(
@@ -110,6 +132,8 @@ export default function PickerSheet({
         }),
       );
     }
+    // (only on open and close: `expanded` animates on its own, above)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, mounted, progress, dragY, scrollY]);
 
   // Android back closes the sheet, not the builder
@@ -125,6 +149,7 @@ export default function PickerSheet({
   // Let go: close (carrying on at your speed) or spring back
   const release = (velocityY: number) => {
     "worklet";
+    const sheetHeight = baseHeight + grow.get() * (fullHeight - baseHeight);
     const pulled = dragY.get();
     if (pulled <= 0) return;
     if (pulled > sheetHeight * CLOSE_SHARE || velocityY > CLOSE_VELOCITY) {
@@ -191,13 +216,20 @@ export default function PickerSheet({
     scrollY.set(e.contentOffset.y);
   });
 
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{translateY: (1 - progress.get()) * sheetHeight + dragY.get()}],
-  }));
+  const sheetStyle = useAnimatedStyle(() => {
+    const sheetHeight = baseHeight + grow.get() * (fullHeight - baseHeight);
+    return {
+      height: sheetHeight + 1,
+      transform: [{translateY: (1 - progress.get()) * sheetHeight + dragY.get()}],
+    };
+  });
   // The backdrop lightens as you drag the sheet down
-  const backdropStyle = useAnimatedStyle(() => ({
-    opacity: progress.get() * (1 - Math.min(1, Math.max(0, dragY.get() / sheetHeight))),
-  }));
+  const backdropStyle = useAnimatedStyle(() => {
+    const sheetHeight = baseHeight + grow.get() * (fullHeight - baseHeight);
+    return {
+      opacity: progress.get() * (1 - Math.min(1, Math.max(0, dragY.get() / sheetHeight))),
+    };
+  });
 
   if (!mounted) return null;
 
@@ -220,7 +252,7 @@ export default function PickerSheet({
           line shows, curving around the corners right to the screen's edges */}
       <Reanimated.View
         style={[
-          {position: "absolute", left: -1, right: -1, bottom: -1, height: sheetHeight + 1},
+          {position: "absolute", left: -1, right: -1, bottom: -1},
           sheetStyle,
         ]}
       >
@@ -250,6 +282,11 @@ export default function PickerSheet({
                   bounces={false}
                   overScrollMode="never"
                   showsVerticalScrollIndicator={false}
+                  // Typing a search: the list ends above the keyboard, a
+                  // scroll puts the keyboard away, and one tap adds a result
+                  automaticallyAdjustKeyboardInsets
+                  keyboardDismissMode="on-drag"
+                  keyboardShouldPersistTaps="handled"
                   contentContainerStyle={contentContainerStyle}
                 >
                   {visible ? children : shown.body}
