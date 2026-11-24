@@ -1,7 +1,7 @@
 -- =============================================================================
 -- Opening hours from OpenStreetMap (#5)
 --
--- A job (mobile-client/scripts/osm-hours.js, run daily by GitHub Actions)
+-- A job (mobile-client/scripts/osm-hours.mjs, run daily by GitHub Actions)
 -- matches each public place to its OpenStreetMap entry once (by distance
 -- and name), then keeps its hours up to date from it. Private places are
 -- never looked up: their pins don't leave Venture (#77).
