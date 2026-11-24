@@ -64,7 +64,7 @@ export default function ReviewPanel({
     user_id: string | null;
     visibility: IdeaVisibility;
     held_at?: string | null;
-    users?: {username: string | null} | null;
+    users?: {username: string | null; official?: boolean | null} | null;
     /** Its place: a new one goes public with this idea (#88) */
     venue_id?: string | null;
     venues?: {
@@ -144,8 +144,14 @@ export default function ReviewPanel({
   // Moderators can't decide on their own ideas; admins can (it's logged)
   const ownIdea = !!myUserId && idea.user_id === myUserId;
   const canDecide = !!role && (!ownIdea || role === "ADMIN");
+  // One of the app's own ideas (the launch set, #71): nobody would get a
+  // "please change this" note, so admins fix it themselves (Edit, the same
+  // form as posting) and then approve it
+  const official = !!idea.users?.official;
+  const canEditOfficial = official && role === "ADMIN";
+  const editOfficial = () => router.push({pathname: "/create", params: {ideaId: String(idea.idea_id)}});
   const decisions = (Object.keys(DECISIONS) as Decision[]).filter(
-    (d) => DECISIONS[d].to !== idea.visibility,
+    (d) => DECISIONS[d].to !== idea.visibility && !(official && d === "REQUEST_CHANGES"),
   );
   const openReports = reports?.length ?? 0;
 
@@ -346,11 +352,11 @@ export default function ReviewPanel({
       {canDecide ? (
         <View className="gap-2">
           <View className="flex-row gap-2">
-            {decisions.map((d) => {
+            {decisions.flatMap((d) => {
               const c = DECISIONS[d];
               // A new place has to be checked before it's approved along with the idea
               const waiting = d === "APPROVE" && checkingPlace && !placeChecked;
-              return (
+              const button = (
                 <Pressable
                   key={d}
                   onPress={() => onDecision(d)}
@@ -371,8 +377,34 @@ export default function ReviewPanel({
                   </Text>
                 </Pressable>
               );
+              // An official idea: Edit sits next to Approve, where Changes was
+              const edit =
+                canEditOfficial && d === "APPROVE" ? (
+                  <Pressable
+                    key="EDIT"
+                    onPress={editOfficial}
+                    disabled={!!busy}
+                    accessibilityRole="button"
+                    accessibilityLabel="Edit this idea"
+                    className="flex-1 h-11 rounded-2xl flex-row items-center justify-center gap-1.5 active:opacity-80"
+                    style={{backgroundColor: "#60a5fa22", opacity: busy ? 0.4 : 1}}
+                  >
+                    <Ionicons name="create-outline" size={16} color="#60a5fa" />
+                    <Text className="font-bold text-sm" style={{color: "#60a5fa"}}>
+                      Edit
+                    </Text>
+                  </Pressable>
+                ) : null;
+              return edit ? [button, edit] : [button];
             })}
           </View>
+          {official && (
+            <Text className="text-zinc-500 text-xs">
+              {canEditOfficial
+                ? "One of Venture's own ideas: fix anything with Edit, then approve it."
+                : "One of Venture's own ideas: an admin can edit it."}
+            </Text>
+          )}
           {openReports > 0 && (
             <Pressable
               onPress={dismiss}
