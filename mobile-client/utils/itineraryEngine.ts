@@ -217,6 +217,10 @@ export const queryCandidates = async (
   maxBudget: number,
   origin: ScoredActivity | UserPrefs,
   context: DayContext,
+  /** The stops already on the date: places near any of them are in reach
+   *  too (snowboarding at Nordic Valley brings in dinner in Ogden; the
+   *  builder's extra-driving score keeps the ones on the way on top) */
+  stops: any[] = [],
 ) => {
   const targetBudgetPerPerson = maxBudget / (Number(prefs.headCount) || 1);
   const userId = useProfileStore.getState().userId;
@@ -257,10 +261,14 @@ export const queryCandidates = async (
 
     // Skip ideas you marked "Not interested", ones that aren't on when the
     // date is (a corn maze in March: utils/seasons.ts), and go-out ideas in
-    // another city (utils/reach.ts), measured from where the date starts
+    // another city (utils/reach.ts): out of reach of where the date starts
+    // and of every stop on it
     const hidden = useHiddenStore.getState().ids;
     const dateOf = new Date(prefs.startDate || Date.now());
-    const start = prefs.currentLocation ?? homeOf(prefs);
+    const centers = [
+      prefs.currentLocation ?? homeOf(prefs),
+      ...stops.map((stop) => stopLocation(stop, prefs)),
+    ];
     const formatted = (data || [])
       .filter((row: any) => !hidden.has(row.idea_id) && inSeason(row, dateOf))
       .map((row: any) => {
@@ -276,7 +284,7 @@ export const queryCandidates = async (
           longitude: parsed?.longitude ?? null,
         };
       })
-      .filter((row: any) => inReach(row, [start]));
+      .filter((row: any) => inReach(row, centers));
 
     return {
       success: true,

@@ -442,6 +442,7 @@ export default function BuilderScreen() {
           origin,
           // The biological state, and when this stop would start
           {...currentContext, atMs: gapSlot.startTime, weatherAt},
+          placed.map((p) => p.activity),
         );
         setActivities(result.data || []);
       } catch (error) {

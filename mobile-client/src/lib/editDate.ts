@@ -30,7 +30,10 @@ export async function fetchReplacements(itinerary: Itinerary, index: number): Pr
   const context = slot ? {...evaluateContextAt(timeline, slot.startTime), atMs: slot.startTime} : {exhaustion: 0, satiation: 0};
   const origin = index > 0 ? (placed[index - 1].activity as any) : prefs;
 
-  const result = await queryCandidates(prefs, roomAt(placed, index, prefs), budgetLeft, origin, context);
+  // In reach of the start and the date's other stops (a far-off anchor's
+  // neighbors count)
+  const others = placed.filter((_, i) => i !== index).map((p) => p.activity);
+  const result = await queryCandidates(prefs, roomAt(placed, index, prefs), budgetLeft, origin, context, others);
   if (!result.success) throw new Error("Couldn't find alternatives. Please try again.");
 
   const blocked = useBlockStore.getState().ids;
