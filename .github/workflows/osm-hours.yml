@@ -1,0 +1,48 @@
+# Opening hours from OpenStreetMap (#5): mobile-client/scripts/osm-hours.mjs.
+# Daily, but each run only looks at places that are new or weren't looked at
+# in 30 days, so a place is checked about monthly and a new one the next day.
+# Run it by hand from the Actions tab (optionally as a dry run).
+#
+# Needs two repository secrets (Settings › Secrets and variables › Actions):
+#   SUPABASE_URL         the project URL (same as EXPO_PUBLIC_SUPABASE_URL)
+#   SUPABASE_SECRET_KEY  the secret key (never in the app)
+#
+# The repository is public, so these logs are too: the script only ever
+# handles public places (their names are already on the map).
+
+name: OpenStreetMap hours
+
+on:
+  schedule:
+    - cron: "23 10 * * *" # every day, 10:23 UTC (early morning in Utah)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: show what it would do, save nothing"
+        type: boolean
+        default: false
+      all:
+        description: "Every public place, not just the ones that are due"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Look up opening hours
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: >-
+          node mobile-client/scripts/osm-hours.mjs
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+          ${{ inputs.all && '--all' || '' }}

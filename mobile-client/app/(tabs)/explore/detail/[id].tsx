@@ -100,7 +100,7 @@ export default function IdeaDetailScreen() {
           .select(
             `
             *,
-            venues ( venue_id, created_by, name, address, coordinates, opening_hours, hours_checked_at, access_note,
+            venues ( venue_id, created_by, name, address, coordinates, opening_hours, hours_checked_at, hours_source, access_note,
               pinned_by:users ( username ) ),
             users!activities_user_id_fkey ( username ),
             activity_tags (
@@ -428,6 +428,7 @@ export default function IdeaDetailScreen() {
               <PlaceHours
                 hours={idea.venues.opening_hours}
                 checkedAt={idea.venues.hours_checked_at}
+                source={idea.venues.hours_source}
                 url={idea.url}
                 at={coords}
                 className="w-full mb-4 pb-4 border-b border-zinc-800"
@@ -772,6 +773,8 @@ export default function IdeaDetailScreen() {
                     access_note: saved.accessNote,
                     opening_hours: saved.openingHours,
                     hours_checked_at: saved.hoursCheckedAt,
+                    // (typed in: the server labels them community hours)
+                    hours_source: saved.openingHours ? "community" : null,
                   },
                 }
               : prev,

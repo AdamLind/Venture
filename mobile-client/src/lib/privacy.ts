@@ -10,7 +10,7 @@
 // use, how long things are kept).
 
 /** When this version was written */
-export const PRIVACY_UPDATED = "November 22, 2026";
+export const PRIVACY_UPDATED = "November 24, 2026";
 
 /** Shown as a banner until the lawyer-reviewed text is in */
 export const PRIVACY_IS_DRAFT = true;
@@ -46,7 +46,7 @@ export const PRIVACY_SECTIONS: {title: string; body: string}[] = [
   },
   {
     title: "Services we use",
-    body: "Supabase stores Venture's data and photos and handles sign-in. Open-Meteo gets the location and time of a date's stops (never who you are) to forecast the weather. Some stock photos load from Unsplash, which sees an ordinary web request. Maps are drawn by Apple Maps on iPhone and Google Maps on Android. These services only use what they get to provide that service.",
+    body: "Supabase stores Venture's data and photos and handles sign-in. Open-Meteo gets the location and time of a date's stops (never who you are) to forecast the weather. OpenStreetMap gets the pins of public places (never private ones, and never who added them) so we can look up their opening hours. Some stock photos load from Unsplash, which sees an ordinary web request. Maps are drawn by Apple Maps on iPhone and Google Maps on Android. These services only use what they get to provide that service.",
   },
   {
     title: "Who can see what",

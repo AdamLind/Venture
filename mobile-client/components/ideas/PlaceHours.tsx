@@ -2,7 +2,8 @@
 // A place's opening hours (#8), as the first row of the idea page's details
 // card: open or closed right now, tap for the week, and a reminder that
 // hours change (with the idea's link, if it has one). Nothing when the
-// hours aren't known.
+// hours aren't known. Hours from OpenStreetMap (#5) credit it, as its
+// licence asks ("© OpenStreetMap contributors", linked).
 
 import React, {useState} from "react";
 import {Linking, Pressable, Text, View} from "react-native";
@@ -15,10 +16,12 @@ const GREEN = "#4ade80";
 /** Opening / closing the week */
 const EXPAND_MS = 260;
 const ORANGE = "#fb923c";
+const OSM_COPYRIGHT = "https://www.openstreetmap.org/copyright";
 
 export default function PlaceHours({
   hours,
   checkedAt,
+  source,
   url,
   at,
   className = "",
@@ -26,6 +29,8 @@ export default function PlaceHours({
   hours: string | null | undefined;
   /** venues.hours_checked_at */
   checkedAt?: string | null;
+  /** venues.hours_source: "osm" credits OpenStreetMap */
+  source?: string | null;
   /** The idea's website / menu link */
   url?: string | null;
   /** The place (for daylight-only hours) */
@@ -120,6 +125,19 @@ export default function PlaceHours({
           </Pressable>
         ) : null}
       </View>
+      {source === "osm" && (
+        <Pressable
+          onPress={() => Linking.openURL(OSM_COPYRIGHT).catch(() => {})}
+          hitSlop={6}
+          accessibilityRole="link"
+          accessibilityLabel="Hours from OpenStreetMap contributors. Opens the OpenStreetMap copyright page"
+          className="mt-1 self-start active:opacity-70"
+        >
+          <Text className="text-zinc-500 text-xs">
+            Hours: <Text className="underline">© OpenStreetMap contributors</Text>
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
