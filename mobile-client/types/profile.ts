@@ -33,6 +33,8 @@ export interface UserPreferences {
   terms_accepted_at?: string | null;
   /** Your partner may see your birthday's month and day (#87) */
   share_birthday?: boolean;
+  /** The titles you show on Profile, in order (utils/titles.ts); empty = the hardest three */
+  featured_titles?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -63,6 +65,7 @@ export type PreferencesUpdate = Partial<
     | "dietary"
     | "onboarded_at"
     | "share_birthday"
+    | "featured_titles"
   >
 >;
 

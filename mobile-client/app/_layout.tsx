@@ -243,6 +243,12 @@ function InitialLayout() {
           options={{headerShown: false, presentation: "modal", contentStyle: {backgroundColor: "#09090b"}}}
         />
 
+        {/* TITLES: every title, and which show on Profile (#84) */}
+        <Stack.Screen
+          name="titles"
+          options={{headerShown: false, presentation: "modal", contentStyle: {backgroundColor: "#09090b"}}}
+        />
+
         {/* SAVED DATE DETAIL */}
         <Stack.Screen name="itinerary/[id]" options={{headerShown: false}} />
 

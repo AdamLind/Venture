@@ -60,6 +60,62 @@ export interface EarnedTitle {
   margin: number;
 }
 
+// ─── Every title ───────────────────────────────────────────────────────────────
+// The titles menu lists them all: how to earn each one, except a few mystery
+// titles that only show their name until you have them.
+
+export interface TitleInfo {
+  label: string;
+  icon: TitleIcon;
+  /** 1 (easy) .. 5 (rare) */
+  difficulty: number;
+  /** How to earn it, for the menu */
+  how: string;
+  /** A mystery title: its name shows, how to earn it doesn't */
+  secret?: boolean;
+}
+
+export const TITLES = {
+  // What you do
+  foodie: {label: "Foodie", icon: "restaurant", difficulty: 2, how: "Make meals or treats at least 40% of your stops, over 3 or more dates."},
+  "sweet-tooth": {label: "Sweet tooth", icon: "ice-cream", difficulty: 1, how: "Stop for dessert 4 times, over 2 or more dates."},
+  "brunch-club": {label: "Brunch club", icon: "sunny", difficulty: 1, how: "Go out for brunch 3 times, over 2 or more dates."},
+  "coffee-date-pro": {label: "Coffee date pro", icon: "cafe", difficulty: 1, how: "Have 3 stops at cafes, over 2 or more dates."},
+  "taste-traveler": {label: "Taste traveler", icon: "earth", difficulty: 2, how: "Eat food from around the world 4 times, over 2 or more dates."},
+  athlete: {label: "Athlete", icon: "barbell", difficulty: 3, how: "Make 30% of your stops a real workout, over 3 or more dates."},
+  adventurer: {label: "Adventurer", icon: "compass", difficulty: 2, how: "Go on 4 adventures, over 2 or more dates."},
+  outdoorsy: {label: "Outdoorsy", icon: "leaf", difficulty: 2, how: "Spend half your stops outside, over 3 or more dates."},
+  "water-lover": {label: "Water lover", icon: "water", difficulty: 2, how: "Have 3 stops on or by the water, over 2 or more dates."},
+  "view-chaser": {label: "View chaser", icon: "image", difficulty: 1, how: "Have 3 stops with a view, over 2 or more dates."},
+  "stroll-pro": {label: "Stroll pro", icon: "footsteps", difficulty: 1, how: "Go out for a walk 4 times, over 2 or more dates."},
+  "culture-buff": {label: "Culture buff", icon: "color-palette", difficulty: 2, how: "Visit museums or the theater 4 times, over 2 or more dates."},
+  "music-lover": {label: "Music lover", icon: "musical-notes", difficulty: 1, how: "See live music 3 times, over 2 or more dates."},
+  "comedy-lover": {label: "Comedy lover", icon: "happy", difficulty: 1, how: "See comedy 3 times, over 2 or more dates."},
+  "game-night-champ": {label: "Game night champ", icon: "dice", difficulty: 1, how: "Play games on 4 stops, over 2 or more dates."},
+  maker: {label: "Maker", icon: "hammer", difficulty: 1, how: "Make something together 3 times (crafts or cooking), over 2 or more dates."},
+  "movie-buff": {label: "Movie buff", icon: "film", difficulty: 1, how: "Go to the movies 4 times, over 2 or more dates."},
+  "pampered-pro": {label: "Pampered pro", icon: "flower", difficulty: 1, how: "Have 3 spa stops, over 2 or more dates."},
+  "festival-goer": {label: "Festival goer", icon: "sparkles", difficulty: 2, how: "Go to 3 festivals, over 2 or more dates."},
+  "romantic-at-heart": {label: "Romantic at heart", icon: "heart", difficulty: 3, how: "Make half your stops romantic, over 5 or more dates.", secret: true},
+  // When
+  "night-owl": {label: "Night owl", icon: "moon", difficulty: 2, how: "Start 30% of your stops after 9pm, over 3 or more dates."},
+  "early-bird": {label: "Early bird", icon: "partly-sunny", difficulty: 2, how: "Start 30% of your stops before 10am, over 3 or more dates."},
+  // How
+  "cozy-night-pro": {label: "Cozy night pro", icon: "home", difficulty: 2, how: "Make half your dates nights in, over 3 or more dates."},
+  explorer: {label: "Explorer", icon: "map", difficulty: 4, how: "Try 15 kinds of things over 8 dates, rarely the same idea twice.", secret: true},
+  "hidden-gem-hunter": {label: "Hidden gem hunter", icon: "diamond", difficulty: 4, how: "Visit 5 places the community pinned, not the map.", secret: true},
+  "road-tripper": {label: "Road tripper", icon: "car", difficulty: 3, how: "Average 15 miles or more from your home area, over 3 or more dates (needs a home area)."},
+  // How many (only the highest shows on Profile)
+  "date-night-regular": {label: "Date night regular", icon: "ribbon", difficulty: 3, how: "Finish 10 dates."},
+  "date-night-legend": {label: "Date night legend", icon: "star", difficulty: 4, how: "Finish 25 dates."},
+  "hall-of-fame": {label: "Hall of fame", icon: "trophy", difficulty: 5, how: "Finish 50 dates."},
+} satisfies Record<string, TitleInfo>;
+
+export type TitleId = keyof typeof TITLES;
+
+/** A title's name, icon and difficulty, for the rules below */
+const T = (id: TitleId) => ({id, label: TITLES[id].label, icon: TITLES[id].icon as TitleIcon, difficulty: TITLES[id].difficulty});
+
 type Stop = {
   tags: string[];
   type: string | null;
@@ -141,96 +197,96 @@ export function earnedTitles(
   share(
     count((s) => s.type === "MEAL" || s.type === "TREAT"),
     0.4,
-    {id: "foodie", label: "Foodie", icon: "restaurant", difficulty: 2},
+    T("foodie"),
     "were meals or treats",
   );
   several(
     tagged("desserts"),
     4,
-    {id: "sweet-tooth", label: "Sweet tooth", icon: "ice-cream", difficulty: 1},
+    T("sweet-tooth"),
     "for dessert",
   );
-  several(tagged("brunch"), 3, {id: "brunch-club", label: "Brunch club", icon: "sunny", difficulty: 1}, "at brunch");
+  several(tagged("brunch"), 3, T("brunch-club"), "at brunch");
   several(
     tagged("cafes"),
     3,
-    {id: "coffee-date-pro", label: "Coffee date pro", icon: "cafe", difficulty: 1},
+    T("coffee-date-pro"),
     "at cafes",
   );
   several(
     tagged("global"),
     4,
-    {id: "taste-traveler", label: "Taste traveler", icon: "earth", difficulty: 2},
+    T("taste-traveler"),
     "of food from around the world",
   );
   share(
     count((s) => s.exertion === "HARD"),
     0.3,
-    {id: "athlete", label: "Athlete", icon: "barbell", difficulty: 3},
+    T("athlete"),
     "got your heart pumping",
   );
   several(
     tagged("adventure"),
     4,
-    {id: "adventurer", label: "Adventurer", icon: "compass", difficulty: 2},
+    T("adventurer"),
     "of adventure",
   );
   share(
     count((s) => s.environment === "OUTDOOR"),
     0.5,
-    {id: "outdoorsy", label: "Outdoorsy", icon: "leaf", difficulty: 2},
+    T("outdoorsy"),
     "were outside",
   );
   several(
     tagged("water"),
     3,
-    {id: "water-lover", label: "Water lover", icon: "water", difficulty: 2},
+    T("water-lover"),
     "on or by the water",
   );
-  several(tagged("views"), 3, {id: "view-chaser", label: "View chaser", icon: "image", difficulty: 1}, "with a view");
+  several(tagged("views"), 3, T("view-chaser"), "with a view");
   several(
     tagged("walks"),
     4,
-    {id: "stroll-pro", label: "Stroll pro", icon: "footsteps", difficulty: 1},
+    T("stroll-pro"),
     "out for a walk",
   );
   several(
     tagged("museums", "theater"),
     4,
-    {id: "culture-buff", label: "Culture buff", icon: "color-palette", difficulty: 2},
+    T("culture-buff"),
     "at museums or the theater",
   );
   several(
     tagged("music"),
     3,
-    {id: "music-lover", label: "Music lover", icon: "musical-notes", difficulty: 1},
+    T("music-lover"),
     "with live music",
   );
-  several(tagged("comedy"), 3, {id: "comedy-lover", label: "Comedy lover", icon: "happy", difficulty: 1}, "at comedy");
+  several(tagged("comedy"), 3, T("comedy-lover"), "at comedy");
   several(
     tagged("games", "board games"),
     4,
-    {id: "game-night-champ", label: "Game night champ", icon: "dice", difficulty: 1},
+    T("game-night-champ"),
     "playing games",
   );
   several(
     tagged("crafts", "cooking"),
     3,
-    {id: "maker", label: "Maker", icon: "hammer", difficulty: 1},
+    T("maker"),
     "making something together",
   );
-  several(tagged("movies"), 4, {id: "movie-buff", label: "Movie buff", icon: "film", difficulty: 1}, "at the movies");
-  several(tagged("spa"), 3, {id: "pampered-pro", label: "Pampered pro", icon: "flower", difficulty: 1}, "at the spa");
+  several(tagged("movies"), 4, T("movie-buff"), "at the movies");
+  several(tagged("spa"), 3, T("pampered-pro"), "at the spa");
   several(
     tagged("festivals"),
     3,
-    {id: "festival-goer", label: "Festival goer", icon: "sparkles", difficulty: 2},
+    T("festival-goer"),
     "at festivals",
   );
   share(
     tagged("romantic"),
     0.5,
-    {id: "romantic-at-heart", label: "Romantic at heart", icon: "heart", difficulty: 3},
+    T("romantic-at-heart"),
     "were romantic",
     5,
     5,
@@ -240,13 +296,13 @@ export function earnedTitles(
   share(
     count((s) => s.hour != null && (s.hour >= 21 || s.hour < 4)),
     0.3,
-    {id: "night-owl", label: "Night owl", icon: "moon", difficulty: 2},
+    T("night-owl"),
     "started after 9pm",
   );
   share(
     count((s) => s.hour != null && s.hour >= 4 && s.hour < 10),
     0.3,
-    {id: "early-bird", label: "Early bird", icon: "partly-sunny", difficulty: 2},
+    T("early-bird"),
     "started before 10am",
   );
 
@@ -259,10 +315,7 @@ export function earnedTitles(
   if (dates.length >= 3 && stayIn / dates.length >= 0.5) {
     add(
       {
-        id: "cozy-night-pro",
-        label: "Cozy night pro",
-        icon: "home",
-        difficulty: 2,
+        ...T("cozy-night-pro"),
         because: `${stayIn} of your ${plural(dates.length, "date")} were nights in`,
       },
       stayIn / dates.length,
@@ -276,10 +329,7 @@ export function earnedTitles(
   if (dates.length >= 8 && tagsTried >= 15 && ideasTried / n >= 0.8) {
     add(
       {
-        id: "explorer",
-        label: "Explorer",
-        icon: "map",
-        difficulty: 4,
+        ...T("explorer"),
         because: `${tagsTried} kinds of things across ${plural(ideasTried, "different idea")}`,
       },
       tagsTried,
@@ -292,10 +342,7 @@ export function earnedTitles(
   if (gems >= 5) {
     add(
       {
-        id: "hidden-gem-hunter",
-        label: "Hidden gem hunter",
-        icon: "diamond",
-        difficulty: 4,
+        ...T("hidden-gem-hunter"),
         because: `${plural(gems, "place")} found by the community, not the map`,
       },
       gems,
@@ -312,11 +359,8 @@ export function earnedTitles(
     if (away.length >= 3 && avg >= 15) {
       add(
         {
-          id: "road-tripper",
-          label: "Road tripper",
-          icon: "car",
-          difficulty: 3,
-          because: `Your stops average ${Math.round(avg)} miles from home`,
+        ...T("road-tripper"),
+        because: `Your stops average ${Math.round(avg)} miles from home`,
         },
         avg,
         15,
@@ -326,18 +370,15 @@ export function earnedTitles(
 
   // ─── How many: only the highest step shows ───────────────────────────────
   const MILESTONES = [
-    {need: 50, id: "hall-of-fame", label: "Hall of fame", icon: "trophy" as const, difficulty: 5},
-    {need: 25, id: "date-night-legend", label: "Date night legend", icon: "star" as const, difficulty: 4},
-    {need: 10, id: "date-night-regular", label: "Date night regular", icon: "ribbon" as const, difficulty: 3},
+    {need: 50, ...T("hall-of-fame")},
+    {need: 25, ...T("date-night-legend")},
+    {need: 10, ...T("date-night-regular")},
   ];
   const step = MILESTONES.find((m) => dates.length >= m.need);
   if (step) {
     add(
       {
-        id: step.id,
-        label: step.label,
-        icon: step.icon,
-        difficulty: step.difficulty,
+        ...T(step.id),
         because: `${plural(dates.length, "date")} and counting`,
       },
       dates.length,
@@ -346,6 +387,17 @@ export function earnedTitles(
   }
 
   return earned.sort((a, b) => b.difficulty - a.difficulty || b.margin - a.margin);
+}
+
+/**
+ * The titles to show on Profile, best first: the ones you picked (in your
+ * order, skipping any you no longer have), or the hardest three.
+ */
+export function shownTitles(earned: EarnedTitle[], featured: string[] | null | undefined): EarnedTitle[] {
+  const picked = (featured ?? [])
+    .map((id) => earned.find((t) => t.id === id))
+    .filter((t): t is EarnedTitle => !!t);
+  return picked.length ? picked.slice(0, 3) : earned.slice(0, 3);
 }
 
 /**

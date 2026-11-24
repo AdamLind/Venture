@@ -11,9 +11,8 @@ import TabHeader, {
   useTabRefresh,
 } from "@/components/ui/TabHeader";
 import {useProfileStore} from "@/src/store/useProfileStore";
-import {displayName, hasHomeArea} from "@/src/lib/profile";
-import {DATES_FOR_TITLES, type EarnedTitle, earnedTitles, titleLayout} from "@/utils/titles";
-import {showInfo} from "@/src/lib/notify";
+import {displayName} from "@/src/lib/profile";
+import {DATES_FOR_TITLES, type EarnedTitle, titleLayout} from "@/utils/titles";
 import {useItineraryStore} from "@/src/store/useItineraryStore";
 import {groupItineraries} from "@/src/lib/dates";
 import {UpNextCard} from "@/components/dates/DateCards";
@@ -26,6 +25,7 @@ import {showIdeaActions} from "@/src/lib/ideaActions";
 import type {IdeaVisibility} from "@/types/ideas";
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
 import {useConnectionActions} from "@/hooks/useConnectionActions";
+import {useEarnedTitles} from "@/hooks/useEarnedTitles";
 import ConnectionSheet from "@/components/connections/ConnectionSheet";
 import type {Connection} from "@/src/lib/connections";
 import {badgeCount} from "@/src/lib/text";
@@ -88,7 +88,7 @@ function TitlePill({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityHint="How you earned it"
+      accessibilityHint="Opens all your titles"
       className={`flex-row items-center rounded-full border active:opacity-70 ${
         main ? "gap-1.5 px-3.5 py-2" : "gap-1 px-2.5 py-1.5 bg-zinc-900 border-zinc-800"
       }`}
@@ -107,10 +107,13 @@ function TitlePill({
 }
 
 /**
- * Titles earned from your finished dates (#84), up to three: the hardest
- * in the middle, the next on the left, the third on the right.
+ * Titles earned from your finished dates (#84), up to three: your pick (or
+ * the hardest three), the first in the middle, the next on the left, the
+ * third on the right. Tapping any opens every title (app/titles.tsx).
  */
 function TitlesRow({titles, finished}: {titles: EarnedTitle[]; finished: number}) {
+  const router = useRouter();
+  const openTitles = () => router.push("/titles");
   const shown = titleLayout(titles);
   if (!shown.length) {
     // Not enough dates yet, or nothing in common yet
@@ -120,14 +123,7 @@ function TitlesRow({titles, finished}: {titles: EarnedTitle[]; finished: number}
         <TitlePill
           title={{label: early ? "New to Venture" : "Still exploring", icon: early ? "sparkles" : "compass"}}
           main={false}
-          onPress={() =>
-            showInfo(
-              early ? "Titles come from your dates" : "Still exploring",
-              early
-                ? `Finish ${DATES_FOR_TITLES - finished} more ${DATES_FOR_TITLES - finished === 1 ? "date" : "dates"} to start earning them.`
-                : "Titles come from what your dates have in common. Keep going.",
-            )
-          }
+          onPress={openTitles}
         />
       </View>
     );
@@ -135,7 +131,7 @@ function TitlesRow({titles, finished}: {titles: EarnedTitle[]; finished: number}
   return (
     <View className="flex-row flex-wrap items-center justify-center gap-2 mt-4">
       {shown.map(({title, main}) => (
-        <TitlePill key={title.id} title={title} main={main} onPress={() => showInfo(title.label, title.because)} />
+        <TitlePill key={title.id} title={title} main={main} onPress={openTitles} />
       ))}
     </View>
   );
@@ -271,16 +267,8 @@ export default function ProfileScreen() {
   );
   const upNext = active ?? upcoming[0] ?? null;
   const finishedCount = itineraries.filter((i) => i.status === "COMPLETED").length;
-  const titles = useMemo(
-    () =>
-      earnedTitles(
-        itineraries,
-        preferences && hasHomeArea(preferences)
-          ? {latitude: preferences.home_lat as number, longitude: preferences.home_lng as number}
-          : null,
-      ),
-    [itineraries, preferences],
-  );
+  // Your titles (#84): the ones you picked to show, or the hardest three
+  const {shown: titles} = useEarnedTitles();
 
   if (!profile || !preferences) {
     return (
