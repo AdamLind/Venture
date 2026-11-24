@@ -30,36 +30,11 @@ I developed this app using React Native. React Native is a cross-platform langua
 
 ## ===============================================
 
-# SQL Relational Database Overview
+# Backend
 
-I created a docker container that contains a PostgreSQL relational database that lets me use CRUD operations on my date ideas and sort through them efficiently.
+Venture's backend is [Supabase](https://supabase.com/docs): a hosted PostgreSQL database (with PostGIS for places), sign-in, storage for photos, and row-level security so people only see what they should. The schema is in `supabase/migrations`.
 
-I know this app will require a huge amount of clean data in order to operate as intented. I decided to us a PostgreSQL database running on docker in order to build out the initial schema for my database before deploying it to the cloud for production.
-
-# Relational Database
-
-I am using PostgreSQL running inside a Docker container. I chose PostgreSQL because of its strict data typing and support for advanced features like array filtering and potential future extensions for geospatial data (PostGIS) and vector search (pgvector).
-
-I've created about five different tables so far, but the most important ones for this app are: Date_Idea, Tags, and Date_Tags. Date_Idea holds a myriad of data about all the different date ideas, and Tags holds my tags. Date_Tags is the binding table between them for a many-to-many relationship.
-
-# Development Environment
-
-I used docker because of how easy it was to set up a Postgres database and maintain and operate it. I used React Native and Expo on the frontend to consume the data coming back from the database.
-
-The main languages I used are: ReactNative, SQL, and ExpressJS. ReactNative is used for the front end to display all the data and ExpressJS and SQL are used on the backend to query and provide data to the frontend from my docker container.
-
-# Useful Websites
-
-- [ExpressJS Docs](https://expressjs.com/)
-- [React Native Docs](https://reactnative.dev/)
-- [PostgreSQL Docs](https://www.postgresql.org/)
-- [Docker Docs](https://docs.docker.com/)
-
-# Future Work
-
-- Update the schema for Date_Ideas to include open times and other valuable, pertinent data.
-- Update the searching and sorting for date ideas to use AI vectoring instead of having to tag each date idea manually.
-- Refine the user schema so that I can add auth logic and social-media-like interaction between users.
+It started as a PostgreSQL database in a local Docker container behind a small Express API (`server/`). Supabase replaced both, and the old server was removed; it's still in the git history.
 
 ## ===============================================
 
