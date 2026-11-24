@@ -1,13 +1,13 @@
 // scripts/import-ideas.mjs
 // The launch ideas (#71): written as files in content/ideas/*.json (see
-// content/ideas/README.md), checked, then posted by the official @venture
-// account. New ideas go to the moderation queue (Settings › Moderation) so
+// content/ideas/README.md), checked, then posted by the official account
+// (@system for now, OFFICIAL_USERNAME). New ideas go to the moderation queue (Settings › Moderation) so
 // each is seen in the app before it's public; nothing goes live unchecked.
 //
 //   node scripts/import-ideas.mjs              check every file (saves nothing)
 //   node scripts/import-ideas.mjs --import     check, then save the ideas that pass
 //   node scripts/import-ideas.mjs --import --publish   ...new ones straight to Discover
-//   node scripts/import-ideas.mjs --import --retire    ...and hide @venture ideas
+//   node scripts/import-ideas.mjs --import --retire    ...and hide official ideas
 //                                              taken out of the files
 //   node scripts/import-ideas.mjs --photos     also check that photo links load
 //   node scripts/import-ideas.mjs content/ideas/provo.json   just that file
@@ -60,7 +60,10 @@ const SAME_NAME = 0.78;
 const PHOTO_MAX_BYTES = 600_000;
 const PHOTO_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"};
 
-const OFFICIAL_USERNAME = "venture";
+// The official account that posts them, found by its username. Renaming it
+// later (once the app's name is settled): change the username in the
+// database and here, together, or the next import makes a new account
+const OFFICIAL_USERNAME = process.env.OFFICIAL_USERNAME || "system";
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 
@@ -308,12 +311,12 @@ function checkFile(file, tags) {
 
 // ─── Saving ──────────────────────────────────────────────────────────────────
 
-/** The @venture account: found, or (importing) created */
+/** The official account: found, or (importing) created */
 async function officialAccount() {
   const [found] = await rest(`users?select=user_id&username=eq.${OFFICIAL_USERNAME}`);
   if (found) return found.user_id;
   if (!IMPORT) return null;
-  const email = process.env.VENTURE_ACCOUNT_EMAIL || "official@venture-app.invalid";
+  const email = process.env.OFFICIAL_ACCOUNT_EMAIL || `${OFFICIAL_USERNAME}@official.invalid`;
   const user = await call("/auth/v1/admin/users", {
     method: "POST",
     // No password: nobody signs in as it, the import posts for it
@@ -322,7 +325,7 @@ async function officialAccount() {
   await rest(`users?user_id=eq.${user.id}`, {
     method: "PATCH",
     headers: {Prefer: "return=minimal"},
-    body: JSON.stringify({username: OFFICIAL_USERNAME, first_name: "Venture"}),
+    body: JSON.stringify({username: OFFICIAL_USERNAME}),
   });
   console.log(`Created the @${OFFICIAL_USERNAME} account (${email})`);
   return user.id;
@@ -550,7 +553,7 @@ async function main() {
     }
   }
 
-  // 3. @venture ideas in these cities that aren't in the files any more
+  // 3. Official ideas in these cities that aren't in the files any more
   const inFiles = new Set(checked.flatMap(({ideas}) => ideas.map(({idea}) => idea.key)));
   const cities = new Set(checked.map(({city}) => city).filter(Boolean));
   const gone = existing.filter(

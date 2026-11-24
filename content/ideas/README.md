@@ -1,9 +1,10 @@
 # Launch ideas
 
 The ideas Venture launches with (#71), one JSON file per city (`provo.json`,
-`salt-lake-city.json`). They're posted by the official **@venture** account,
-and each new one waits in the moderation queue (Settings › Moderation) until
-someone approves it in the app.
+`salt-lake-city.json`). They're posted by the official **@system** account (a
+placeholder until the app's name is settled: `OFFICIAL_USERNAME` in the
+import), and each new one waits in the moderation queue (Settings ›
+Moderation) until someone approves it in the app.
 
 ```sh
 cd mobile-client
@@ -15,7 +16,7 @@ node scripts/import-ideas.mjs --photos     # also check photo links load
 Problems marked **✗** stop that idea from importing; **!** is worth a look
 but imports. Running it again is safe: a changed idea is updated (keeping its
 review status), an unchanged one is left alone. `--import --retire` hides
-@venture ideas that were taken out of the files. `--import --publish` skips
+official ideas that were taken out of the files. `--import --publish` skips
 the review queue for new ideas (only for ideas you've already checked).
 
 Files starting with `_` are examples and never imported: see
