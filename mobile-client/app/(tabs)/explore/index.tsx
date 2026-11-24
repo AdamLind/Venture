@@ -203,8 +203,17 @@ export default function ExploreScreen() {
   // "Not interested" ideas drop out right away, and come back on undo
   const hiddenIds = useHiddenStore((s) => s.ids);
   const blockedIds = useBlockStore((s) => s.ids);
-  // Go-out ideas near you or your home area; stay-in ideas everywhere
-  // (utils/reach.ts). Your own ideas always show: this is where you see them
+  // The map shows every place: you pan to where you're going (a road trip)
+  const mapIdeas = useMemo(
+    () =>
+      allIdeas.filter(
+        (idea) => !hiddenIds.has(idea.idea_id) && !(idea.user_id && blockedIds.has(idea.user_id)),
+      ),
+    [allIdeas, hiddenIds, blockedIds],
+  );
+  // The list: go-out ideas near you or your home area; stay-in ideas
+  // everywhere (utils/reach.ts). Your own ideas always show: this is where
+  // you see them
   const myId = useProfileStore((s) => s.userId);
   const preferences = useProfileStore((s) => s.preferences);
   const homeArea = useMemo(() => {
@@ -213,13 +222,10 @@ export default function ExploreScreen() {
   }, [preferences]);
   const ideas = useMemo(
     () =>
-      allIdeas.filter(
-        (idea) =>
-          !hiddenIds.has(idea.idea_id) &&
-          !(idea.user_id && blockedIds.has(idea.user_id)) &&
-          (idea.user_id === myId || inReach(idea, [userLocation, homeArea])),
+      mapIdeas.filter(
+        (idea) => idea.user_id === myId || inReach(idea, [userLocation, homeArea]),
       ),
-    [allIdeas, hiddenIds, blockedIds, myId, userLocation, homeArea],
+    [mapIdeas, myId, userLocation, homeArea],
   );
   // There are places to go, just none near you (Venture isn't in your city yet)
   const nothingNearby =
@@ -635,7 +641,7 @@ export default function ExploreScreen() {
             }}
           >
             {/* 1. Base markers (dim gray border, frozen in GPU memory) */}
-            {ideas
+            {mapIdeas
               .filter(
                 (i) => i.latitude && i.longitude && i.modality === "GO_OUT",
               )
