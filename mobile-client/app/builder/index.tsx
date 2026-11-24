@@ -1155,7 +1155,7 @@ export default function BuilderScreen() {
             <View className="mx-5 mb-6 rounded-3xl overflow-hidden border border-zinc-800 bg-zinc-900">
               <View style={{height: 170}}>
                 <Image
-                  source={{uri: activityImage(stopSlots[0]?.activity, IMAGE_SIZE.full)}}
+                  source={activityImage(stopSlots[0]?.activity, IMAGE_SIZE.full)}
                   style={{width: "100%", height: "100%"}}
                   contentFit="cover"
                 />

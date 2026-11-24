@@ -5,6 +5,7 @@ import type {Ionicons} from "@expo/vector-icons";
 import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import type {IdeaSummary, IdeaVisibility} from "@/types/ideas";
 import {formatMoney} from "@/utils/money";
+import {type IdeaPicture, ideaTile} from "@/src/lib/ideaTiles";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -12,17 +13,17 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 export const IDEA_SUMMARY_COLUMNS = `
   idea_id, title, image_urls, est_price_per_person, est_duration_minutes,
   modality, visibility, moderation_note, moderation_rules, created_at, time_of_day,
+  activity_type, environment,
   venues ( name )
 `;
 
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=800&auto=format&fit=crop";
-
+/** The idea's photo, sized for `displayWidth` points; its kind's tile without one */
 export function ideaImage(
-  idea: Pick<IdeaSummary, "image_urls">,
+  idea: Pick<IdeaSummary, "image_urls"> & Partial<Pick<IdeaSummary, "idea_id" | "modality" | "activity_type" | "environment">>,
   displayWidth: number = IMAGE_SIZE.thumb,
-): string {
-  return sizedImage(idea.image_urls?.[0] || FALLBACK_IMAGE, displayWidth);
+): IdeaPicture {
+  const photo = idea.image_urls?.[0];
+  return photo ? sizedImage(photo, displayWidth) : ideaTile(idea);
 }
 
 /** "Free", "$25 pp" */

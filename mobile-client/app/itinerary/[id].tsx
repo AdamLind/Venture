@@ -481,7 +481,7 @@ export default function ItineraryDetailScreen() {
             source={
               heroPhoto
                 ? {uri: heroPhoto.url ?? heroPhoto.thumbUrl ?? undefined, cacheKey: heroPhoto.storage_path}
-                : {uri: coverImage(itinerary)}
+                : coverImage(itinerary)
             }
             placeholder={
               heroPhoto?.thumbUrl ? {uri: heroPhoto.thumbUrl, cacheKey: heroPhoto.thumb_path ?? undefined} : undefined

@@ -147,7 +147,7 @@ export function UpcomingDateCard({itinerary}: {itinerary: Itinerary}) {
       {/* Image + details */}
       <View className="h-32 w-full">
         <Image
-          source={{uri: coverImage(itinerary)}}
+          source={coverImage(itinerary)}
           style={{width: "100%", height: "100%"}}
           contentFit="cover"
         />
@@ -197,7 +197,7 @@ export function InviteCard({
     >
       <View className="flex-row items-center gap-3">
         <Image
-          source={{uri: coverImage(itinerary)}}
+          source={coverImage(itinerary)}
           style={{width: 56, height: 56, borderRadius: 14}}
           contentFit="cover"
         />
@@ -243,7 +243,7 @@ export function LiveDateCard({itinerary}: {itinerary: Itinerary}) {
     >
       <View className="h-40 w-full">
         <Image
-          source={{uri: sizedImage(focus?.activity?.image_urls?.[0], IMAGE_SIZE.full) ?? coverImage(itinerary)}}
+          source={sizedImage(focus?.activity?.image_urls?.[0], IMAGE_SIZE.full) ?? coverImage(itinerary)}
           style={{width: "100%", height: "100%", opacity: 0.6}}
           contentFit="cover"
         />

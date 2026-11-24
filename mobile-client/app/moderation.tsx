@@ -266,7 +266,7 @@ export default function ModerationScreen() {
 }
 
 function Thumb({idea}: {idea: {image_urls: string[] | null}}) {
-  return <Image source={{uri: ideaImage(idea)}} style={{width: 56, height: 56, borderRadius: 14}} contentFit="cover" />;
+  return <Image source={ideaImage(idea)} style={{width: 56, height: 56, borderRadius: 14}} contentFit="cover" />;
 }
 
 function ReviewRow({

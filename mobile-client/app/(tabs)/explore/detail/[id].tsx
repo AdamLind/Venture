@@ -1,5 +1,6 @@
 import React, {useCallback, useRef, useState} from "react";
 import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
+import {ideaTile} from "@/src/lib/ideaTiles";
 import {
   View,
   Text,
@@ -269,7 +270,8 @@ export default function IdeaDetailScreen() {
             }}
           >
             <Image
-              source={{uri: sizedImage(idea.image_urls?.[0], IMAGE_SIZE.full) ?? undefined}}
+              // Its photo, or its kind's tile (src/lib/ideaTiles.ts)
+              source={sizedImage(idea.image_urls?.[0], IMAGE_SIZE.full) ?? ideaTile(idea)}
               style={{width: "100%", height: "100%"}}
               contentFit="cover" // Edge-to-edge immersive fit
             />

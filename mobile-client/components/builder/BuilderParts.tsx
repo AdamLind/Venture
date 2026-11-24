@@ -13,11 +13,9 @@ import {SAVED_COLOR} from "@/components/ideas/SaveButton";
 import {spotLabel} from "@/utils/bestPlacement";
 import type {TravelLeg} from "@/types/itinerary";
 import {formatMoney} from "@/utils/money";
+import {type IdeaPicture, ideaTile} from "@/src/lib/ideaTiles";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
-
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=400&auto=format&fit=crop";
 
 const TRACK_COLOR = "#27272a"; // zinc-800
 const NODE_TOP = 14; // where the node sits within a row, so it lines up with card titles
@@ -32,9 +30,10 @@ export function formatMinutes(minutes: number): string {
   return r ? `${h}h ${r}m` : `${h}h`;
 }
 
-/** The idea's photo, sized for `displayWidth` points (default: a thumbnail). */
-export function activityImage(activity: any, displayWidth: number = IMAGE_SIZE.thumb): string {
-  return sizedImage(activity?.image_urls?.[0] || activity?.image_url || FALLBACK_IMAGE, displayWidth);
+/** The idea's photo, sized for `displayWidth` points (default: a thumbnail); its kind's tile without one. */
+export function activityImage(activity: any, displayWidth: number = IMAGE_SIZE.thumb): IdeaPicture {
+  const photo = activity?.image_urls?.[0] || activity?.image_url;
+  return photo ? sizedImage(photo, displayWidth) : ideaTile(activity);
 }
 
 const slotMinutes = (slot: {startTime: number; endTime: number}) =>
@@ -201,7 +200,7 @@ function StopCardView({
       >
       <Pressable onPress={onView} disabled={!onView} className="active:opacity-70">
         <Image
-          source={{uri: activityImage(activity)}}
+          source={activityImage(activity)}
           style={{width: 64, height: 64, borderRadius: 14}}
           contentFit="cover"
           // Kept in memory: reordering re-attaches the photo, which otherwise
@@ -581,7 +580,7 @@ export function ActivityOptionCard({
       >
         <Image
           // Card size: a taller crop of a wide photo needs more pixels than a thumbnail
-          source={{uri: activityImage(item, IMAGE_SIZE.card)}}
+          source={activityImage(item, IMAGE_SIZE.card)}
           style={{
             width: 84,
             minHeight: 84,
@@ -651,7 +650,7 @@ export function PickCard({
       className="w-56 bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden active:opacity-80"
     >
       <Image
-        source={{uri: activityImage(item, IMAGE_SIZE.card)}}
+        source={activityImage(item, IMAGE_SIZE.card)}
         style={{width: "100%", height: 120}}
         contentFit="cover"
       />

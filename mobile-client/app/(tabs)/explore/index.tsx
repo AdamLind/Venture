@@ -1,5 +1,6 @@
 import React, {useRef, useState, useEffect, useCallback, useMemo} from "react";
 import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
+import {ideaTile} from "@/src/lib/ideaTiles";
 import {
   Pressable,
   View,
@@ -264,6 +265,7 @@ export default function ExploreScreen() {
         `
         *,
         venues ( name, address, coordinates ),
+        activity_tags ( tags ( name ) ),
         users!activities_user_id_fkey ( username, profile_image_url )
       `,
       )
@@ -351,12 +353,9 @@ export default function ExploreScreen() {
   };
 
   const renderIdeaItem = ({item}: {item: DateIdea}) => {
-    const displayImage = sizedImage(
-      item.image_urls?.[0] ||
-        item.image_url ||
-        "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=800&auto=format&fit=crop",
-      IMAGE_SIZE.full,
-    );
+    // Its photo, or its kind's tile (src/lib/ideaTiles.ts)
+    const photo = item.image_urls?.[0] || item.image_url;
+    const displayImage = photo ? sizedImage(photo, IMAGE_SIZE.full) : ideaTile(item);
 
     return (
       <Pressable
@@ -370,7 +369,7 @@ export default function ExploreScreen() {
       >
         <View className="h-80 w-full rounded-3xl overflow-hidden bg-zinc-900 border border-zinc-800 relative">
           <Image
-            source={{uri: displayImage}}
+            source={displayImage}
             style={{width: "100%", height: "100%"}}
             contentFit="cover"
           />
@@ -722,14 +721,11 @@ export default function ExploreScreen() {
               >
                 <GlassSurface style={glassStyles.previewCard}>
                   <Image
-                    source={{
-                      uri: sizedImage(
-                        selectedIdea.image_urls?.[0] ||
-                          selectedIdea.image_url ||
-                          "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=800&auto=format&fit=crop",
-                        84,
-                      ),
-                    }}
+                    source={
+                      selectedIdea.image_urls?.[0] || selectedIdea.image_url
+                        ? sizedImage(selectedIdea.image_urls?.[0] || selectedIdea.image_url, 84)
+                        : ideaTile(selectedIdea)
+                    }
                     style={{width: 84, height: 84, borderRadius: 18}}
                     contentFit="cover"
                   />

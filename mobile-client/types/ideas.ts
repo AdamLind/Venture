@@ -23,6 +23,9 @@ export interface IdeaSummary {
   created_at: string;
   /** When it's best (for planning a date with it) */
   time_of_day?: string[] | null;
+  /** For its tile when there's no photo (src/lib/ideaTiles.ts) */
+  activity_type?: string | null;
+  environment?: string | null;
   venues?: {name: string} | null;
 }
 

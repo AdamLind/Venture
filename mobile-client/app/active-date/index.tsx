@@ -711,7 +711,7 @@ export default function ActiveDateScreen() {
         className="flex-row items-center gap-3.5 active:opacity-80"
       >
         <Image
-          source={{uri: activityImage(shownActivity)}}
+          source={activityImage(shownActivity)}
           style={{width: 76, height: 76, borderRadius: 18}}
           contentFit="cover"
         />
@@ -894,7 +894,7 @@ export default function ActiveDateScreen() {
               style={{opacity: done ? 0.55 : 1}}
             >
               <Image
-                source={{uri: activityImage(slot.activity)}}
+                source={activityImage(slot.activity)}
                 style={{width: 52, height: 52, borderRadius: 12}}
                 contentFit="cover"
               />
@@ -974,7 +974,7 @@ export default function ActiveDateScreen() {
     return (
       <View style={styles.fill}>
         <Image
-          source={{uri: activityImage((visited[visited.length - 1] ?? stops[0]).activity, IMAGE_SIZE.card)}}
+          source={activityImage((visited[visited.length - 1] ?? stops[0]).activity, IMAGE_SIZE.card)}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
           blurRadius={30}
@@ -1078,7 +1078,7 @@ export default function ActiveDateScreen() {
                   style={{opacity: went ? 1 : 0.5}}
                 >
                   <Image
-                    source={{uri: activityImage(s.activity)}}
+                    source={activityImage(s.activity)}
                     style={{width: 44, height: 44, borderRadius: 10}}
                     contentFit="cover"
                   />
@@ -1249,7 +1249,7 @@ export default function ActiveDateScreen() {
       ) : (
         <View style={[StyleSheet.absoluteFill, {height: collapsedTop + 40}]}>
           <Image
-            source={{uri: activityImage(shownActivity, IMAGE_SIZE.full)}}
+            source={activityImage(shownActivity, IMAGE_SIZE.full)}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
             transition={300}

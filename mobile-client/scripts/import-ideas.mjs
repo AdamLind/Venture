@@ -269,7 +269,7 @@ function checkFile(file, tags) {
     if (idea.safety_note && idea.safety_note.length > NOTE_MAX) problem("✗", `safety_note is over ${NOTE_MAX} characters`);
     if (idea.url && !/^https?:\/\/\S+$/.test(idea.url)) problem("✗", "url isn't a link");
     const photos = idea.photos ?? [];
-    if (!photos.length) problem("!", "no photo (shows the icon tile)");
+    if (!photos.length) problem("!", "no photo (shows a tile for its kind: a color and an icon)");
     for (const photo of photos) {
       if (/^https?:\/\//.test(photo)) continue;
       const path = resolve(dirname(file), photo);

@@ -134,7 +134,7 @@ function Option({option, onPress}: {option: Replacement; onPress: () => void}) {
       className="flex-row items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-2xl p-3 active:opacity-80"
       style={{opacity: option.fit === "FITS" ? 1 : 0.75}}
     >
-      <Image source={{uri: ideaImage(option as any)}} style={{width: 52, height: 52, borderRadius: 12}} contentFit="cover" />
+      <Image source={ideaImage(option as any)} style={{width: 52, height: 52, borderRadius: 12}} contentFit="cover" />
       <View className="flex-1 gap-0.5">
         <Text className="text-white font-bold text-base" numberOfLines={1}>
           {option.title}

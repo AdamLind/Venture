@@ -214,7 +214,7 @@ export default function HiddenIdeasScreen() {
               >
                 {idea ? (
                   <Image
-                    source={{uri: ideaImage(idea)}}
+                    source={ideaImage(idea)}
                     style={{width: 56, height: 56, borderRadius: 16}}
                     contentFit="cover"
                   />

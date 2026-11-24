@@ -62,7 +62,7 @@ export default function MemoriesGrid({dates}: {dates: Itinerary[]}) {
                   source={
                     cover
                       ? {uri: cover.thumbUrl ?? undefined, cacheKey: cover.thumb_path ?? cover.storage_path}
-                      : {uri: coverImage(date, IMAGE_SIZE.card)}
+                      : coverImage(date, IMAGE_SIZE.card)
                   }
                   style={{width: "100%", height: "100%", backgroundColor: "#18181b"}}
                   contentFit="cover"

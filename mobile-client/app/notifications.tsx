@@ -231,7 +231,7 @@ function NotificationRow({item, isNew}: {item: AppNotification; isNew: boolean})
           />
         ) : (
           <Image
-            source={{uri: ideaImage({image_urls: item.activities?.image_urls ?? null})}}
+            source={ideaImage({image_urls: item.activities?.image_urls ?? null})}
             style={{width: 52, height: 52, borderRadius: 14}}
             contentFit="cover"
           />

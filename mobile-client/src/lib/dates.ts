@@ -6,15 +6,13 @@ import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import type {TimeSlot} from "@/types/itinerary";
 import {deriveReplannedTimeline, type PlacedActivity} from "@/utils/timeline";
 import type {DatePrefs} from "@/utils/replan";
+import {type IdeaPicture, ideaTile} from "@/src/lib/ideaTiles";
 
 /** Finished dates are auto-completed this long after their scheduled end. */
 export const AUTO_COMPLETE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 /** Offer "Start now" after finalizing when the date begins within this window. */
 export const START_NOW_WINDOW_MS = 60 * 60 * 1000;
-
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=800&auto=format&fit=crop";
 
 /** "Tacos & Comedy" from the first two stop titles. */
 export function autoTitle(stopTitles: string[]): string {
@@ -29,12 +27,13 @@ export function liveStops(itinerary: Itinerary): ItineraryStop[] {
   return itinerary.stops.filter((s) => s.activity);
 }
 
-export function coverImage(itinerary: Itinerary, displayWidth: number = IMAGE_SIZE.full): string {
+/** A date's picture: its first stop's photo that has one, or the first stop's tile */
+export function coverImage(itinerary: Itinerary, displayWidth: number = IMAGE_SIZE.full): IdeaPicture {
   for (const stop of itinerary.stops) {
     const url = stop.activity?.image_urls?.[0];
     if (url) return sizedImage(url, displayWidth);
   }
-  return FALLBACK_IMAGE;
+  return ideaTile(itinerary.stops.find((s) => s.activity)?.activity as any);
 }
 
 export function stopCountLabel(itinerary: Itinerary): string {

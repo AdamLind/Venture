@@ -52,7 +52,7 @@ export function SavedIdeaRow({
       className="flex-row items-center bg-zinc-900 border border-zinc-800 rounded-3xl p-3 active:opacity-80"
     >
       <Image
-        source={{uri: ideaImage(idea)}}
+        source={ideaImage(idea)}
         style={{width: 64, height: 64, borderRadius: 16}}
         contentFit="cover"
       />
@@ -149,7 +149,7 @@ export function MyIdeaRow({
       <View className="flex-row items-center">
         <View>
           <Image
-            source={{uri: ideaImage(idea)}}
+            source={ideaImage(idea)}
             style={{width: 64, height: 64, borderRadius: 16}}
             contentFit="cover"
           />
