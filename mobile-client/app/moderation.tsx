@@ -6,7 +6,7 @@
 // (app/reported-person/[id].tsx). Staff only (Settings shows the way in).
 
 import React, {useCallback, useMemo, useState} from "react";
-import {ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View} from "react-native";
+import {ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, Text, TextInput, View} from "react-native";
 import Toast from "@/src/lib/toast";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {useFocusEffect, useRouter} from "expo-router";
@@ -180,31 +180,44 @@ export default function ModerationScreen() {
     <SafeAreaView edges={["top"]} style={{flex: 1, backgroundColor: "#000"}}>
       <ScreenHeader title="Moderation" />
 
-      {/* TABS */}
-      <View className="flex-row mx-5 mt-2 mb-3 bg-zinc-900 rounded-2xl p-1 border border-zinc-800">
-        {tabs.map((t) => {
-          const active = tab === t.key;
-          return (
-            <Pressable
-              key={t.key}
-              onPress={() => setTab(t.key)}
-              accessibilityRole="tab"
-              accessibilityState={{selected: active}}
-              className={`flex-1 h-9 rounded-xl flex-row items-center justify-center gap-1.5 ${active ? "bg-zinc-700" : ""}`}
-            >
-              <Text className={`text-sm font-bold ${active ? "text-white" : "text-zinc-400"}`} numberOfLines={1}>
-                {t.label}
-              </Text>
-              {t.count ? (
-                <View
-                  className={`min-w-5 h-5 px-1.5 rounded-full items-center justify-center ${t.key === "reported" ? "bg-red-500" : "bg-amber-500"}`}
-                >
-                  <Text className="text-black text-xs font-extrabold">{badgeCount(t.count)}</Text>
-                </View>
-              ) : null}
-            </Pressable>
-          );
-        })}
+      {/* TABS: chips as wide as their label and count, in a row that
+          scrolls sideways if it's wider than the screen (four equal tabs
+          squeezed "To review 99+") */}
+      <View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="px-5 gap-2"
+          className="mt-2 mb-3 grow-0"
+          accessibilityRole="tablist"
+        >
+          {tabs.map((t) => {
+            const active = tab === t.key;
+            return (
+              <Pressable
+                key={t.key}
+                onPress={() => setTab(t.key)}
+                accessibilityRole="tab"
+                accessibilityState={{selected: active}}
+                accessibilityLabel={t.count ? `${t.label}, ${t.count}` : t.label}
+                className={`h-9 px-4 rounded-full flex-row items-center gap-2 border ${
+                  active ? "bg-white border-white" : "bg-zinc-900 border-zinc-800 active:bg-zinc-800"
+                }`}
+              >
+                <Text className={`text-sm font-bold ${active ? "text-black" : "text-zinc-300"}`}>{t.label}</Text>
+                {t.count ? (
+                  <View
+                    className={`min-w-5 h-5 px-1.5 rounded-full items-center justify-center ${
+                      t.key === "reported" ? "bg-red-500" : "bg-amber-500"
+                    }`}
+                  >
+                    <Text className="text-black text-xs font-extrabold">{badgeCount(t.count)}</Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {error && !data ? (
