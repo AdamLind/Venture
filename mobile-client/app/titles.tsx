@@ -6,8 +6,9 @@
 //                      middle. Tap one to make it the main title, × to take
 //                      it off. Until you pick, they're your hardest three
 //   Earned ........... your other titles: tap one to show it
-//   Still to earn .... the rest, with how to earn each, except a few
-//                      mystery titles that only show their name
+//   Still to earn .... the rest, with how to earn each
+//   Mysteries ........ at the bottom, on their own: titles that only show
+//                      their name until you have them
 //
 // Your pick is saved as you go (user_preferences.featured_titles).
 
@@ -38,8 +39,8 @@ export default function TitlesScreen() {
   const shownIds = shown.map((t) => t.id);
   const others = earned.filter((t) => !shownIds.includes(t.id));
 
-  // Not earned yet (a milestone you've passed counts as done)
-  const toEarn = useMemo(() => {
+  // Not earned yet (a milestone you've passed counts as done), mysteries apart
+  const notYet = useMemo(() => {
     const have = new Set(earned.map((t) => t.id));
     const topStep = Math.max(...MILESTONES.map((m, i) => (have.has(m) ? i : -1)));
     MILESTONES.slice(0, Math.max(0, topStep)).forEach((m) => have.add(m));
@@ -47,6 +48,9 @@ export default function TitlesScreen() {
       .filter((id) => !have.has(id))
       .sort((a, b) => TITLES[a].difficulty - TITLES[b].difficulty);
   }, [earned]);
+  const isSecret = (id: TitleId) => !!(TITLES[id] as {secret?: boolean}).secret;
+  const toEarn = notYet.filter((id) => !isSecret(id));
+  const mysteries = notYet.filter(isSecret);
 
   const save = async (ids: string[]) => {
     try {
@@ -143,6 +147,15 @@ export default function TitlesScreen() {
         {toEarn.length > 0 && (
           <Section title={`Still to earn · ${toEarn.length}`}>
             {toEarn.map((id) => (
+              <LockedRow key={id} id={id} />
+            ))}
+          </Section>
+        )}
+
+        {/* MYSTERIES: at the bottom, on their own */}
+        {mysteries.length > 0 && (
+          <Section title={`Mysteries · ${mysteries.length}`} note="Keep going on dates to find out how to earn these.">
+            {mysteries.map((id) => (
               <LockedRow key={id} id={id} />
             ))}
           </Section>
@@ -257,7 +270,7 @@ function LockedRow({id}: {id: TitleId}) {
           <Text className="text-zinc-600 text-xs font-semibold">{RARITY[info.difficulty]}</Text>
         </View>
         <Text className={`text-sm ${secret ? "text-zinc-500 italic" : "text-zinc-500"}`} numberOfLines={3}>
-          {secret ? "A mystery. Keep going on dates to find out how." : info.how}
+          {secret ? "How to earn it is a mystery." : info.how}
         </Text>
       </View>
     </View>
