@@ -15,6 +15,7 @@ import {isLiquidGlassAvailable} from "expo-glass-effect";
 import ActiveDateBanner, {ActiveDateAccessory} from "@/components/ActiveDateBanner";
 import {useActiveDateStore} from "@/src/store/activeDateStore";
 import {useStaffStore, useStaffTools} from "@/src/store/useStaffStore";
+import {badgeCount} from "@/src/lib/text";
 
 // iOS 26's tab bar has a slot above it for things like a mini player
 const HAS_ACCESSORY = Platform.OS === "ios" && isLiquidGlassAvailable();
@@ -76,7 +77,7 @@ export default function TabLayout() {
           />
           <NativeTabs.Trigger.Label hidden>Profile</NativeTabs.Trigger.Label>
           {staffTools && (
-            <NativeTabs.Trigger.Badge>{staffWaiting ? String(staffWaiting) : undefined}</NativeTabs.Trigger.Badge>
+            <NativeTabs.Trigger.Badge>{staffWaiting ? badgeCount(staffWaiting) : undefined}</NativeTabs.Trigger.Badge>
           )}
         </NativeTabs.Trigger>
 

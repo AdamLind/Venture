@@ -28,6 +28,11 @@ export interface QueueIdea {
   user_id: string | null;
   title: string;
   image_urls: string[] | null;
+  /** For its tile when there's no photo (src/lib/ideaTiles.ts) */
+  modality?: string | null;
+  activity_type?: string | null;
+  environment?: string | null;
+  exertion?: string | null;
   visibility: IdeaVisibility;
   submitted_at: string | null;
   created_at: string;
@@ -83,6 +88,7 @@ export interface LogEntry {
 
 const IDEA_COLUMNS = `
   idea_id, user_id, title, image_urls, visibility, submitted_at, created_at, venue_id,
+  modality, activity_type, environment, exertion,
   venues ( name ),
   users!activities_user_id_fkey ( username )
 `;
@@ -93,6 +99,10 @@ function toQueueIdea(row: any): QueueIdea {
     user_id: row.user_id,
     title: row.title,
     image_urls: row.image_urls,
+    modality: row.modality,
+    activity_type: row.activity_type,
+    environment: row.environment,
+    exertion: row.exertion,
     visibility: row.visibility,
     submitted_at: row.submitted_at,
     created_at: row.created_at,

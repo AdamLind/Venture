@@ -25,6 +25,7 @@ import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
 import {showIdeaActions} from "@/src/lib/ideaActions";
 import type {IdeaVisibility} from "@/types/ideas";
 import {useConnectionsStore} from "@/src/store/useConnectionsStore";
+import {badgeCount} from "@/src/lib/text";
 
 type Tab = "memories" | "bucket" | "ideas";
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -137,11 +138,40 @@ function TitlesRow({titles, finished}: {titles: EarnedTitle[]; finished: number}
   );
 }
 
-/** Your partner and connections, under your name. Opens Connections. */
-function ConnectionsRow() {
+/** Your handle, with your partner beside it (#35): one line, either side shrinks */
+function HandleLine({username}: {username: string}) {
+  const router = useRouter();
+  const partner = useConnectionsStore((s) => s.connections.find((c) => c.is_partner) ?? null);
+  return (
+    <View className="flex-row items-center justify-center gap-2 mt-1 px-4 max-w-full">
+      <Text className="text-zinc-400 font-medium text-sm shrink" numberOfLines={1}>
+        @{username}
+      </Text>
+      {partner && (
+        <>
+          <Text className="text-zinc-600 text-sm">·</Text>
+          <Pressable
+            onPress={() => router.push("/connections")}
+            accessibilityRole="button"
+            accessibilityLabel={`With @${partner.username}. Open connections`}
+            hitSlop={6}
+            className="flex-row items-center gap-1 shrink active:opacity-70"
+          >
+            <Ionicons name="heart" size={12} color="#f472b6" />
+            <Text className="text-pink-300 text-sm font-semibold shrink" numberOfLines={1}>
+              with @{partner.username}
+            </Text>
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+}
+
+/** Your connections, beside Edit profile (only you see the count). Opens Connections. */
+function ConnectionsButton() {
   const router = useRouter();
   const connections = useConnectionsStore((s) => s.connections);
-  const partner = connections.find((c) => c.is_partner) ?? null;
   const shown = connections.slice(0, 3);
   const waiting = useConnectionsStore((s) => s.incoming.length);
 
@@ -154,36 +184,29 @@ function ConnectionsRow() {
           ? `${connections.length} connections${waiting ? `, ${waiting} waiting` : ""}`
           : "Add connections"
       }
-      className="items-center gap-1.5 mt-3 active:opacity-70"
+      className="flex-1 flex-row items-center justify-center gap-2 py-3 px-3 rounded-2xl bg-zinc-900 border border-zinc-800 active:opacity-80"
     >
-      {partner && (
-        <View className="flex-row items-center gap-1.5">
-          <Ionicons name="heart" size={13} color="#f472b6" />
-          <Text className="text-pink-300 text-sm font-semibold">with @{partner.username}</Text>
+      {shown.length > 0 ? (
+        <View className="flex-row">
+          {shown.map((c, i) => (
+            <View key={c.user_id} style={{marginLeft: i === 0 ? 0 : -8}}>
+              <Avatar profile={c} size={20} small />
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Ionicons name="person-add-outline" size={15} color="#d4d4d8" />
+      )}
+      <Text className="text-white font-bold text-sm shrink" numberOfLines={1}>
+        {connections.length
+          ? `${connections.length} connection${connections.length === 1 ? "" : "s"}`
+          : "Add connections"}
+      </Text>
+      {waiting > 0 && (
+        <View className="bg-blue-500 rounded-full min-w-5 h-5 px-1.5 items-center justify-center">
+          <Text className="text-white text-xs font-extrabold">{badgeCount(waiting)}</Text>
         </View>
       )}
-      <View className="flex-row items-center gap-2">
-        {shown.length > 0 && (
-          <View className="flex-row">
-            {shown.map((c, i) => (
-              <View key={c.user_id} style={{marginLeft: i === 0 ? 0 : -8}}>
-                <Avatar profile={c} size={22} small />
-              </View>
-            ))}
-          </View>
-        )}
-        <Text className="text-zinc-300 text-sm font-semibold">
-          {connections.length
-            ? `${connections.length} connection${connections.length === 1 ? "" : "s"}`
-            : "Add connections"}
-        </Text>
-        {waiting > 0 && (
-          <View className="bg-blue-500 rounded-full min-w-5 h-5 px-1.5 items-center justify-center">
-            <Text className="text-white text-xs font-extrabold">{waiting}</Text>
-          </View>
-        )}
-        <Ionicons name="chevron-forward" size={14} color="#71717a" />
-      </View>
     </Pressable>
   );
 }
@@ -312,24 +335,24 @@ export default function ProfileScreen() {
           <Text className="text-white font-bold text-2xl mt-4 tracking-tight">
             {displayName(profile)}
           </Text>
-          <Text className="text-zinc-400 font-medium text-sm mt-1">
-            @{profile.username}
-          </Text>
-
-          {/* CONNECTIONS (#35): your partner, then everyone (only you see the count) */}
-          <ConnectionsRow />
+          {/* Your handle, and your partner beside it (#35) */}
+          <HandleLine username={profile.username} />
 
           {/* TITLES earned from your dates (#84); planning defaults stay in Settings */}
           <TitlesRow titles={titles} finished={finishedCount} />
         </View>
 
-        {/* --- ACTIONS --- */}
-        <Pressable
-          onPress={() => router.push("/settings/edit-profile")}
-          className="bg-white py-3 rounded-2xl items-center active:opacity-80 mb-8"
-        >
-          <Text className="text-black font-bold text-sm">Edit Profile</Text>
-        </Pressable>
+        {/* --- ACTIONS: edit your profile, and your connections beside it --- */}
+        <View className="flex-row gap-2 mb-8">
+          <Pressable
+            onPress={() => router.push("/settings/edit-profile")}
+            accessibilityRole="button"
+            className="flex-1 bg-white py-3 rounded-2xl items-center justify-center active:opacity-80"
+          >
+            <Text className="text-black font-bold text-sm">Edit profile</Text>
+          </Pressable>
+          <ConnectionsButton />
+        </View>
 
         {/* --- UP NEXT --- */}
         <Text className="text-white font-bold text-lg mb-3 tracking-tight">

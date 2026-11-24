@@ -21,3 +21,6 @@ export function tidyPlaceName(text: string): string {
   if (!isOneCase(t)) return t;
   return t.toLowerCase().replace(/(^|[\s(/-])(\S)/g, (_, gap: string, c: string) => gap + c.toUpperCase());
 }
+
+/** A count in a small badge: "7", "99", then "99+" (a bigger number won't fit) */
+export const badgeCount = (n: number): string => (n > 99 ? "99+" : String(n));

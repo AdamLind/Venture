@@ -19,8 +19,14 @@ export const IDEA_SUMMARY_COLUMNS = `
 
 /** The idea's photo, sized for `displayWidth` points; its kind's tile without one */
 export function ideaImage(
-  idea: Pick<IdeaSummary, "image_urls"> &
-    Partial<Pick<IdeaSummary, "idea_id" | "modality" | "activity_type" | "environment" | "exertion">>,
+  idea: {
+    image_urls?: string[] | null;
+    idea_id?: number | null;
+    modality?: string | null;
+    activity_type?: string | null;
+    environment?: string | null;
+    exertion?: string | null;
+  },
   displayWidth: number = IMAGE_SIZE.thumb,
 ): IdeaPicture {
   const photo = idea.image_urls?.[0];

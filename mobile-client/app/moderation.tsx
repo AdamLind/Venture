@@ -5,8 +5,8 @@
 // staff review panel on top; opening a person shows their review page
 // (app/reported-person/[id].tsx). Staff only (Settings shows the way in).
 
-import React, {useCallback, useState} from "react";
-import {ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View} from "react-native";
+import React, {useCallback, useMemo, useState} from "react";
+import {ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View} from "react-native";
 import Toast from "@/src/lib/toast";
 import {SafeAreaView} from "react-native-safe-area-context";
 import {useFocusEffect, useRouter} from "expo-router";
@@ -16,6 +16,8 @@ import {Ionicons} from "@expo/vector-icons";
 import ScreenHeader from "@/components/ui/ScreenHeader";
 import Avatar from "@/components/profile/Avatar";
 import {ideaImage} from "@/src/lib/ideas";
+import {badgeCount} from "@/src/lib/text";
+import {searchWords} from "@/src/lib/ideaSearch";
 import {
   REPORT_REASON_LABEL,
   type LogEntry,
@@ -74,6 +76,16 @@ export default function ModerationScreen() {
   const [lifting, setLifting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // To review: find one among many (title, place or poster)
+  const [search, setSearch] = useState("");
+  const shownToReview = useMemo(() => {
+    const words = searchWords(search);
+    if (!toReview || !words.length) return toReview;
+    return toReview.filter((idea) => {
+      const text = searchWords([idea.title, idea.place, idea.username].filter(Boolean).join(" "));
+      return words.every((w) => text.some((t) => t.startsWith(w)));
+    });
+  }, [toReview, search]);
 
   const load = useCallback(async () => {
     try {
@@ -157,8 +169,12 @@ export default function ModerationScreen() {
     {key: "log", label: "Log"},
   ];
   const data: any[] | null =
-    tab === "review" ? toReview : tab === "reported" ? reported : tab === "suspended" ? suspended : log;
-  const empty = EMPTY[tab];
+    tab === "review" ? shownToReview : tab === "reported" ? reported : tab === "suspended" ? suspended : log;
+  // (searching the review queue and nothing matches: not "all caught up")
+  const empty: (typeof EMPTY)[Tab] =
+    tab === "review" && search.trim() && toReview?.length
+      ? {icon: "search-outline", title: "No match", body: "Nothing waiting matches that."}
+      : EMPTY[tab];
 
   return (
     <SafeAreaView edges={["top"]} style={{flex: 1, backgroundColor: "#000"}}>
@@ -183,7 +199,7 @@ export default function ModerationScreen() {
                 <View
                   className={`min-w-5 h-5 px-1.5 rounded-full items-center justify-center ${t.key === "reported" ? "bg-red-500" : "bg-amber-500"}`}
                 >
-                  <Text className="text-black text-xs font-extrabold">{t.count}</Text>
+                  <Text className="text-black text-xs font-extrabold">{badgeCount(t.count)}</Text>
                 </View>
               ) : null}
             </Pressable>
@@ -216,6 +232,40 @@ export default function ModerationScreen() {
           }
           contentContainerClassName="px-5 pb-16 gap-3"
           contentContainerStyle={data.length === 0 ? {flexGrow: 1} : undefined}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          // To review: how many in all (the tab's badge stops at 99+), and a
+          // search for finding one among them
+          ListHeaderComponent={
+            tab === "review" && toReview && toReview.length > 0 ? (
+              <View className="gap-2.5 mb-1">
+                <Text className="text-zinc-400 text-sm ml-1">
+                  {search.trim()
+                    ? `${shownToReview?.length ?? 0} of ${toReview.length} waiting`
+                    : `${toReview.length} waiting, oldest first`}
+                </Text>
+                <View className="flex-row items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-full px-4 h-10">
+                  <Ionicons name="search" size={15} color="#71717a" />
+                  <TextInput
+                    value={search}
+                    onChangeText={setSearch}
+                    placeholder="Title, place or @poster"
+                    placeholderTextColor="#71717a"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    accessibilityLabel="Search the ideas waiting for review"
+                    className="flex-1 text-white"
+                    style={{fontSize: 15}}
+                  />
+                  {search ? (
+                    <Pressable onPress={() => setSearch("")} hitSlop={10} accessibilityLabel="Clear search">
+                      <Ionicons name="close-circle" size={17} color="#71717a" />
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+            ) : undefined
+          }
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="white" />}
           ListEmptyComponent={
             <View className="flex-1 items-center justify-center px-8 gap-2 pb-24">
@@ -265,7 +315,7 @@ export default function ModerationScreen() {
   );
 }
 
-function Thumb({idea}: {idea: {image_urls: string[] | null}}) {
+function Thumb({idea}: {idea: Parameters<typeof ideaImage>[0]}) {
   return <Image source={ideaImage(idea)} style={{width: 56, height: 56, borderRadius: 14}} contentFit="cover" />;
 }
 
