@@ -26,7 +26,7 @@ import {showIdeaMenu} from "@/src/lib/reportIdea";
 import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
 import {StatusChip} from "@/components/ideas/IdeaRows";
-import {IDEA_STATUS} from "@/src/lib/ideas";
+import {IDEA_STATUS, peopleLabel} from "@/src/lib/ideas";
 import {WEATHER_NEEDS_OPTIONS} from "@/src/lib/weatherRules";
 import {normalizeTimeOfDay, TIME_OF_DAY_LABEL} from "@/src/lib/timeOfDay";
 import PlaceHours from "@/components/ideas/PlaceHours";
@@ -103,7 +103,7 @@ export default function IdeaDetailScreen() {
             *,
             venues ( venue_id, created_by, name, address, coordinates, opening_hours, hours_checked_at, hours_source, access_note,
               pinned_by:users ( username ) ),
-            users!activities_user_id_fkey ( username ),
+            users!activities_user_id_fkey ( username, official ),
             activity_tags (
               tags ( name )
             )
@@ -197,6 +197,8 @@ export default function IdeaDetailScreen() {
     : null;
   // Your own idea: say where it stands, and offer to edit it
   const isMine = !!myUserId && idea.user_id === myUserId;
+  // The app's own ideas (the launch set, #71): admins edit them here
+  const canEdit = isMine || (staffRole === "ADMIN" && !!idea.users?.official);
   // Staff review: asked for (queue / menu), or tools on and it needs a look
   // (in review, sent back, rejected, or reported). Never on private ideas
   const showReview =
@@ -471,7 +473,7 @@ export default function IdeaDetailScreen() {
                 </Text>
               </View>
               <Text className="text-white font-bold text-lg">
-                {idea.min_people} - {idea.max_people} people
+                {peopleLabel(idea.min_people, idea.max_people)}
               </Text>
             </View>
 
@@ -673,11 +675,11 @@ export default function IdeaDetailScreen() {
         </Pressable>
       </View>
 
-      {/* TOP RIGHT: save, then edit (your own ideas) or ••• (anyone else's)
-          in the corner */}
+      {/* TOP RIGHT: save, then edit (your own ideas, or the app's own for
+          admins) or ••• (anyone else's) in the corner */}
       <View className="absolute top-15 right-4 z-50 flex-row gap-2">
         <SaveButton ideaId={idea.idea_id} size={44} variant="glass" />
-        {isMine ? (
+        {canEdit ? (
           <Pressable
             onPress={editIdea}
             accessibilityRole="button"

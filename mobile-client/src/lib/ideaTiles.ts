@@ -22,6 +22,8 @@ export type TileKind = keyof typeof TILES;
 
 /** Tags that make an idea a show (music, a play, a museum...) */
 const SHOW_TAGS = new Set(["music", "theater", "comedy", "movies", "museums", "festivals"]);
+/** Tags that make it active (with a workout's effort, or the old Active type) */
+const ACTIVE_TAGS = new Set(["sports", "adventure"]);
 
 /** Whatever we know about the idea (lists and rows carry different fields) */
 type TileIdea = {
@@ -29,6 +31,7 @@ type TileIdea = {
   modality?: string | null;
   activity_type?: string | null;
   environment?: string | null;
+  exertion?: string | null;
   tags?: string[] | null;
   activity_tags?: {tags?: {name?: string | null} | null}[] | null;
 } | null | undefined;
@@ -41,7 +44,9 @@ export function tileKind(idea: TileIdea): TileKind {
   if (idea.activity_type === "TREAT") return "treat";
   const tags = idea.tags ?? (idea.activity_tags ?? []).map((at) => at.tags?.name ?? "");
   if (tags.some((t) => SHOW_TAGS.has(t))) return "show";
-  if (idea.activity_type === "ACTIVE") return "active";
+  if (idea.activity_type === "ACTIVE" || idea.exertion === "HARD" || tags.some((t) => ACTIVE_TAGS.has(t))) {
+    return "active";
+  }
   if (idea.environment === "OUTDOOR") return "outdoors";
   return "other";
 }

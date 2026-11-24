@@ -13,13 +13,14 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 export const IDEA_SUMMARY_COLUMNS = `
   idea_id, title, image_urls, est_price_per_person, est_duration_minutes,
   modality, visibility, moderation_note, moderation_rules, created_at, time_of_day,
-  activity_type, environment,
+  activity_type, environment, exertion,
   venues ( name )
 `;
 
 /** The idea's photo, sized for `displayWidth` points; its kind's tile without one */
 export function ideaImage(
-  idea: Pick<IdeaSummary, "image_urls"> & Partial<Pick<IdeaSummary, "idea_id" | "modality" | "activity_type" | "environment">>,
+  idea: Pick<IdeaSummary, "image_urls"> &
+    Partial<Pick<IdeaSummary, "idea_id" | "modality" | "activity_type" | "environment" | "exertion">>,
   displayWidth: number = IMAGE_SIZE.thumb,
 ): IdeaPicture {
   const photo = idea.image_urls?.[0];
@@ -30,6 +31,19 @@ export function ideaImage(
 export function ideaPrice(idea: Pick<IdeaSummary, "est_price_per_person">) {
   const price = Number(idea.est_price_per_person) || 0;
   return price === 0 ? "Free" : `${formatMoney(price)} pp`;
+}
+
+/** The most people an idea is stored with when it's for any size of group */
+const ANY_GROUP = 20;
+
+/** "2 people", "2–6 people", "4+ people", "Any group size" */
+export function peopleLabel(min: number | null | undefined, max: number | null | undefined): string {
+  const lo = Math.max(1, Number(min) || 1);
+  const hi = Number(max) || ANY_GROUP;
+  if (lo <= 1 && hi >= ANY_GROUP) return "Any group size";
+  if (hi >= ANY_GROUP) return `${lo}+ people`;
+  if (lo === hi) return lo === 1 ? "1 person" : `${lo} people`;
+  return `${lo}–${hi} people`;
 }
 
 /** "45 min", "2h", "1h 30m" */

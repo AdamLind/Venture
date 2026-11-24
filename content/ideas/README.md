@@ -19,6 +19,12 @@ review status), an unchanged one is left alone. `--import --retire` hides
 official ideas that were taken out of the files. `--import --publish` skips
 the review queue for new ideas (only for ideas you've already checked).
 
+**Fixing an idea in the app:** admins can edit the official account's
+ideas from the idea page (the pencil), with the same form as posting; they
+keep their review status. The next import leaves an idea changed in the app
+alone and lists it: copy the change into its file, or `--import --force` to
+put the file's version back.
+
 Files starting with `_` are examples and never imported: see
 [`_example.json`](_example.json).
 
@@ -47,7 +53,7 @@ Files starting with `_` are examples and never imported: see
 | `status` | `"ready"` (default) or `"draft"` (checked, never imported) |
 | `title` | Up to 60 characters |
 | `description` | What you do and why it's a good date, 40 to 600 characters |
-| `type` | `MEAL`, `TREAT`, `ACTIVE` or `OTHER` |
+| `type` | `MEAL`, `TREAT` or `OTHER` (an activity; `ACTIVE` still works and is saved as `OTHER`, since effort is its own field) |
 | `where` | `"out"` or `"in"` (stay in: no place, it happens at home) |
 | `environment` | `INDOOR`, `OUTDOOR` or `MIXED` (stay in: `INDOOR` unless you say) |
 | `place` | Going out: a place's `id` from `places`, or the place itself (below) |

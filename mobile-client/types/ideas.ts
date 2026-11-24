@@ -26,6 +26,7 @@ export interface IdeaSummary {
   /** For its tile when there's no photo (src/lib/ideaTiles.ts) */
   activity_type?: string | null;
   environment?: string | null;
+  exertion?: string | null;
   venues?: {name: string} | null;
 }
 

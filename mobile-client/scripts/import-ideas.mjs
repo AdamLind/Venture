@@ -10,10 +10,14 @@
 //   node scripts/import-ideas.mjs --import --retire    ...and hide official ideas
 //                                              taken out of the files
 //   node scripts/import-ideas.mjs --photos     also check that photo links load
+//   node scripts/import-ideas.mjs --import --force     ...even over edits made in the app
 //   node scripts/import-ideas.mjs content/ideas/provo.json   just that file
 //
 // Re-running is safe: each idea has a stable key, so a changed idea is
-// updated (keeping its review status), an unchanged one is left alone.
+// updated (keeping its review status), an unchanged one is left alone. An
+// idea an admin changed in the app since the last import is left alone too
+// (and listed), so the file never quietly undoes it: copy the change into
+// the file, or --force to put the file's version back.
 // Ideas with problems marked ✗ are skipped; ! is worth a look but imports.
 // "status": "draft" ideas are only checked.
 //
@@ -26,6 +30,7 @@
 // from the environment or mobile-client/.env. No packages: plain fetch.
 
 import {Buffer} from "node:buffer";
+import {createHash} from "node:crypto";
 import {existsSync, readdirSync, readFileSync, statSync} from "node:fs";
 import {basename, dirname, extname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -72,6 +77,7 @@ const IMPORT = args.includes("--import");
 const PUBLISH = args.includes("--publish");
 const RETIRE = args.includes("--retire");
 const CHECK_PHOTOS = args.includes("--photos");
+const FORCE = args.includes("--force");
 const fileArgs = args.filter((a) => !a.startsWith("--"));
 
 try {
@@ -286,7 +292,8 @@ function checkFile(file, tags) {
       description,
       url: idea.url ?? null,
       modality: goingOut ? "GO_OUT" : "STAY_IN",
-      activity_type: idea.type,
+      // (the posting form has no Active type any more: effort says it)
+      activity_type: idea.type === "ACTIVE" ? "OTHER" : idea.type,
       environment,
       weather_needs: environment === "INDOOR" ? null : idea.weather ?? null,
       time_of_day: times.length ? times : null,
@@ -313,8 +320,12 @@ function checkFile(file, tags) {
 
 /** The official account: found, or (importing) created */
 async function officialAccount() {
-  const [found] = await rest(`users?select=user_id&username=eq.${OFFICIAL_USERNAME}`);
-  if (found) return found.user_id;
+  const [found] = await rest(`users?select=user_id,official&username=eq.${OFFICIAL_USERNAME}`);
+  if (found) {
+    // Marked official, so admins can edit its ideas in the app
+    if (IMPORT && !found.official) await markOfficial(found.user_id);
+    return found.user_id;
+  }
   if (!IMPORT) return null;
   const email = process.env.OFFICIAL_ACCOUNT_EMAIL || `${OFFICIAL_USERNAME}@official.invalid`;
   const user = await call("/auth/v1/admin/users", {
@@ -327,9 +338,17 @@ async function officialAccount() {
     headers: {Prefer: "return=minimal"},
     body: JSON.stringify({username: OFFICIAL_USERNAME}),
   });
+  await markOfficial(user.id);
   console.log(`Created the @${OFFICIAL_USERNAME} account (${email})`);
   return user.id;
 }
+
+const markOfficial = (userId) =>
+  rest(`users?user_id=eq.${userId}`, {
+    method: "PATCH",
+    headers: {Prefer: "return=minimal"},
+    body: JSON.stringify({official: true}),
+  });
 
 /** Public places already on Venture, for reuse */
 async function loadPlaces() {
@@ -411,6 +430,29 @@ const FIELD_COLUMNS = [
   "est_price_per_person", "est_duration_minutes", "is_duration_variable", "feel", "exertion", "months", "holidays",
   "min_people", "max_people", "min_age", "risk_labels", "safety_note",
 ];
+/**
+ * A fingerprint of an idea as saved: its fields, place, photos and tags. The
+ * import stores it (import_hash); a different one on the next run means
+ * someone changed the idea in the app.
+ */
+function fingerprint({fields, venue_id, image_urls, tagIds}) {
+  const norm = Object.fromEntries(
+    FIELD_COLUMNS.map((k) => {
+      const v = fields[k] ?? null;
+      return [k, v === null ? null : numberish.has(k) ? Number(v) : k === "risk_labels" ? [...v].sort() : v];
+    }),
+  );
+  const text = JSON.stringify({...norm, venue_id: venue_id ?? null, image_urls: image_urls ?? [], tags: [...tagIds].sort((a, b) => a - b)});
+  return createHash("sha256").update(text).digest("hex").slice(0, 32);
+}
+const rowFingerprint = (row) =>
+  fingerprint({
+    fields: row,
+    venue_id: row.venue_id,
+    image_urls: row.image_urls,
+    tagIds: (row.activity_tags ?? []).map((t) => t.tag_id),
+  });
+
 /** Where a photo ends up: a link as it is, a local file at its upload */
 const photoUrl = (key, photo, i) =>
   /^https?:\/\//.test(photo)
@@ -466,10 +508,10 @@ async function main() {
   const officialId = await officialAccount();
   const known = await loadPlaces();
   const existing = await rest(
-    `activities?select=idea_id,import_key,user_id,visibility,venue_id,image_urls,${FIELD_COLUMNS.join(",")},activity_tags(tag_id)&import_key=not.is.null&limit=10000`,
+    `activities?select=idea_id,import_key,import_hash,user_id,visibility,venue_id,image_urls,${FIELD_COLUMNS.join(",")},activity_tags(tag_id)&import_key=not.is.null&limit=10000`,
   );
   const byKey = new Map(existing.map((row) => [row.import_key, row]));
-  const counts = {added: 0, updated: 0, unchanged: 0, failed: 0, retired: 0};
+  const counts = {added: 0, updated: 0, unchanged: 0, "changed in the app": 0, failed: 0, retired: 0};
 
   for (const {file, ideas} of checked) {
     for (const {idea, issues, fields, place, at, photos, tags: ideaTags, draft} of ideas) {
@@ -492,6 +534,7 @@ async function main() {
               user_id: officialId,
               venue_id: venue.venue_id,
               image_urls,
+              import_hash: fingerprint({fields, venue_id: venue.venue_id, image_urls, tagIds}),
               visibility: PUBLISH ? "PUBLISHED" : "PENDING_REVIEW",
             }),
           });
@@ -504,6 +547,13 @@ async function main() {
           }
           counts.added++;
           console.log(`+ ${idea.key}${venue.note ? ` (${venue.note})` : ""}${PUBLISH ? "" : ", in the review queue"}`);
+          continue;
+        }
+
+        // Changed in the app since the last import: leave it (unless --force)
+        if (row.import_hash && row.import_hash !== rowFingerprint(row) && !FORCE) {
+          counts["changed in the app"]++;
+          console.log(`! ${idea.key}: changed in the app since the last import, so it's left alone (copy the change into the file, or --force)`);
           continue;
         }
 
@@ -523,10 +573,26 @@ async function main() {
         const rowTags = (row.activity_tags ?? []).map((t) => t.tag_id).sort((a, b) => a - b);
         const tagsChanged = !same(rowTags, tagIds);
 
+        // What it'll be once saved
+        const saved = fingerprint({
+          fields,
+          venue_id: venue.venue_id,
+          image_urls: changes.image_urls ?? row.image_urls,
+          tagIds,
+        });
         if (!Object.keys(changes).length && !tagsChanged) {
+          // (imported before fingerprints: start keeping one)
+          if (row.import_hash !== saved) {
+            await rest(`activities?idea_id=eq.${row.idea_id}`, {
+              method: "PATCH",
+              headers: {Prefer: "return=minimal"},
+              body: JSON.stringify({import_hash: saved}),
+            });
+          }
           counts.unchanged++;
           continue;
         }
+        changes.import_hash = saved;
         if (Object.keys(changes).length) {
           await rest(`activities?idea_id=eq.${row.idea_id}`, {
             method: "PATCH",
@@ -545,7 +611,8 @@ async function main() {
           }
         }
         counts.updated++;
-        console.log(`~ ${idea.key}: ${[...Object.keys(changes), ...(tagsChanged ? ["tags"] : [])].join(", ")}`);
+        const what = [...Object.keys(changes).filter((k) => k !== "import_hash"), ...(tagsChanged ? ["tags"] : [])];
+        console.log(`~ ${idea.key}: ${what.join(", ")}`);
       } catch (e) {
         counts.failed++;
         console.error(`✗ ${idea.key}: ${e.message}`);

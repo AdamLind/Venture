@@ -53,11 +53,13 @@ import Ionicons from "@expo/vector-icons/build/Ionicons";
 
 import {supabase} from "@/src/supabase";
 import {useMyIdeasStore} from "@/src/store/useMyIdeasStore";
+import {useProfileStore} from "@/src/store/useProfileStore";
 import {useSavedStore} from "@/src/store/useSavedStore";
 import {usePrefsStore} from "@/src/store/usePrefsStore";
 import {SUSPENDED_MESSAGE, useAccountStore} from "@/src/store/useAccountStore";
 import {confirmDeleteIdea, confirmUnpublishIdea} from "@/src/lib/ideaActions";
 import {POSTER_PROMISE} from "@/src/lib/ideaGuidelines";
+import {peopleLabel} from "@/src/lib/ideas";
 import {RISK_LABELS, SAFETY_NOTE_MAX, type RiskLabel} from "@/src/lib/safety";
 import {WEATHER_NEEDS_OPTIONS, type WeatherNeeds} from "@/src/lib/weatherRules";
 import {TIME_OF_DAY_LABEL, type TimeOfDay} from "@/src/lib/timeOfDay";
@@ -285,6 +287,8 @@ const Hint = ({text, red = false}: {text: string; red?: boolean}) => (
 interface EditingOriginal {
   visibility: BaseActivity["visibility"];
   imageUrls: string[];
+  /** Not yours: one of the app's own ideas, edited by an admin (#71) */
+  official: boolean;
 }
 
 // ─── The screen ────────────────────────────────────────────────────────────────
@@ -295,6 +299,10 @@ export default function CreateScreen() {
   const {ideaId} = useLocalSearchParams<{ideaId?: string}>();
   const editingId = ideaId ? Number(ideaId) : null;
   const [original, setOriginal] = useState<EditingOriginal | null>(null);
+  // An admin fixing one of the app's own ideas (the launch set, #71): it
+  // keeps its review status, a photo is optional, and there's no promise
+  // or publish choice (the database lets admins edit only these)
+  const officialEdit = !!original?.official;
   const [isLoadingIdea, setIsLoadingIdea] = useState(!!editingId);
   // Remounts the tag selector once the idea's tags have loaded
   const [tagsKey, setTagsKey] = useState(0);
@@ -663,7 +671,11 @@ export default function CreateScreen() {
       setTagsKey((k) => k + 1);
       // Saving keeps a private idea private; everything else goes to review
       setVisibility(data.visibility === "PRIVATE" ? "PRIVATE" : "PENDING_REVIEW");
-      setOriginal({visibility: data.visibility, imageUrls: data.image_urls ?? []});
+      setOriginal({
+        visibility: data.visibility,
+        imageUrls: data.image_urls ?? [],
+        official: data.user_id !== useProfileStore.getState().userId,
+      });
       setStep(REVIEW);
       setIsLoadingIdea(false);
     };
@@ -694,7 +706,7 @@ export default function CreateScreen() {
   /** Everything still unanswered */
   const findMissing = (): string[] => {
     const out: string[] = [];
-    if (!imageUri) out.push("image");
+    if (!imageUri && !officialEdit) out.push("image");
     if (!title.trim()) out.push("title");
     if (!whereMode) out.push("where");
     if (whereMode === "PLACE" && !place) out.push("place");
@@ -864,7 +876,7 @@ export default function CreateScreen() {
       return;
     }
 
-    if (visibility === "PENDING_REVIEW" && suspended) {
+    if (visibility === "PENDING_REVIEW" && suspended && !officialEdit) {
       const keepPrivate = await confirm({
         title: "You can't publish right now",
         message: SUSPENDED_MESSAGE,
@@ -876,14 +888,14 @@ export default function CreateScreen() {
     }
 
     // Publishing needs the poster's promise (private ideas don't)
-    if (visibility === "PENDING_REVIEW" && !promised) {
+    if (visibility === "PENDING_REVIEW" && !promised && !officialEdit) {
       setMissingFields(["promise"]);
       warn();
       return;
     }
 
     // Publishing at your own earlier pin: is it a place that's public now?
-    if (publishingAtPlace && place?.kind === "existing") {
+    if (publishingAtPlace && place?.kind === "existing" && !officialEdit) {
       let check = shownCheck;
       if (!check) {
         try {
@@ -920,11 +932,12 @@ export default function CreateScreen() {
       if (modality === "GO_OUT" && place) {
         venueId = place.kind === "existing" ? place.venueId : await addPlace(place);
       }
-      if (!imageUri) throw new Error("Image missing during upload phase");
+      if (!imageUri && !officialEdit) throw new Error("Image missing during upload phase");
 
-      // 2. Photo: upload only if it's new (an edit keeps the existing URL)
+      // 2. Photo: upload only if it's new (an edit keeps the existing URL;
+      //    an official idea can still have none)
       let imageUrls: string[];
-      const photoChanged = !original || imageUri !== original.imageUrls[0];
+      const photoChanged = !!imageUri && (!original || imageUri !== original.imageUrls[0]);
       if (photoChanged) {
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
         const response = await fetch(imageUri);
@@ -935,7 +948,7 @@ export default function CreateScreen() {
         if (uploadError) throw uploadError;
         imageUrls = [supabase.storage.from("activities").getPublicUrl(fileName).data.publicUrl];
       } else {
-        imageUrls = original!.imageUrls;
+        imageUrls = original?.imageUrls ?? [];
       }
 
       const fields = {
@@ -963,7 +976,8 @@ export default function CreateScreen() {
         min_age: dbMinAge,
         risk_labels: dbRiskLabels,
         safety_note: safetyNote.trim() ? safetyNote.trim().slice(0, SAFETY_NOTE_MAX) : null,
-        visibility,
+        // (an official idea keeps its review status)
+        ...(officialEdit ? {} : {visibility}),
       };
 
       // 3. The idea itself
@@ -973,7 +987,11 @@ export default function CreateScreen() {
           .from("activities")
           // Resubmitting starts a fresh review; keeping it private keeps
           // the last reviewer note for reference
-          .update(visibility === "PENDING_REVIEW" ? {...fields, moderation_note: null, moderation_rules: null} : fields)
+          .update(
+            visibility === "PENDING_REVIEW" && !officialEdit
+              ? {...fields, moderation_note: null, moderation_rules: null}
+              : fields,
+          )
           .eq("idea_id", editingId)
           .select("idea_id")
           .maybeSingle();
@@ -1036,7 +1054,9 @@ export default function CreateScreen() {
       if (editingId) useSavedStore.getState().reload();
 
       // Close the screen, then say so from the one below
-      const done = editingId
+      const done = officialEdit
+        ? ["Changes saved", "It keeps its review status"]
+        : editingId
         ? visibility === "PRIVATE"
           ? ["Changes saved", "Only you can see it"]
           : ["Sent for review", "Live again once it's approved"]
@@ -1081,7 +1101,7 @@ export default function CreateScreen() {
   const peopleText =
     groupSize === "CUSTOM"
       ? minPeople && maxPeople
-        ? `${minPeople}–${maxPeople} people`
+        ? peopleLabel(Number(minPeople), Number(maxPeople))
         : null
       : (PEOPLE_OPTIONS.find((o) => o.value === groupSize)?.label.toLowerCase() ?? null);
   const ageText = ageChoice === 0 ? "all ages" : ageChoice === "OTHER" ? (minAge ? `${minAge}+` : null) : ageChoice ? `${ageChoice}+` : null;
@@ -1919,6 +1939,15 @@ export default function CreateScreen() {
         })}
       </View>
 
+      {officialEdit ? (
+        <View className="flex-row gap-2 bg-zinc-900 border border-zinc-800 rounded-2xl p-3 mb-3">
+          <Ionicons name="shield-checkmark-outline" size={18} color="#a1a1aa" />
+          <Text className="text-zinc-300 text-sm flex-1">
+            {"One of Venture's own ideas. Saving keeps its review status, and the next import leaves your changes alone."}
+          </Text>
+        </View>
+      ) : (
+      <>
       {wasPublished && (
         <View className="flex-row gap-2 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 mb-3">
           <Ionicons name="information-circle" size={18} color="#fbbf24" />
@@ -2049,10 +2078,12 @@ export default function CreateScreen() {
         </Pressable>
       )}
       {missing("promise") && <Hint red text="Tick this to send it for review." />}
+      </>
+      )}
 
       {/* EDITING: delete it (live ideas are unpublished first: deleting would
           pull them out of other people's dates and saved lists) */}
-      {editingId && original && (
+      {editingId && original && !officialEdit && (
         <View className="items-center gap-2 mt-6">
           {original.visibility === "PUBLISHED" ? (
             <>
@@ -2103,7 +2134,9 @@ export default function CreateScreen() {
 
   const primary =
     key === "review"
-      ? !editingId
+      ? officialEdit
+        ? "Save changes"
+        : !editingId
         ? visibility === "PRIVATE"
           ? "Save idea"
           : "Submit for review"
