@@ -128,8 +128,9 @@ export default function BuilderScreen() {
   // in this gap, near or far (fetched on the first letter)
   const [search, setSearch] = useState("");
   const [searchPool, setSearchPool] = useState<any[] | null>(null);
-  // Tapping the search box opens the picker all the way up (until it closes)
-  const [searchExpanded, setSearchExpanded] = useState(false);
+  // The picker all the way up: dragged there, or by tapping the search box
+  // (it opens at its usual height each time)
+  const [pickerExpanded, setPickerExpanded] = useState(false);
   const searchWordsNow = searchWords(search);
   const searching = searchWordsNow.length > 0;
   // What the open gap asked for (time, budget, where from, how you'll feel),
@@ -520,7 +521,7 @@ export default function BuilderScreen() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearch("");
       setSearchPool(null);
-      setSearchExpanded(false);
+      setPickerExpanded(false);
     }
   }, [isDrawerOpen]);
 
@@ -1306,7 +1307,8 @@ export default function BuilderScreen() {
       <PickerSheet
         visible={isDrawerOpen}
         onClose={closePicker}
-        expanded={searchExpanded}
+        expanded={pickerExpanded}
+        onExpandedChange={setPickerExpanded}
         // The list scrolls inside the sheet (pull down at its top to close);
         // its end clears the home indicator
         contentContainerStyle={{paddingHorizontal: 20, paddingBottom: insets.bottom + 16, gap: 10}}
@@ -1339,7 +1341,7 @@ export default function BuilderScreen() {
               <TextInput
                 value={search}
                 onChangeText={setSearch}
-                onFocus={() => setSearchExpanded(true)}
+                onFocus={() => setPickerExpanded(true)}
                 placeholder="Search ideas"
                 placeholderTextColor="#71717a"
                 returnKeyType="search"

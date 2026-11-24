@@ -6,28 +6,28 @@
 // simply slides over it and swiping back finds it still open.
 //
 // Smooth by construction:
-//   - a fixed height (the list scrolls inside), so it never resizes while
-//     it slides (a loading spinner turning into a long list did); the one
-//     change is `expanded`, below, once it's open
+//   - its content never resizes it (the list scrolls inside; a loading
+//     spinner turning into a long list used to): only you do, below
 //   - while it slides away it keeps showing what it showed when it started
 //     closing (the builder stops ranking suggestions once it's closed, and
-//     the list emptying mid-slide collapsed it)
+//     the list emptying mid-slide collapsed it), at the height it had
 //   - the backdrop fades while the sheet slides (like StopLengthSheet)
 //
-// Dragging it closed, like iOS sheets:
-//   - the grabber and header drag it down
-//   - so does the list, once it's scrolled to the top: pulling down mid-list
-//     scrolls to the top, then the same pull moves the sheet (no lifting
-//     your finger). While the sheet is pulled down the list holds still at
-//     the top; push back up past where it started and the list scrolls again
-//   - let go a quarter of the way down (or flick) and it closes, carrying on
-//     at your speed; otherwise it springs back
+// Two heights and closed, like iOS sheets: it opens at 75% of the screen and
+// goes all the way up (just under the status bar) for more room.
+//   - the grabber and header drag it up and down
+//   - so does the list: at 75%, pushing the list up raises the sheet first,
+//     then the list scrolls; once it's scrolled to the top, pulling down
+//     lowers the sheet (no lifting your finger). While the sheet moves the
+//     list holds still
+//   - let go and it settles at the nearer height, or the way you flicked it.
+//     Pulled below 75%, a quarter of the way down (or a flick) closes it,
+//     carrying on at your speed; otherwise it springs back
+//   - `expanded` raises or lowers it from outside (the builder raises it when
+//     you tap the search box); `onExpandedChange` hears where you left it
 // All of that runs on the UI thread (Reanimated + gesture handler), so the
 // hand-off between scrolling and dragging never waits on JavaScript.
 // Android's back button closes it too.
-//
-// `expanded` (searching) grows it to just under the status bar for more
-// room above the keyboard; it shrinks back when that's turned off.
 
 import React, {useEffect, useState} from "react";
 import {BackHandler, Pressable, StyleSheet, View, useWindowDimensions} from "react-native";
@@ -47,21 +47,20 @@ import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 const OPEN_MS = 420;
 const CLOSE_MS = 340;
-/** Share of the screen's height */
+/** Share of the screen's height, at the usual height */
 const HEIGHT = 0.75;
-/** Expanded: this far below the status bar */
+/** All the way up: this far below the status bar */
 const EXPANDED_GAP = 8;
 const EXPAND_MS = 280;
-/** Dragged this share of the way down (or flicked), it closes */
+/** Dragged this share of the usual height below it (or flicked), it closes */
 const CLOSE_SHARE = 0.25;
-/** Points per second */
+/** Points per second: a flick closes it, or moves it to the other height */
 const CLOSE_VELOCITY = 900;
-/** Springing back after a short drag */
+const FLICK_VELOCITY = 600;
+/** Springing back, or to a height, after a drag */
 const SPRING_BACK = {damping: 24, stiffness: 240, overshootClamping: true};
-/** A downward move this far starts a drag (taps and small wobbles don't) */
+/** A move this far either way starts a drag (taps and small wobbles don't) */
 const DRAG_START = 8;
-/** "Not yet at the top" (the list pull hasn't reached the sheet) */
-const NOT_AT_TOP = -1e9;
 
 export default function PickerSheet({
   visible,
@@ -70,11 +69,14 @@ export default function PickerSheet({
   contentContainerStyle,
   children,
   expanded = false,
+  onExpandedChange,
 }: {
   visible: boolean;
   onClose: () => void;
-  /** Taller, up to just under the status bar (searching) */
+  /** All the way up, to just under the status bar */
   expanded?: boolean;
+  /** You dragged it all the way up (true) or back to the usual height */
+  onExpandedChange?: (expanded: boolean) => void;
   /** Above the list; dragging it (or the grabber) moves the sheet */
   header?: React.ReactNode;
   /** The list's content style (it scrolls inside the sheet) */
@@ -86,13 +88,7 @@ export default function PickerSheet({
   const insets = useSafeAreaInsets();
   const baseHeight = Math.round(windowHeight * HEIGHT);
   const fullHeight = Math.max(baseHeight, windowHeight - insets.top - EXPANDED_GAP);
-  // 0 at its usual height .. 1 expanded
-  const grow = useSharedValue(expanded ? 1 : 0);
-  // (while it closes it keeps its height, like its content)
-  useEffect(() => {
-    if (!visible) return;
-    grow.set(withTiming(expanded ? 1 : 0, {duration: EXPAND_MS, easing: Easing.out(Easing.cubic)}));
-  }, [expanded, visible, grow]);
+  const span = fullHeight - baseHeight;
 
   // Stays mounted while it animates out
   const [mounted, setMounted] = useState(visible);
@@ -109,20 +105,40 @@ export default function PickerSheet({
 
   // 0 closed .. 1 open
   const progress = useSharedValue(0);
-  // How far it's been dragged down (0 when not dragging)
+  // 0 at the usual height .. 1 all the way up
+  const grow = useSharedValue(expanded ? 1 : 0);
+  // Where it's headed (1 up, 0 usual), so `expanded` catching up with a
+  // drag doesn't restart the move
+  const growTarget = useSharedValue(expanded ? 1 : 0);
+  // How far it's been dragged below the usual height (0 when not)
   const dragY = useSharedValue(0);
-  // The list's scroll position, and the pull's translation when the list
-  // reached its top (NOT_AT_TOP until it does)
+  // The list's scroll position
   const scrollY = useSharedValue(0);
-  const topAt = useSharedValue(NOT_AT_TOP);
+  // A drag in progress: the last translation seen, where the list is held
+  // while the sheet moves (-1: not holding), and whether the sheet moved
+  const headerLast = useSharedValue(0);
+  const listLast = useSharedValue(0);
+  const heldAt = useSharedValue(-1);
+  const sheetMoved = useSharedValue(false);
   const listRef = useAnimatedRef<Reanimated.ScrollView>();
+
+  // Raised or lowered from outside (the search box); while it closes it
+  // keeps its height, like its content
+  useEffect(() => {
+    if (!visible) return;
+    const target = expanded ? 1 : 0;
+    if (growTarget.get() === target) return;
+    growTarget.set(target);
+    grow.set(withTiming(target, {duration: EXPAND_MS, easing: Easing.out(Easing.cubic)}));
+  }, [expanded, visible, grow, growTarget]);
 
   useEffect(() => {
     if (!mounted) return;
     if (visible) {
       dragY.set(0);
       scrollY.set(0);
-      // Opens at its usual height, whatever it was when it last closed
+      // Opens where `expanded` says, whatever height it closed at
+      growTarget.set(expanded ? 1 : 0);
       grow.set(expanded ? 1 : 0);
       progress.set(withTiming(1, {duration: OPEN_MS, easing: Easing.out(Easing.cubic)}));
     } else {
@@ -132,7 +148,7 @@ export default function PickerSheet({
         }),
       );
     }
-    // (only on open and close: `expanded` animates on its own, above)
+    // (only on open and close: `expanded` moves it on its own, above)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, mounted, progress, dragY, scrollY]);
 
@@ -146,35 +162,79 @@ export default function PickerSheet({
     return () => sub.remove();
   }, [visible, onClose]);
 
-  // Let go: close (carrying on at your speed) or spring back
+  // How much of the sheet shows: its height, less how far it's pulled down
+  const visibleHeight = () => {
+    "worklet";
+    return baseHeight + grow.get() * span - dragY.get();
+  };
+  // Shows `height` of the sheet: taller than usual grows it (up to all the
+  // way), shorter pulls it down
+  const showHeight = (height: number) => {
+    "worklet";
+    if (height >= baseHeight) {
+      grow.set(span > 0 ? Math.min(1, (height - baseHeight) / span) : 0);
+      dragY.set(0);
+    } else {
+      grow.set(0);
+      dragY.set(baseHeight - height);
+    }
+  };
+  // Moves it by one frame of a drag (`delta` > 0 is down)
+  const moveBy = (delta: number) => {
+    "worklet";
+    showHeight(visibleHeight() - delta);
+    sheetMoved.set(true);
+  };
+
+  // Let go: close (carrying on at your speed), spring back, or settle at a height
   const release = (velocityY: number) => {
     "worklet";
-    const sheetHeight = baseHeight + grow.get() * (fullHeight - baseHeight);
+    if (!sheetMoved.get()) return;
+    sheetMoved.set(false);
     const pulled = dragY.get();
-    if (pulled <= 0) return;
-    if (pulled > sheetHeight * CLOSE_SHARE || velocityY > CLOSE_VELOCITY) {
-      // Ease-out starts at twice its average speed: match the flick
-      const remaining = Math.max(0, sheetHeight - pulled);
-      const speed = Math.max(velocityY, 1200) / 1000; // points per ms
-      const duration = Math.min(320, Math.max(140, (2 * remaining) / speed));
-      dragY.set(
-        withTiming(sheetHeight, {duration, easing: Easing.out(Easing.quad)}, (finished) => {
-          // Only now tell the builder (its re-render would hold up the slide)
-          if (finished) scheduleOnRN(onClose);
-        }),
-      );
-    } else {
-      dragY.set(withSpring(0, SPRING_BACK));
+    if (pulled > 0) {
+      if (pulled > baseHeight * CLOSE_SHARE || velocityY > CLOSE_VELOCITY) {
+        // Ease-out starts at twice its average speed: match the flick
+        const remaining = Math.max(0, baseHeight - pulled);
+        const speed = Math.max(velocityY, 1200) / 1000; // points per ms
+        const duration = Math.min(320, Math.max(140, (2 * remaining) / speed));
+        dragY.set(
+          withTiming(baseHeight, {duration, easing: Easing.out(Easing.quad)}, (finished) => {
+            // Only now tell the builder (its re-render would hold up the slide)
+            if (finished) scheduleOnRN(onClose);
+          }),
+        );
+      } else {
+        dragY.set(withSpring(0, SPRING_BACK));
+      }
+      if (growTarget.get() !== 0) {
+        growTarget.set(0);
+        if (onExpandedChange) scheduleOnRN(onExpandedChange, false);
+      }
+      return;
+    }
+    const target =
+      velocityY < -FLICK_VELOCITY ? 1 : velocityY > FLICK_VELOCITY ? 0 : grow.get() > 0.5 ? 1 : 0;
+    grow.set(withSpring(target, SPRING_BACK));
+    if (growTarget.get() !== target) {
+      growTarget.set(target);
+      if (onExpandedChange) scheduleOnRN(onExpandedChange, target === 1);
     }
   };
 
-  // The grabber + header: a plain downward drag
+  // The grabber + header: drags the sheet up and down
   const headerPan = usePanGesture({
     enabled: visible,
-    activeOffsetY: DRAG_START,
+    activeOffsetY: [-DRAG_START, DRAG_START],
+    onActivate: (e) => {
+      "worklet";
+      headerLast.set(e.translationY);
+    },
     onUpdate: (e) => {
       "worklet";
-      dragY.set(Math.max(0, e.translationY));
+      const delta = e.translationY - headerLast.get();
+      headerLast.set(e.translationY);
+      moveBy(delta);
     },
     onDeactivate: (e) => {
       "worklet";
@@ -182,32 +242,38 @@ export default function PickerSheet({
     },
   });
 
-  // The list: its own scrolling, plus a pull that moves the sheet once the
-  // list is at the top
+  // The list: its own scrolling, plus the sheet taking the move when it's
+  // not all the way up (pushing up) or the list is at its top (pulling down)
   const listScroll = useNativeGesture({});
   const listPan = usePanGesture({
     enabled: visible,
-    activeOffsetY: DRAG_START,
+    activeOffsetY: [-DRAG_START, DRAG_START],
     simultaneousWith: listScroll,
     onActivate: (e) => {
       "worklet";
-      topAt.set(scrollY.get() <= 0.5 ? e.translationY : NOT_AT_TOP);
+      listLast.set(e.translationY);
+      heldAt.set(-1);
     },
     onUpdate: (e) => {
       "worklet";
-      if (topAt.get() === NOT_AT_TOP) {
-        // Still scrolling up toward the top
-        if (scrollY.get() > 0.5) return;
-        topAt.set(e.translationY);
+      const delta = e.translationY - listLast.get();
+      listLast.set(e.translationY);
+      const sheetTakes =
+        (delta < 0 && (grow.get() < 1 || dragY.get() > 0)) ||
+        (delta > 0 && scrollY.get() <= 0.5);
+      if (!sheetTakes) {
+        // The list scrolls (from wherever it was held)
+        heldAt.set(-1);
+        return;
       }
-      const pulled = Math.max(0, e.translationY - topAt.get());
-      dragY.set(pulled);
-      // While the sheet moves, the list holds still at the top
-      if (pulled > 0) scrollTo(listRef, 0, 0, false);
+      if (heldAt.get() < 0) heldAt.set(Math.max(0, scrollY.get()));
+      moveBy(delta);
+      // While the sheet moves, the list holds still
+      scrollTo(listRef, 0, heldAt.get(), false);
     },
     onDeactivate: (e) => {
       "worklet";
-      topAt.set(NOT_AT_TOP);
+      heldAt.set(-1);
       release(e.velocityY);
     },
   });
@@ -217,19 +283,16 @@ export default function PickerSheet({
   });
 
   const sheetStyle = useAnimatedStyle(() => {
-    const sheetHeight = baseHeight + grow.get() * (fullHeight - baseHeight);
+    const sheetHeight = baseHeight + grow.get() * span;
     return {
       height: sheetHeight + 1,
       transform: [{translateY: (1 - progress.get()) * sheetHeight + dragY.get()}],
     };
   });
   // The backdrop lightens as you drag the sheet down
-  const backdropStyle = useAnimatedStyle(() => {
-    const sheetHeight = baseHeight + grow.get() * (fullHeight - baseHeight);
-    return {
-      opacity: progress.get() * (1 - Math.min(1, Math.max(0, dragY.get() / sheetHeight))),
-    };
-  });
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: progress.get() * (1 - Math.min(1, Math.max(0, dragY.get() / baseHeight))),
+  }));
 
   if (!mounted) return null;
 
@@ -247,14 +310,11 @@ export default function PickerSheet({
         <Pressable className="flex-1 bg-black/60" onPress={onClose} accessibilityLabel="Close" />
       </Reanimated.View>
 
-      {/* Sheet: slides, at a fixed height. 1px past the sides and bottom: the
+      {/* Sheet: slides, at its height. 1px past the sides and bottom: the
           edge line's sides and bottom sit just off screen, so only the top
           line shows, curving around the corners right to the screen's edges */}
       <Reanimated.View
-        style={[
-          {position: "absolute", left: -1, right: -1, bottom: -1},
-          sheetStyle,
-        ]}
+        style={[{position: "absolute", left: -1, right: -1, bottom: -1}, sheetStyle]}
       >
         {/* The edge line all the way round (a top-only line fades out at the
             rounded corners). No bottom padding: the list runs to the bottom
@@ -263,14 +323,23 @@ export default function PickerSheet({
           {/* The drag handle: grabber + header */}
           <GestureDetector gesture={headerPan}>
             <View>
-              <View className="items-center pt-3" accessibilityHint="Drag down to close">
+              {/* Screen readers: the grabber raises and lowers it */}
+              <Pressable
+                onPress={onExpandedChange ? () => onExpandedChange(!expanded) : undefined}
+                disabled={!onExpandedChange}
+                accessibilityRole="button"
+                accessibilityLabel={expanded ? "Make the list shorter" : "Make the list taller"}
+                accessibilityHint="Or drag up and down. Drag down to close"
+                className="items-center pt-3 pb-1"
+                hitSlop={{top: 8, bottom: 4, left: 40, right: 40}}
+              >
                 <View className="w-10 h-1.5 rounded-full bg-zinc-700" />
-              </View>
+              </Pressable>
               {visible ? header : shown.header}
             </View>
           </GestureDetector>
 
-          {/* The list (pull down at the top to close) */}
+          {/* The list (pushes the sheet up; pull down at the top to lower or close it) */}
           <GestureDetector gesture={listPan}>
             <View className="flex-1">
               <GestureDetector gesture={listScroll}>
