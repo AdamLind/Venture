@@ -138,33 +138,43 @@ function TitlesRow({titles, finished}: {titles: EarnedTitle[]; finished: number}
   );
 }
 
-/** Your handle, then ♥ and your partner (#35): one line, either side shrinks */
-function HandleLine({username}: {username: string}) {
+/**
+ * Your partner (#35), as a badge on your photo: their picture and a heart
+ * on its lower edge, so your own handle stands alone under your name. Opens
+ * Connections.
+ */
+function PartnerBadge() {
   const router = useRouter();
   const partner = useConnectionsStore((s) => s.connections.find((c) => c.is_partner) ?? null);
+  if (!partner) return null;
   return (
-    <View className="flex-row items-center justify-center gap-2 mt-1 px-4 max-w-full">
-      <Text className="text-zinc-400 font-medium text-sm shrink" numberOfLines={1}>
-        @{username}
-      </Text>
-      {partner && (
-        <>
-          {/* (the heart is the separator) */}
-          <Pressable
-            onPress={() => router.push("/connections")}
-            accessibilityRole="button"
-            accessibilityLabel={`With @${partner.username}. Open connections`}
-            hitSlop={6}
-            className="flex-row items-center gap-1 shrink active:opacity-70"
-          >
-            <Ionicons name="heart" size={12} color="#f472b6" />
-            <Text className="text-pink-300 text-sm font-semibold shrink" numberOfLines={1}>
-              with @{partner.username}
-            </Text>
-          </Pressable>
-        </>
-      )}
-    </View>
+    <Pressable
+      onPress={() => router.push("/connections")}
+      accessibilityRole="button"
+      accessibilityLabel={`Your partner, @${partner.username}. Open connections`}
+      hitSlop={6}
+      className="active:opacity-80"
+      style={{position: "absolute", right: -10, bottom: -4}}
+    >
+      <Avatar profile={partner} size={44} />
+      <View
+        style={{
+          position: "absolute",
+          left: -5,
+          top: -3,
+          width: 20,
+          height: 20,
+          borderRadius: 10,
+          backgroundColor: "#ec4899",
+          borderWidth: 2,
+          borderColor: "#000",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Ionicons name="heart" size={10} color="white" />
+      </View>
+    </Pressable>
   );
 }
 
@@ -325,18 +335,23 @@ export default function ProfileScreen() {
       <View style={{paddingHorizontal: 20, paddingTop: 8}}>
         {/* --- IDENTITY --- */}
         <View className="items-center mb-6">
-          <Pressable
-            onPress={() => router.push("/settings/edit-profile")}
-            accessibilityLabel="Edit profile photo"
-          >
-            <Avatar profile={profile} size={112} />
-          </Pressable>
+          <View>
+            <Pressable
+              onPress={() => router.push("/settings/edit-profile")}
+              accessibilityLabel="Edit profile photo"
+            >
+              <Avatar profile={profile} size={112} />
+            </Pressable>
+            {/* Your partner, on your photo's edge (#35) */}
+            <PartnerBadge />
+          </View>
 
           <Text className="text-white font-bold text-2xl mt-4 tracking-tight">
             {displayName(profile)}
           </Text>
-          {/* Your handle, and your partner beside it (#35) */}
-          <HandleLine username={profile.username} />
+          <Text className="text-zinc-400 font-medium text-sm mt-1" numberOfLines={1}>
+            @{profile.username}
+          </Text>
 
           {/* TITLES earned from your dates (#84); planning defaults stay in Settings */}
           <TitlesRow titles={titles} finished={finishedCount} />
