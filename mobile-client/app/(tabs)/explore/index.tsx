@@ -30,6 +30,8 @@ import {supabase} from "@/src/supabase";
 import {LinearGradient} from "expo-linear-gradient";
 import {useLocationStore} from "@/src/store/useLocationStore";
 import {getDistance} from "@/utils/geo";
+import {inReach} from "@/utils/reach";
+import {toPlanningDefaults} from "@/src/lib/profile";
 import GlassSurface from "@/components/ui/GlassSurface";
 import Avatar from "@/components/profile/Avatar";
 import type {PublicProfile} from "@/types/profile";
@@ -201,13 +203,29 @@ export default function ExploreScreen() {
   // "Not interested" ideas drop out right away, and come back on undo
   const hiddenIds = useHiddenStore((s) => s.ids);
   const blockedIds = useBlockStore((s) => s.ids);
+  // Go-out ideas near you or your home area; stay-in ideas everywhere
+  // (utils/reach.ts). Your own ideas always show: this is where you see them
+  const myId = useProfileStore((s) => s.userId);
+  const preferences = useProfileStore((s) => s.preferences);
+  const homeArea = useMemo(() => {
+    const {home_lat, home_lng} = toPlanningDefaults(preferences);
+    return home_lat != null && home_lng != null ? {latitude: home_lat, longitude: home_lng} : null;
+  }, [preferences]);
   const ideas = useMemo(
     () =>
       allIdeas.filter(
-        (idea) => !hiddenIds.has(idea.idea_id) && !(idea.user_id && blockedIds.has(idea.user_id)),
+        (idea) =>
+          !hiddenIds.has(idea.idea_id) &&
+          !(idea.user_id && blockedIds.has(idea.user_id)) &&
+          (idea.user_id === myId || inReach(idea, [userLocation, homeArea])),
       ),
-    [allIdeas, hiddenIds, blockedIds],
+    [allIdeas, hiddenIds, blockedIds, myId, userLocation, homeArea],
   );
+  // There are places to go, just none near you (Venture isn't in your city yet)
+  const nothingNearby =
+    (userLocation != null || homeArea != null) &&
+    allIdeas.some((idea) => idea.modality === "GO_OUT") &&
+    !ideas.some((idea) => idea.modality === "GO_OUT");
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -452,6 +470,29 @@ export default function ExploreScreen() {
     resetHeader();
   }, [viewMode, showingSkeleton, resetHeader]);
 
+  // Above the list when nothing to go out to is near you: the stay-in ideas
+  // below still work, and you can be the one to add a place
+  const renderNothingNearby = () => (
+    <View className="mb-6 flex-row gap-3 p-4 rounded-3xl bg-zinc-900 border border-zinc-800">
+      <Ionicons name="home" size={18} color="#fbbf24" style={{marginTop: 1}} />
+      <View className="flex-1">
+        <Text className="text-white font-bold text-base">No places near you yet</Text>
+        <Text className="text-zinc-400 text-sm mt-1 leading-5">
+          Venture is starting in Provo and Salt Lake City. Until it reaches you, these stay-in
+          ideas work anywhere.
+        </Text>
+        <Pressable
+          onPress={() => router.push("/create")}
+          accessibilityRole="button"
+          className="self-start mt-3 active:opacity-70"
+          hitSlop={8}
+        >
+          <Text className="text-amber-400 font-semibold text-sm">Share a place you love</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+
   const renderEmptyState = () => {
     if (isLoading) return null;
     return (
@@ -541,6 +582,7 @@ export default function ExploreScreen() {
               <View
                 style={{paddingHorizontal: 20, paddingTop: info.index === 0 ? 8 : 0}}
               >
+                {info.index === 0 && nothingNearby && renderNothingNearby()}
                 {renderIdeaItem(info)}
               </View>
             )}

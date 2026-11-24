@@ -7,7 +7,8 @@ import {useProfileStore} from "@/src/store/useProfileStore";
 import {useHiddenStore} from "@/src/store/useHiddenStore";
 import {bestTimeLabel, isGoodTime} from "@/src/lib/timeOfDay";
 import {weatherProblems} from "@/src/lib/weatherRules";
-import {type DayContext, parseCoordinates, safeGetDistance, stopLocation} from "./timeline";
+import {type DayContext, homeOf, parseCoordinates, safeGetDistance, stopLocation} from "./timeline";
+import {inReach} from "./reach";
 import {exertionOf} from "./ideaTraits";
 import {vibeFit, wantsFood as vibesWantFood} from "./vibes";
 import {inSeason} from "./seasons";
@@ -254,25 +255,28 @@ export const queryCandidates = async (
 
     if (error) throw error;
 
-    // Skip ideas you marked "Not interested", and ones that aren't on when
-    // the date is (a corn maze in March: utils/seasons.ts)
+    // Skip ideas you marked "Not interested", ones that aren't on when the
+    // date is (a corn maze in March: utils/seasons.ts), and go-out ideas in
+    // another city (utils/reach.ts), measured from where the date starts
     const hidden = useHiddenStore.getState().ids;
     const dateOf = new Date(prefs.startDate || Date.now());
+    const start = prefs.currentLocation ?? homeOf(prefs);
     const formatted = (data || [])
       .filter((row: any) => !hidden.has(row.idea_id) && inSeason(row, dateOf))
       .map((row: any) => {
-      const parsed = parseCoordinates(row.venues?.coordinates);
-      const flatTags = row.activity_tags
-        ? row.activity_tags.map((at: any) => at.tags?.name).filter(Boolean)
-        : [];
+        const parsed = parseCoordinates(row.venues?.coordinates);
+        const flatTags = row.activity_tags
+          ? row.activity_tags.map((at: any) => at.tags?.name).filter(Boolean)
+          : [];
 
-      return {
-        ...row,
-        tags: flatTags,
-        latitude: parsed?.latitude ?? null,
-        longitude: parsed?.longitude ?? null,
-      };
-    });
+        return {
+          ...row,
+          tags: flatTags,
+          latitude: parsed?.latitude ?? null,
+          longitude: parsed?.longitude ?? null,
+        };
+      })
+      .filter((row: any) => inReach(row, [start]));
 
     return {
       success: true,
