@@ -14,7 +14,8 @@ import type {ScoredActivity, TimeSlot} from "@/types/itinerary";
 import {preferenceScore} from "@/utils/itineraryEngine";
 import {type PlanEvaluation, type PlanIssue, evaluatePlan, warningsByStop} from "@/utils/planEvaluator";
 import {type SmartOrderResult, smartOrder} from "@/utils/smartOrder";
-import {type PlacedActivity, deriveSequentialTimeline, stopMinutes} from "@/utils/timeline";
+import {type PlacedActivity, deriveSequentialTimeline, stopLocation, stopMinutes} from "@/utils/timeline";
+import {goesFartherFromHome} from "@/utils/reach";
 
 export type EditCheck = {
   placed: PlacedActivity[];
@@ -74,11 +75,18 @@ export function rankReplacements(
   const othersCost = others.reduce((sum, p) => sum + costOf(p.activity, prefs), 0);
   const baseline = evaluatePlan(others, prefs).score;
 
+  // On a trip, nothing farther from home than this stop or the ones around
+  // it (utils/reach.ts): swapping the resort for a closer one is fine
+  const replaced = stopLocation(placed[index]?.activity, prefs);
   return candidates
     .filter((c) => !onDate.has(c.idea_id))
     .map((candidate) => {
       const next = [...placed];
       next[index] = {activity: candidate};
+      return {candidate, next};
+    })
+    .filter(({next}) => !goesFartherFromHome(next, index, prefs, [replaced]))
+    .map(({candidate, next}) => {
       const timeline = deriveSequentialTimeline(next, prefs);
       const evaluation = evaluatePlan(next, prefs, timeline);
       const totalCost = costOf(candidate, prefs);

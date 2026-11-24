@@ -611,6 +611,15 @@ export function ActivityOptionCard({
             </Text>
           </View>
         )}
+        {/* One you searched for that heads away from home on a trip */}
+        {item.fartherFromHome && !disabled && (
+          <View className="flex-row items-center gap-1 mb-2">
+            <Ionicons name="trending-up" size={12} color="#fbbf24" />
+            <Text className="text-amber-400 text-xs font-semibold shrink" numberOfLines={1}>
+              Takes you farther from home
+            </Text>
+          </View>
+        )}
         <ActivityChips item={item} headCount={headCount} goingOut={goingOut} />
         {disabled && FIT_REASON[item.fitStatus] && (
           <Text className="text-red-300/80 text-xs font-semibold mt-2">

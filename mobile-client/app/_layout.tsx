@@ -249,6 +249,9 @@ function InitialLayout() {
         {/* IDEA DETAIL outside Discover (from Bucket List / My Ideas) */}
         <Stack.Screen name="idea/[id]" options={{headerShown: false}} />
 
+        {/* SEARCH every idea, near or far (the magnifier in Discover) */}
+        <Stack.Screen name="search" options={{headerShown: false}} />
+
         {/* NOTIFICATIONS (the bell in Discover) */}
         <Stack.Screen name="notifications" options={{headerShown: false}} />
 

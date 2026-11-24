@@ -529,6 +529,11 @@ export default function ExploreScreen() {
       refreshing={refresh.headerSpinner}
       right={
         <>
+          <HeaderIconButton
+            icon="search"
+            label="Search ideas"
+            onPress={() => router.push("/search")}
+          />
           {!error && (
             <HeaderIconButton
               icon={viewMode === "list" ? "map-outline" : "list"}

@@ -217,11 +217,16 @@ export const queryCandidates = async (
   maxBudget: number,
   origin: ScoredActivity | UserPrefs,
   context: DayContext,
-  /** The stops already on the date: places near any of them are in reach
-   *  too (snowboarding at Nordic Valley brings in dinner in Ogden; the
-   *  builder's extra-driving score keeps the ones on the way on top) */
-  stops: any[] = [],
+  options: {
+    /** The stops already on the date: places near any of them are in reach
+     *  too (snowboarding at Nordic Valley brings in dinner in Ogden; the
+     *  builder's extra-driving score keeps the ones on the way on top) */
+    stops?: any[];
+    /** Searching: anywhere, near or far (you typed what you want) */
+    anywhere?: boolean;
+  } = {},
 ) => {
+  const {stops = [], anywhere = false} = options;
   const targetBudgetPerPerson = maxBudget / (Number(prefs.headCount) || 1);
   const userId = useProfileStore.getState().userId;
 
@@ -284,7 +289,7 @@ export const queryCandidates = async (
           longitude: parsed?.longitude ?? null,
         };
       })
-      .filter((row: any) => inReach(row, centers));
+      .filter((row: any) => anywhere || inReach(row, centers));
 
     return {
       success: true,

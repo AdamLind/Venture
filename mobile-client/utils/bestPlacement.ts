@@ -18,6 +18,7 @@ import {
   isOpenEnded,
   type PlacedActivity,
 } from "./timeline";
+import {goesFartherFromHome} from "./reach";
 
 export type Placement = {
   /** Where it goes in `placed` (placed.length = on the end) */
@@ -28,6 +29,9 @@ export type Placement = {
   addedMiles: number;
   /** Still finishes (trip home included) by the end time */
   fits: boolean;
+  /** On a trip, takes you farther from home than the stops around it
+   *  (utils/reach.ts): the builder leaves these out of its suggestions */
+  fartherFromHome: boolean;
   /**
    * Where it goes when that's not the end (the end is where you'd expect it,
    * so only other spots get called out): the stop it goes before, and the
@@ -48,7 +52,8 @@ const finishesAt = (timeline: ReturnType<typeof deriveSequentialTimeline>): numb
 
 /**
  * Tries `activity` in every slot of `placed` and returns the best one:
- * slots that still fit the end time first, then the evaluator's score, then
+ * slots that still fit the end time first, then ones that keep heading home
+ * on a trip (dinner on the way back, not past the resort), then the evaluator's score, then
  * less extra driving, then later in the plan (the end, when it's a tie).
  */
 export function bestPlacement(
@@ -71,6 +76,7 @@ export function bestPlacement(
       evaluation,
       addedMiles: Math.max(0, drivingMiles(plan, prefs) - baseMiles),
       fits: openEnded || finishesAt(timeline) <= dayEnd,
+      fartherFromHome: goesFartherFromHome(plan, index, prefs),
       spot:
         index < placed.length
           ? {
@@ -88,6 +94,7 @@ export function bestPlacement(
 // since that's where it was searched first and the end is the least surprise)
 const better = (a: Placement, b: Placement): boolean => {
   if (a.fits !== b.fits) return a.fits;
+  if (a.fartherFromHome !== b.fartherFromHome) return !a.fartherFromHome;
   if (a.evaluation.score !== b.evaluation.score) return a.evaluation.score > b.evaluation.score;
   return a.addedMiles < b.addedMiles - 0.5;
 };

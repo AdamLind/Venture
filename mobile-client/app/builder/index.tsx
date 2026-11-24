@@ -9,6 +9,7 @@ import {
   preferenceScore,
   evaluateContextAt,
 } from "@/utils/itineraryEngine";
+import {searchScore, searchWords} from "@/src/lib/ideaSearch";
 import {useFocusEffect, router} from "expo-router";
 import {useCallback, useState, useEffect, useMemo, useRef} from "react";
 import {
@@ -18,6 +19,7 @@ import {
   Pressable,
   ActivityIndicator,
   LayoutAnimation,
+  TextInput,
   type ScrollViewInstance,
 } from "react-native";
 import Toast from "@/src/lib/toast";
@@ -122,6 +124,15 @@ export default function BuilderScreen() {
     Math.round(Math.abs(endMs - startMs) / 60_000),
   );
   const [isFetchingFillers, setIsFetchingFillers] = useState(false);
+  // Searching in the picker: what you typed, and every idea that could go
+  // in this gap, near or far (fetched on the first letter)
+  const [search, setSearch] = useState("");
+  const [searchPool, setSearchPool] = useState<any[] | null>(null);
+  const searchWordsNow = searchWords(search);
+  const searching = searchWordsNow.length > 0;
+  // What the open gap asked for (time, budget, where from, how you'll feel),
+  // so a search asks the same, minus "nearby"
+  const lastAsk = useRef<Parameters<typeof queryCandidates> | null>(null);
   const [reviewingItinerary, setReviewingItinerary] = useState<boolean>(false);
 
   // ─── Derived Timeline (The Canvas) ────────────────────────────────────────────
@@ -221,16 +232,24 @@ export default function BuilderScreen() {
   // (minus ones you just marked "Not interested" on their full page)
   const hiddenIds = useHiddenStore((s) => s.ids);
   const blockedIds = useBlockStore((s) => s.ids);
-  const availableActivities = useMemo(
-    () =>
-      activities.filter(
-        (a) =>
-          !placed.some((p) => p.activity.idea_id === a.idea_id) &&
-          !hiddenIds.has(a.idea_id) &&
-          !(a.user_id && blockedIds.has(a.user_id)),
-      ),
-    [activities, placed, hiddenIds, blockedIds],
-  );
+  // Searching: the matches from anywhere, best match first
+  const availableActivities = useMemo(() => {
+    const source = searching
+      ? (searchPool ?? [])
+          .map((a) => ({a, score: searchScore(a, searchWordsNow)}))
+          .filter((hit) => hit.score != null)
+          .sort((x, y) => (y.score ?? 0) - (x.score ?? 0))
+          .map((hit) => ({...hit.a, searchScore: hit.score}))
+      : activities;
+    return source.filter(
+      (a: any) =>
+        !placed.some((p) => p.activity.idea_id === a.idea_id) &&
+        !hiddenIds.has(a.idea_id) &&
+        !(a.user_id && blockedIds.has(a.user_id)),
+    );
+    // searchWordsNow comes from search
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activities, placed, hiddenIds, blockedIds, searching, searchPool, search]);
 
   const rankWeather = useMemo(() => weatherLookup(weather), [weather]);
 
@@ -302,11 +321,16 @@ export default function BuilderScreen() {
           placeAt: placement.index,
           spot: placement.spot,
           addedMiles: placement.addedMiles,
+          fartherFromHome: placement.fartherFromHome,
         };
       })
-      // What fits first, then the best fits at the top
-      .sort((a, b) => {
+      // On a trip, suggestions head home (utils/reach.ts); one you searched
+      // for still shows, marked
+      .filter((a) => searching || !a.fartherFromHome)
+      // What fits first, then the best match (searching) or best fit on top
+      .sort((a: any, b: any) => {
         if (a.fitStatus !== b.fitStatus) return a.fitStatus === "FITS_NOW" ? -1 : 1;
+        if (searching && a.searchScore !== b.searchScore) return b.searchScore - a.searchScore;
         return b.rank - a.rank;
       });
   }, [
@@ -320,6 +344,7 @@ export default function BuilderScreen() {
     evaluation.score,
     rankWeather,
     savedBoost,
+    searching,
   ]);
 
   // ─── Loading ideas ────────────────────────────────────────────────────────────
@@ -381,13 +406,14 @@ export default function BuilderScreen() {
         weatherAt,
       };
 
-      const result = await queryCandidates(
+      lastAsk.current = [
         userPrefs,
         999, // Infinite duration for the first anchor
         userPrefs.budget,
         userPrefs, // Origin is their starting location
         initialContext,
-      );
+      ];
+      const result = await queryCandidates(...lastAsk.current);
 
       if (result.success) {
         setActivities(result.data || []);
@@ -422,6 +448,8 @@ export default function BuilderScreen() {
   const handleOpenGap = async (gapSlot: TimeSlot) => {
     // (no LayoutAnimation here: it would fight the sheet's slide)
     setIsDrawerOpen(true);
+    setSearch("");
+    setSearchPool(null);
 
     const gapDurationMins = Math.round(
       (gapSlot.endTime - gapSlot.startTime) / 60_000,
@@ -435,15 +463,16 @@ export default function BuilderScreen() {
       const origin = placed[placed.length - 1].activity;
       try {
         setIsFetchingFillers(true);
-        const result = await queryCandidates(
+        lastAsk.current = [
           userPrefs,
           gapDurationMins,
           remainingBudget,
           origin,
           // The biological state, and when this stop would start
           {...currentContext, atMs: gapSlot.startTime, weatherAt},
-          placed.map((p) => p.activity),
-        );
+          {stops: placed.map((p) => p.activity)},
+        ];
+        const result = await queryCandidates(...lastAsk.current);
         setActivities(result.data || []);
       } catch (error) {
         console.error("handleOpenGap fetch error:", error);
@@ -455,13 +484,8 @@ export default function BuilderScreen() {
       try {
         setIsFetchingFillers(true);
         const initialContext = {exhaustion: 0, satiation: 0, atMs: gapSlot.startTime, weatherAt};
-        const result = await queryCandidates(
-          userPrefs,
-          999,
-          userPrefs.budget,
-          userPrefs,
-          initialContext,
-        );
+        lastAsk.current = [userPrefs, 999, userPrefs.budget, userPrefs, initialContext];
+        const result = await queryCandidates(...lastAsk.current);
         if (result.success) {
           setActivities(result.data || []);
         }
@@ -472,6 +496,30 @@ export default function BuilderScreen() {
       }
     }
   };
+
+  // Searching: on the first letter, everything that could go in this gap,
+  // near or far (the same ask as the gap's suggestions, minus "nearby")
+  useEffect(() => {
+    if (!searching || searchPool !== null || !lastAsk.current) return;
+    const [prefs, duration, budget, origin, context, options] = lastAsk.current;
+    let live = true;
+    queryCandidates(prefs, duration, budget, origin, context, {...options, anywhere: true}).then(
+      (result) => {
+        if (live) setSearchPool(result.data ?? []);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [searching, searchPool]);
+  // Closing the picker ends the search (Top picks never show search results)
+  useEffect(() => {
+    if (!isDrawerOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSearch("");
+      setSearchPool(null);
+    }
+  }, [isDrawerOpen]);
 
   const handlePlaceActivityRef = useRef<(activity: any) => void>(() => {});
   const handlePlaceActivity = (activity: any) => {
@@ -1260,6 +1308,7 @@ export default function BuilderScreen() {
         contentContainerStyle={{paddingHorizontal: 20, paddingBottom: insets.bottom + 16, gap: 10}}
         // The title row drags the sheet down too (with the grabber)
         header={
+          <>
             <View className="flex-row justify-between items-start px-6 pt-4 pb-4">
               <View className="flex-1 pr-4">
                 <Text className="text-white text-2xl font-extrabold tracking-tight">
@@ -1280,9 +1329,30 @@ export default function BuilderScreen() {
                 <Ionicons name="close" size={18} color="#a1a1aa" />
               </Pressable>
             </View>
+            {/* Search anything for this gap, near or far */}
+            <View className="mx-6 mb-4 flex-row items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-full px-4 h-11">
+              <Ionicons name="search" size={16} color="#71717a" />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search ideas"
+                placeholderTextColor="#71717a"
+                returnKeyType="search"
+                autoCorrect={false}
+                accessibilityLabel="Search ideas for this stop"
+                className="flex-1 text-white"
+                style={{fontSize: 16}}
+              />
+              {search ? (
+                <Pressable onPress={() => setSearch("")} hitSlop={10} accessibilityLabel="Clear search">
+                  <Ionicons name="close-circle" size={18} color="#71717a" />
+                </Pressable>
+              ) : null}
+            </View>
+          </>
         }
       >
-              {isFetchingFillers ? (
+              {isFetchingFillers || (searching && searchPool === null) ? (
                 <View className="py-14 items-center justify-center">
                   <ActivityIndicator size="large" color="#3b82f6" />
                   <Text className="text-zinc-400 mt-4">Finding what fits…</Text>
@@ -1298,6 +1368,16 @@ export default function BuilderScreen() {
                     onView={() => viewIdea(item)}
                   />
                 ))
+              ) : searching ? (
+                <View className="py-12 items-center px-6">
+                  <Ionicons name="search-outline" size={28} color="#52525b" />
+                  <Text className="text-white font-bold text-base mt-3">
+                    Nothing matches “{search.trim()}”
+                  </Text>
+                  <Text className="text-zinc-500 text-center mt-1">
+                    Nothing by that name fits this stop&apos;s time, budget and group.
+                  </Text>
+                </View>
               ) : (
                 <View className="py-12 items-center px-6">
                   <Ionicons name="search-outline" size={28} color="#52525b" />

@@ -33,7 +33,7 @@ export async function fetchReplacements(itinerary: Itinerary, index: number): Pr
   // In reach of the start and the date's other stops (a far-off anchor's
   // neighbors count)
   const others = placed.filter((_, i) => i !== index).map((p) => p.activity);
-  const result = await queryCandidates(prefs, roomAt(placed, index, prefs), budgetLeft, origin, context, others);
+  const result = await queryCandidates(prefs, roomAt(placed, index, prefs), budgetLeft, origin, context, {stops: others});
   if (!result.success) throw new Error("Couldn't find alternatives. Please try again.");
 
   const blocked = useBlockStore.getState().ids;
