@@ -138,7 +138,7 @@ function TitlesRow({titles, finished}: {titles: EarnedTitle[]; finished: number}
   );
 }
 
-/** Your handle, with your partner beside it (#35): one line, either side shrinks */
+/** Your handle, then ♥ and your partner (#35): one line, either side shrinks */
 function HandleLine({username}: {username: string}) {
   const router = useRouter();
   const partner = useConnectionsStore((s) => s.connections.find((c) => c.is_partner) ?? null);
@@ -149,7 +149,7 @@ function HandleLine({username}: {username: string}) {
       </Text>
       {partner && (
         <>
-          <Text className="text-zinc-600 text-sm">·</Text>
+          {/* (the heart is the separator) */}
           <Pressable
             onPress={() => router.push("/connections")}
             accessibilityRole="button"
