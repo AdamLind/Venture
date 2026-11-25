@@ -29,6 +29,7 @@ import {StatusChip} from "@/components/ideas/IdeaRows";
 import {IDEA_STATUS, peopleLabel} from "@/src/lib/ideas";
 import {WEATHER_NEEDS_OPTIONS} from "@/src/lib/weatherRules";
 import {normalizeTimeOfDay, TIME_OF_DAY_LABEL} from "@/src/lib/timeOfDay";
+import {inSeason, seasonText} from "@/utils/seasons";
 import PlaceHours from "@/components/ideas/PlaceHours";
 import IdeaLink from "@/components/ideas/IdeaLink";
 import EditPlaceSheet, {type EditablePlace} from "@/components/places/EditPlaceSheet";
@@ -233,6 +234,9 @@ export default function IdeaDetailScreen() {
   const bestTime = timeWindows.length
     ? timeWindows.map((t) => TIME_OF_DAY_LABEL[t]).join(", ")
     : "Any time";
+  // When in the year it works (#21): "Apr–Oct", "Around Christmas", or any time
+  const timeOfYear = seasonText(idea);
+  const outOfSeason = !!timeOfYear && !inSeason(idea, new Date());
   const editIdea = () =>
     router.push({pathname: "/create", params: {ideaId: String(idea.idea_id)}});
   // Off to the Plan tab, with this idea as the date's first stop
@@ -504,6 +508,18 @@ export default function IdeaDetailScreen() {
                 <Text className="text-zinc-400 text-xs font-bold">BEST TIME</Text>
               </View>
               <Text className="text-white font-bold text-lg">{bestTime}</Text>
+            </View>
+
+            {/* Time of year (#21): a whole row, with a heads-up when it's out of season now */}
+            <View className="w-full mt-4 pt-4 border-t border-zinc-800">
+              <View className="flex-row items-center gap-2 mb-1">
+                <Ionicons name="calendar-outline" size={18} color="#FF9D0A" />
+                <Text className="text-zinc-400 text-xs font-bold">TIME OF YEAR</Text>
+              </View>
+              <Text className="text-white font-bold text-lg">{timeOfYear ?? "Any time of year"}</Text>
+              {outOfSeason && (
+                <Text className="text-amber-300 text-xs mt-0.5">Out of season right now</Text>
+              )}
             </View>
           </View>
 
