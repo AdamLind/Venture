@@ -3,7 +3,7 @@
 // Steps: name + username -> birthday (18+ gate) -> planning defaults.
 // Each step saves as it goes, so quitting midway resumes where they left off.
 
-import React, {useMemo, useState} from "react";
+import React, {useMemo, useRef, useState} from "react";
 import {
   View,
   Text,
@@ -33,6 +33,7 @@ import {
   validateUsername,
 } from "@/src/lib/profile";
 import type {PlanningDefaults} from "@/types/profile";
+import {useRevealAboveKeyboard, type Measurable} from "@/hooks/useRevealAboveKeyboard";
 
 type Step = "identity" | "birthday" | "defaults" | "ineligible";
 const STEPS: Step[] = ["identity", "birthday", "defaults"];
@@ -58,6 +59,10 @@ export default function OnboardingScreen() {
   }, []);
 
   const [step, setStep] = useState<Step>(initialStep);
+  // Inputs stay above the keyboard, and above Continue (which rides on it)
+  const {scrollRef, onScroll, reveal} = useRevealAboveKeyboard();
+  const footerHeight = useRef(0);
+  const revealInput = (input: Measurable | null) => reveal(input, footerHeight.current);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -233,6 +238,9 @@ export default function OnboardingScreen() {
         </View>
 
         <ScrollView
+          ref={scrollRef}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           className="flex-1"
           contentContainerClassName="px-6 pb-8"
           keyboardShouldPersistTaps="handled"
@@ -247,6 +255,7 @@ export default function OnboardingScreen() {
 
           {step === "identity" && (
             <IdentityFields
+              onInputFocus={revealInput}
               values={identity}
               onChange={(values) => {
                 setIdentity(values);
@@ -300,7 +309,7 @@ export default function OnboardingScreen() {
           )}
 
           {step === "defaults" && (
-            <PlanningDefaultsFields values={defaults} onChange={setDefaults} />
+            <PlanningDefaultsFields values={defaults} onChange={setDefaults} onInputFocus={revealInput} />
           )}
 
           {error && (
@@ -309,7 +318,10 @@ export default function OnboardingScreen() {
         </ScrollView>
 
         {/* Footer actions */}
-        <View className="px-6 pb-4 pt-2 gap-3">
+        <View
+          className="px-6 pb-4 pt-2 gap-3"
+          onLayout={(e) => (footerHeight.current = e.nativeEvent.layout.height)}
+        >
           <Pressable
             disabled={saving}
             onPress={

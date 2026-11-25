@@ -247,6 +247,8 @@ export default function ModerationScreen() {
           contentContainerStyle={data.length === 0 ? {flexGrow: 1} : undefined}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          // (the last rows can scroll up above the keyboard)
+          automaticallyAdjustKeyboardInsets
           // To review: how many in all (the tab's badge stops at 99+), and a
           // search for finding one among them
           ListHeaderComponent={

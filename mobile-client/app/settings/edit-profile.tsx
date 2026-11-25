@@ -17,6 +17,7 @@ import Toast from "@/src/lib/toast";
 
 import ScreenHeader from "@/components/ui/ScreenHeader";
 import Avatar from "@/components/profile/Avatar";
+import {useRevealAboveKeyboard} from "@/hooks/useRevealAboveKeyboard";
 import IdentityFields, {
   IdentityValues,
 } from "@/components/profile/IdentityFields";
@@ -26,6 +27,8 @@ import {AVATAR_FULL_PX, AVATAR_THUMB_PX} from "@/src/lib/images";
 
 export default function EditProfileScreen() {
   const router = useRouter();
+  // Its inputs sit below the photo: scrolled above the keyboard when focused
+  const {scrollRef, onScroll, reveal} = useRevealAboveKeyboard();
   const profile = useProfileStore((s) => s.profile);
   const preferences = useProfileStore((s) => s.preferences);
   const updateProfile = useProfileStore((s) => s.updateProfile);
@@ -133,6 +136,9 @@ export default function EditProfileScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
+          ref={scrollRef}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           contentContainerClassName="px-5 pt-4 pb-16"
           keyboardShouldPersistTaps="handled"
         >
@@ -158,6 +164,7 @@ export default function EditProfileScreen() {
           </View>
 
           <IdentityFields
+            onInputFocus={(input) => reveal(input)}
             values={values}
             onChange={(next) => {
               setValues(next);

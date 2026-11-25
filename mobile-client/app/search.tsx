@@ -162,6 +162,8 @@ export default function SearchScreen() {
           data={results}
           keyExtractor={(hit) => `search-${hit.idea.idea_id}`}
           keyboardShouldPersistTaps="handled"
+          // (the last results can scroll up above the keyboard)
+          automaticallyAdjustKeyboardInsets
           onScrollBeginDrag={Keyboard.dismiss}
           contentContainerStyle={{paddingHorizontal: 20, paddingTop: 8, paddingBottom: 64, gap: 10}}
           renderItem={({item: hit}) => (

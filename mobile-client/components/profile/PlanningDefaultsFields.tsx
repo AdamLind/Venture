@@ -1,4 +1,5 @@
-import React, {useState} from "react";
+import React, {useRef, useState} from "react";
+import type {Measurable} from "@/hooks/useRevealAboveKeyboard";
 import {View, Text, Pressable, TextInput, ActivityIndicator} from "react-native";
 import {Ionicons} from "@expo/vector-icons";
 import * as Location from "expo-location";
@@ -62,10 +63,14 @@ const roundCoord = (value: number) => Math.round(value * 100) / 100;
 export default function PlanningDefaultsFields({
   values,
   onChange,
+  onInputFocus,
 }: {
   values: PlanningDefaults;
   onChange: (values: PlanningDefaults) => void;
+  /** An input was focused (the screen keeps it above the keyboard) */
+  onInputFocus?: (input: Measurable | null) => void;
 }) {
+  const budgetInput = useRef<React.ComponentRef<typeof TextInput>>(null);
   const isTier = BUDGET_TIERS.some((t) => t.value === values.default_budget);
   const [exactBudget, setExactBudget] = useState(!isTier);
   const [budgetText, setBudgetText] = useState(
@@ -160,6 +165,8 @@ export default function PlanningDefaultsFields({
           <View className="flex-row items-center justify-center gap-1 mt-1">
             <Text className="text-zinc-400 text-2xl font-bold">$</Text>
             <TextInput
+              ref={budgetInput}
+              onFocus={() => onInputFocus?.(budgetInput.current)}
               // fontSize in style: text-3xl's lineHeight clips iOS TextInput text
               className="text-white font-bold min-w-[80px] text-center"
               style={{fontSize: 30}}

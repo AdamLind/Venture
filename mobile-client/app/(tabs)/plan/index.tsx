@@ -558,6 +558,8 @@ export default function PlanScreen() {
         contentContainerStyle={{paddingBottom: 64}}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        // The exact budget sits mid-page: scrolled above the keyboard as it opens
+        automaticallyAdjustKeyboardInsets
         refreshControl={refresh.control}
       >
         <TabHeader

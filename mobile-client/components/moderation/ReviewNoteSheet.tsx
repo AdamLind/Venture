@@ -5,7 +5,7 @@
 // note links to the cited guidelines. Both can be edited before sending.
 // Also the reason for suspending a creator (#76), which they see too.
 
-import React, {useState} from "react";
+import React, {useRef, useState} from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -17,6 +17,7 @@ import {
   View,
 } from "react-native";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
+import {useRevealAboveKeyboard} from "@/hooks/useRevealAboveKeyboard";
 
 import {QUICK_PICKS, RULES, type NoteDecision, type RuleId} from "@/src/lib/ideaGuidelines";
 import Overlays from "@/components/sheets/Overlays";
@@ -108,6 +109,9 @@ function NoteForm({
   onSend: (note: string, rules: RuleId[]) => Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
+  // A long note keeps its last line above the keyboard as it grows
+  const {scrollRef, onScroll, reveal} = useRevealAboveKeyboard();
+  const noteRef = useRef<React.ComponentRef<typeof TextInput>>(null);
   const copy = COPY[decision];
   const [note, setNote] = useState("");
   // The guidelines it breaks (a quick pick cites its own)
@@ -176,6 +180,9 @@ function NoteForm({
       </View>
 
       <ScrollView
+        ref={scrollRef}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         contentContainerClassName="px-5 pt-5 gap-5"
@@ -189,6 +196,8 @@ function NoteForm({
             <Text className="text-zinc-600 text-xs">{NOTE_MAX - note.length} left</Text>
           </View>
           <TextInput
+            ref={noteRef}
+            onContentSizeChange={() => noteRef.current?.isFocused() && reveal(noteRef.current)}
             value={note}
             onChangeText={setNote}
             multiline

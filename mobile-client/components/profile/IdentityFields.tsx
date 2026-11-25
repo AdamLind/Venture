@@ -1,4 +1,5 @@
-import React from "react";
+import React, {useRef} from "react";
+import type {Measurable} from "@/hooks/useRevealAboveKeyboard";
 import {View, Text, TextInput} from "react-native";
 import {normalizeUsername} from "@/src/lib/profile";
 
@@ -45,15 +46,23 @@ export default function IdentityFields({
   values,
   onChange,
   usernameError,
+  onInputFocus,
 }: {
   values: IdentityValues;
   onChange: (values: IdentityValues) => void;
   usernameError?: string | null;
+  /** An input was focused (the screen keeps it above the keyboard) */
+  onInputFocus?: (input: Measurable | null) => void;
 }) {
+  const first = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const last = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const user = useRef<React.ComponentRef<typeof TextInput>>(null);
   return (
     <View className="gap-5">
       <Field label="First name">
         <TextInput
+          ref={first}
+          onFocus={() => onInputFocus?.(first.current)}
           className={inputClass}
           style={inputStyle}
           value={values.firstName}
@@ -69,6 +78,8 @@ export default function IdentityFields({
 
       <Field label="Last name (optional)">
         <TextInput
+          ref={last}
+          onFocus={() => onInputFocus?.(last.current)}
           className={inputClass}
           style={inputStyle}
           value={values.lastName}
@@ -90,6 +101,8 @@ export default function IdentityFields({
         <View className="flex-row items-center bg-zinc-900 rounded-2xl border border-zinc-800 px-4">
           <Text className="text-zinc-500 text-base">@</Text>
           <TextInput
+            ref={user}
+            onFocus={() => onInputFocus?.(user.current)}
             className="flex-1 text-white py-4 pl-1"
             style={inputStyle}
             value={values.username}
