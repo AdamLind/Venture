@@ -1,6 +1,12 @@
-import React, {useRef, useState, useEffect, useCallback, useMemo} from "react";
-import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
-import {ideaTile} from "@/src/lib/ideaTiles";
+import React, {
+  useRef,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
+import { IMAGE_SIZE, sizedImage } from "@/src/lib/images";
+import { ideaTile } from "@/src/lib/ideaTiles";
 import {
   Pressable,
   View,
@@ -11,36 +17,36 @@ import {
   StyleSheet,
   Platform,
 } from "react-native";
-import {Image} from "expo-image";
+import { Image } from "expo-image";
 import Ionicons from "@expo/vector-icons/build/Ionicons";
-import {useRouter, useFocusEffect} from "expo-router";
-import MapView, {Marker} from "react-native-maps";
-import {useSafeAreaInsets} from "react-native-safe-area-context";
-import {useGreeting} from "@/components/home/Greeting";
-import {newSeed, seededShuffle} from "@/src/lib/random";
+import { useRouter, useFocusEffect } from "expo-router";
+import MapView, { Marker, type Region } from "react-native-maps";
+import type { LatLng } from "@/utils/timeline";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useGreeting } from "@/components/home/Greeting";
+import { newSeed } from "@/src/lib/random";
 import SaveButton from "@/components/ideas/SaveButton";
-import {useUnseenCount} from "@/src/store/useNotificationStore";
-import {useHiddenStore} from "@/src/store/useHiddenStore";
-import {useBlockStore} from "@/src/store/useBlockStore";
+import { useUnseenCount } from "@/src/store/useNotificationStore";
+import { useHiddenStore } from "@/src/store/useHiddenStore";
+import { useBlockStore } from "@/src/store/useBlockStore";
 import TabHeader, {
   HeaderIconButton,
   useTabHeader,
   useTabRefresh,
 } from "@/components/ui/TabHeader";
-import {supabase} from "@/src/supabase";
-import {LinearGradient} from "expo-linear-gradient";
-import {useLocationStore} from "@/src/store/useLocationStore";
-import {getDistance} from "@/utils/geo";
-import {inReach} from "@/utils/reach";
-import {toPlanningDefaults} from "@/src/lib/profile";
+import { supabase } from "@/src/supabase";
+import { LinearGradient } from "expo-linear-gradient";
+import { useLocationStore } from "@/src/store/useLocationStore";
+import { getDistance } from "@/utils/geo";
+import { toPlanningDefaults } from "@/src/lib/profile";
 import GlassSurface from "@/components/ui/GlassSurface";
 import Avatar from "@/components/profile/Avatar";
-import type {PublicProfile} from "@/types/profile";
-import {useProfileStore} from "@/src/store/useProfileStore";
-import {IDEA_STATUS} from "@/src/lib/ideas";
-import {useStaffStore} from "@/src/store/useStaffStore";
-import type {IdeaVisibility} from "@/types/ideas";
-import {formatMoney} from "@/utils/money";
+import type { PublicProfile } from "@/types/profile";
+import { useProfileStore } from "@/src/store/useProfileStore";
+import { IDEA_STATUS } from "@/src/lib/ideas";
+import { useStaffStore } from "@/src/store/useStaffStore";
+import type { IdeaVisibility } from "@/types/ideas";
+import { formatMoney } from "@/utils/money";
 
 // Shape for the map's floating preview card (GlassSurface takes style, not className)
 const glassStyles = StyleSheet.create({
@@ -101,10 +107,40 @@ const parseCoordinates = (hex: string | null | undefined) => {
     const latitude = view.getFloat64(17, littleEndian);
 
     if (isNaN(longitude) || isNaN(latitude)) return null;
-    return {longitude, latitude};
+    return { longitude, latitude };
   } catch {
     return null;
   }
+};
+
+// --- PAGES ---
+/** Ideas per page of the list */
+const PAGE = 20;
+/** Coming back to the tab reloads what you'd scrolled through, up to this many */
+const MAX_RELOAD = 200;
+/** The most places the map shows for the area on screen (nearest its middle) */
+const MAP_LIMIT = 300;
+/** Moving this far (or changing your home area) starts the list over */
+const REFETCH_MILES = 5;
+
+/** What a card needs: the idea, its place, its tags and who shared it */
+const IDEA_COLUMNS = `
+  *,
+  venues ( name, address, coordinates ),
+  activity_tags ( tags ( name ) ),
+  users!activities_user_id_fkey ( username, profile_image_url )
+`;
+
+/** A row as the cards and pins use it */
+const toIdea = (row: any): DateIdea => {
+  const parsed = parseCoordinates(row.venues?.coordinates);
+  return {
+    ...row,
+    creator_username: row.users?.username || null,
+    creator: row.users ?? null,
+    latitude: parsed ? parsed.latitude : null,
+    longitude: parsed ? parsed.longitude : null,
+  };
 };
 
 // --- BASE FROZEN PRICE PIN ---
@@ -115,7 +151,7 @@ interface PricePinProps {
 }
 
 const PricePin = React.memo(
-  function PricePin({item, onSelect}: PricePinProps) {
+  function PricePin({ item, onSelect }: PricePinProps) {
     const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
     useEffect(() => {
@@ -131,7 +167,7 @@ const PricePin = React.memo(
           latitude: item.latitude!,
           longitude: item.longitude!,
         }}
-        anchor={{x: 0.5, y: 0.5}}
+        anchor={{ x: 0.5, y: 0.5 }}
         tracksViewChanges={tracksViewChanges}
         onPress={() => onSelect(item)}
       >
@@ -146,7 +182,7 @@ const PricePin = React.memo(
             alignItems: "center",
             justifyContent: "center",
             shadowColor: "#000",
-            shadowOffset: {width: 0, height: 2},
+            shadowOffset: { width: 0, height: 2 },
             shadowOpacity: 0.4,
             shadowRadius: 4,
             elevation: 4,
@@ -186,9 +222,11 @@ const SkeletonIdea = () => (
 export default function ExploreScreen() {
   const router = useRouter();
   // Staff tools on (#26): flag reported ideas on their cards
-  const reportedIdeas = useStaffStore((s) => (s.role && s.toolsOn ? s.reportedIdeas : null));
+  const reportedIdeas = useStaffStore((s) =>
+    s.role && s.toolsOn ? s.reportedIdeas : null,
+  );
   const insets = useSafeAreaInsets();
-  const header = useTabHeader({eyebrow: true});
+  const header = useTabHeader({ eyebrow: true });
   // iOS: the screen runs under the floating tab bar, whose height is in the
   // bottom safe-area inset. Android: the screen already ends above the bar.
   const floatingBottom = Platform.OS === "ios" ? insets.bottom + 12 : 24;
@@ -196,43 +234,58 @@ export default function ExploreScreen() {
   const unseenCount = useUnseenCount();
 
   // --- ZUSTAND LOCATION STORE ---
-  const {hasPermission, userLocation, requestLocation} = useLocationStore();
+  const { hasPermission, userLocation, requestLocation } = useLocationStore();
 
   // --- STATE & REFS ---
   const lastMarkerPress = useRef(0);
+  // The list, a page at a time (explore_ideas: what you may see, within
+  // reach, shuffled by a seed), and the map's places in the area on screen
+  // (map_ideas). Hidden and blocked are filtered by the server too; here
+  // they also drop out right away (and come back on undo)
   const [allIdeas, setIdeas] = useState<DateIdea[]>([]);
-  // "Not interested" ideas drop out right away, and come back on undo
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  /** Rows the server has given for this shuffle (the next page starts here) */
+  const fetched = useRef(0);
+  const [mapPlaces, setMapPlaces] = useState<DateIdea[]>([]);
+  /** Go-out ideas anywhere, and within reach ("Nothing near you yet") */
+  const [reach, setReach] = useState<{
+    anywhere: boolean;
+    near: boolean;
+  } | null>(null);
   const hiddenIds = useHiddenStore((s) => s.ids);
   const blockedIds = useBlockStore((s) => s.ids);
-  // The map shows every place: you pan to where you're going (a road trip)
+  const notHidden = useCallback(
+    (idea: DateIdea) =>
+      !hiddenIds.has(idea.idea_id) &&
+      !(idea.user_id && blockedIds.has(idea.user_id)),
+    [hiddenIds, blockedIds],
+  );
+  // The map shows every place in the area on screen: you pan to where you're
+  // going (a road trip)
   const mapIdeas = useMemo(
-    () =>
-      allIdeas.filter(
-        (idea) => !hiddenIds.has(idea.idea_id) && !(idea.user_id && blockedIds.has(idea.user_id)),
-      ),
-    [allIdeas, hiddenIds, blockedIds],
+    () => mapPlaces.filter(notHidden),
+    [mapPlaces, notHidden],
   );
   // The list: go-out ideas near you or your home area; stay-in ideas
-  // everywhere (utils/reach.ts). Your own ideas always show: this is where
-  // you see them
-  const myId = useProfileStore((s) => s.userId);
+  // everywhere (utils/reach.ts, applied by the server). Your own ideas always
+  // show: this is where you see them
   const preferences = useProfileStore((s) => s.preferences);
   const homeArea = useMemo(() => {
-    const {home_lat, home_lng} = toPlanningDefaults(preferences);
-    return home_lat != null && home_lng != null ? {latitude: home_lat, longitude: home_lng} : null;
+    const { home_lat, home_lng } = toPlanningDefaults(preferences);
+    return home_lat != null && home_lng != null
+      ? { latitude: home_lat, longitude: home_lng }
+      : null;
   }, [preferences]);
   const ideas = useMemo(
-    () =>
-      mapIdeas.filter(
-        (idea) => idea.user_id === myId || inReach(idea, [userLocation, homeArea]),
-      ),
-    [mapIdeas, myId, userLocation, homeArea],
+    () => allIdeas.filter(notHidden),
+    [allIdeas, notHidden],
   );
   // There are places to go, just none near you (Venture isn't in your city yet)
   const nothingNearby =
     (userLocation != null || homeArea != null) &&
-    allIdeas.some((idea) => idea.modality === "GO_OUT") &&
-    !ideas.some((idea) => idea.modality === "GO_OUT");
+    !!reach?.anywhere &&
+    !reach.near;
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -253,38 +306,45 @@ export default function ExploreScreen() {
   // overwrite fresher results (or update the screen after it's left)
   const fetchGeneration = useRef(0);
 
-  // `quiet`: pull-to-refresh shows its own spinner, so skip the loading state
-  const fetchIdeas = useCallback(async ({quiet = false} = {}) => {
+  // Where reach is measured from, as last fetched (moving far refetches)
+  const fetchedFrom = useRef<{
+    here: LatLng | null;
+    home: LatLng | null;
+  } | null>(null);
+  const centerArgs = () => ({
+    p_lat: userLocation?.latitude ?? null,
+    p_lng: userLocation?.longitude ?? null,
+    p_home_lat: homeArea?.latitude ?? null,
+    p_home_lng: homeArea?.longitude ?? null,
+  });
+
+  /** One page of the list (`offset`: rows already given for this shuffle) */
+  const fetchPage = (offset: number, limit: number) =>
+    supabase
+      .rpc("explore_ideas", {
+        p_seed: shuffleSeed.current,
+        ...centerArgs(),
+        p_limit: limit,
+        p_offset: offset,
+      })
+      .select(IDEA_COLUMNS);
+
+  // `quiet`: pull-to-refresh shows its own spinner, so skip the loading state.
+  // `keep`: coming back to the tab reloads as many as you'd scrolled through
+  // (so the list doesn't jump back to its first page)
+  const fetchIdeas = async ({ quiet = false, keep = false } = {}) => {
     const generation = ++fetchGeneration.current;
     if (!quiet) setIsLoading(true);
     setError(null);
+    fetchedFrom.current = { here: userLocation ?? null, home: homeArea };
 
-    const {data, error: supabaseError} = await supabase
-      .from("activities")
-      .select(
-        `
-        *,
-        venues ( name, address, coordinates ),
-        activity_tags ( tags ( name ) ),
-        users!activities_user_id_fkey ( username, profile_image_url )
-      `,
-      )
-      // Everyone's published ideas, plus all of yours except the ones that
-      // weren't approved (those stay in Profile > My Ideas, with the note):
-      // a private or in-review idea shows here too, marked "only you can
-      // see this", since Explore is where people spend their time. Held
-      // ideas (enough reports, #76) are out until a moderator looks; you
-      // still see them if you saved one, just not here
-      .or(
-        (() => {
-          const me = useProfileStore.getState().userId;
-          return me
-            ? `and(visibility.eq.PUBLISHED,held_at.is.null),and(user_id.eq.${me},visibility.neq.REJECTED)`
-            : "and(visibility.eq.PUBLISHED,held_at.is.null)";
-        })(),
-      )
-      // A fixed order going in, so the same seed always shuffles the same way
-      .order("idea_id", {ascending: true});
+    const limit = keep
+      ? Math.min(MAX_RELOAD, Math.max(PAGE, fetched.current))
+      : PAGE;
+    const [{ data, error: supabaseError }, reachResult] = await Promise.all([
+      fetchPage(0, limit),
+      supabase.rpc("explore_reach", centerArgs()),
+    ]);
 
     if (generation !== fetchGeneration.current) return;
 
@@ -295,37 +355,107 @@ export default function ExploreScreen() {
       return;
     }
 
-    const formatted = (data || []).map((row: any) => {
-      const parsed = parseCoordinates(row.venues?.coordinates);
-      return {
-        ...row,
-        creator_username: row.users?.username || null,
-        creator: row.users ?? null,
-        latitude: parsed ? parsed.latitude : null,
-        longitude: parsed ? parsed.longitude : null,
-      };
-    });
-
-    setIdeas(seededShuffle(formatted, shuffleSeed.current));
+    const rows = (data ?? []) as any[];
+    fetched.current = rows.length;
+    setHasMore(rows.length === limit);
+    setIdeas(rows.map(toIdea));
+    if (!reachResult.error)
+      setReach(reachResult.data as { anywhere: boolean; near: boolean });
     setIsLoading(false);
     setIsInitialLoad(false);
-  }, []);
+  };
 
+  /** The next page, as you near the end of the list */
+  const loadMore = async () => {
+    if (!hasMore || loadingMore || isLoading) return;
+    const generation = fetchGeneration.current;
+    setLoadingMore(true);
+    const { data, error: pageError } = await fetchPage(fetched.current, PAGE);
+    setLoadingMore(false);
+    // (a refresh started meanwhile: its pages win)
+    if (generation !== fetchGeneration.current || pageError) return;
+    const rows = (data ?? []) as any[];
+    fetched.current += rows.length;
+    setHasMore(rows.length === PAGE);
+    setIdeas((prev) => {
+      const seen = new Set(prev.map((idea) => idea.idea_id));
+      return [
+        ...prev,
+        ...rows.map(toIdea).filter((idea) => !seen.has(idea.idea_id)),
+      ];
+    });
+  };
+
+  // Every time the tab comes back (it may have changed meanwhile)
+  const refetchOnFocus = useRef(fetchIdeas);
+  useEffect(() => {
+    refetchOnFocus.current = fetchIdeas;
+  });
   useFocusEffect(
     useCallback(() => {
-      fetchIdeas();
+      refetchOnFocus.current({ quiet: fetched.current > 0, keep: true });
       return () => {
         // Leaving the tab: ignore whatever is still in flight
         fetchGeneration.current++;
       };
-    }, [fetchIdeas]),
+    }, []),
   );
+
+  // Your location arrives (or you move far, or change your home area): what's
+  // within reach changed, so the list starts over from there
+  useEffect(() => {
+    const last = fetchedFrom.current;
+    if (!last) return;
+    const moved = (a: LatLng | null, b: LatLng | null) =>
+      (a == null) !== (b == null) ||
+      (a != null && b != null && getDistance(a, b) > REFETCH_MILES);
+    if (moved(last.here, userLocation ?? null) || moved(last.home, homeArea))
+      refetchOnFocus.current({ quiet: true });
+  }, [userLocation, homeArea]);
 
   // Pull-to-refresh: new shuffle, so you get a fresh set of options up top
   const refresh = useTabRefresh(() => {
     shuffleSeed.current = newSeed();
-    return fetchIdeas({quiet: true});
+    return fetchIdeas({ quiet: true });
   });
+
+  // The map: the places in the area on screen (once it settles after a move)
+  const mapStart = useMemo(
+    () => ({
+      latitude: userLocation?.latitude ?? homeArea?.latitude ?? 40.2312,
+      longitude: userLocation?.longitude ?? homeArea?.longitude ?? -111.6614,
+      latitudeDelta: 0.15,
+      longitudeDelta: 0.15,
+    }),
+    // (where it opens: not moved by later location updates)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewMode],
+  );
+  const mapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapGeneration = useRef(0);
+  const loadMapArea = (region: Region) => {
+    if (mapTimer.current) clearTimeout(mapTimer.current);
+    mapTimer.current = setTimeout(async () => {
+      const generation = ++mapGeneration.current;
+      const { data, error: mapError } = await supabase
+        .rpc("map_ideas", {
+          p_min_lat: region.latitude - region.latitudeDelta / 2,
+          p_min_lng: region.longitude - region.longitudeDelta / 2,
+          p_max_lat: region.latitude + region.latitudeDelta / 2,
+          p_max_lng: region.longitude + region.longitudeDelta / 2,
+          p_limit: MAP_LIMIT,
+        })
+        .select(IDEA_COLUMNS);
+      if (generation !== mapGeneration.current || mapError) return;
+      setMapPlaces(((data ?? []) as any[]).map(toIdea));
+    }, 250);
+  };
+  useEffect(
+    () => () => {
+      if (mapTimer.current) clearTimeout(mapTimer.current);
+    },
+    [],
+  );
 
   const toggleViewMode = () => {
     const nextMode = viewMode === "list" ? "map" : "list";
@@ -346,23 +476,29 @@ export default function ExploreScreen() {
   // --- UI COMPONENTS ---
   // How far a go-out idea is from you ("2.3 mi"); "Go out" without your location
   const whereLabel = (item: DateIdea): string => {
-    if (!userLocation || item.latitude == null || item.longitude == null) return "Go out";
-    const miles = getDistance(userLocation, {latitude: item.latitude, longitude: item.longitude});
+    if (!userLocation || item.latitude == null || item.longitude == null)
+      return "Go out";
+    const miles = getDistance(userLocation, {
+      latitude: item.latitude,
+      longitude: item.longitude,
+    });
     if (miles < 0.2) return "Nearby";
     return `${miles < 10 ? miles.toFixed(1) : Math.round(miles)} mi`;
   };
 
-  const renderIdeaItem = ({item}: {item: DateIdea}) => {
+  const renderIdeaItem = ({ item }: { item: DateIdea }) => {
     // Its photo, or its kind's tile (src/lib/ideaTiles.ts)
     const photo = item.image_urls?.[0] || item.image_url;
-    const displayImage = photo ? sizedImage(photo, IMAGE_SIZE.full) : ideaTile(item);
+    const displayImage = photo
+      ? sizedImage(photo, IMAGE_SIZE.full)
+      : ideaTile(item);
 
     return (
       <Pressable
         onPress={() =>
           router.push({
             pathname: "/(tabs)/explore/detail/[id]",
-            params: {id: item.idea_id.toString()},
+            params: { id: item.idea_id.toString() },
           })
         }
         className="mb-6 active:opacity-95 shadow-xl shadow-black"
@@ -370,20 +506,23 @@ export default function ExploreScreen() {
         <View className="h-80 w-full rounded-3xl overflow-hidden bg-zinc-900 border border-zinc-800 relative">
           <Image
             source={displayImage}
-            style={{width: "100%", height: "100%"}}
+            style={{ width: "100%", height: "100%" }}
             contentFit="cover"
           />
 
           <LinearGradient
             colors={["transparent", "rgba(0,0,0,0.9)"]}
             locations={[0.5, 1]}
-            style={{position: "absolute", width: "100%", height: "100%"}}
+            style={{ position: "absolute", width: "100%", height: "100%" }}
           />
 
           {/* Price, how far (or at home), and for your own unpublished ideas a
               status icon: same height, same look as the save button */}
           <View className="absolute top-4 left-4 flex-row items-center gap-2">
-            <View className="h-7 justify-center px-3 rounded-full" style={CARD_PILL}>
+            <View
+              className="h-7 justify-center px-3 rounded-full"
+              style={CARD_PILL}
+            >
               <Text className="text-white font-bold text-xs">
                 {formatPrice(item.est_price_per_person)}
               </Text>
@@ -394,7 +533,11 @@ export default function ExploreScreen() {
               className="h-7 flex-row items-center gap-1 px-3 rounded-full"
               style={CARD_PILL}
               accessible
-              accessibilityLabel={item.modality === "STAY_IN" ? "Stay in, at home" : `Go out, ${whereLabel(item)}`}
+              accessibilityLabel={
+                item.modality === "STAY_IN"
+                  ? "Stay in, at home"
+                  : `Go out, ${whereLabel(item)}`
+              }
             >
               <Ionicons
                 name={item.modality === "STAY_IN" ? "home" : "navigate"}
@@ -408,26 +551,27 @@ export default function ExploreScreen() {
 
             {/* Yours and not public: a small icon in the same row (only you see
                 this card), out of the way of the photo */}
-            {item.visibility !== "PUBLISHED" && IDEA_STATUS[item.visibility] && (
-              <View
-                className="h-7 w-7 items-center justify-center rounded-full"
-                style={CARD_PILL}
-                accessible
-                accessibilityLabel={
-                  item.visibility === "PRIVATE"
-                    ? "Only you can see this"
-                    : `${IDEA_STATUS[item.visibility].label}. Only you can see this`
-                }
-              >
-                <Ionicons
-                  name={IDEA_STATUS[item.visibility].icon}
-                  size={13}
-                  color={IDEA_STATUS[item.visibility].color}
-                  // (the glyphs sit a hair left of their box)
-                  style={{marginLeft: 1}}
-                />
-              </View>
-            )}
+            {item.visibility !== "PUBLISHED" &&
+              IDEA_STATUS[item.visibility] && (
+                <View
+                  className="h-7 w-7 items-center justify-center rounded-full"
+                  style={CARD_PILL}
+                  accessible
+                  accessibilityLabel={
+                    item.visibility === "PRIVATE"
+                      ? "Only you can see this"
+                      : `${IDEA_STATUS[item.visibility].label}. Only you can see this`
+                  }
+                >
+                  <Ionicons
+                    name={IDEA_STATUS[item.visibility].icon}
+                    size={13}
+                    color={IDEA_STATUS[item.visibility].color}
+                    // (the glyphs sit a hair left of their box)
+                    style={{ marginLeft: 1 }}
+                  />
+                </View>
+              )}
 
             {/* Staff tools on: open reports on this idea */}
             {reportedIdeas?.get(item.idea_id) ? (
@@ -438,7 +582,9 @@ export default function ExploreScreen() {
                 accessibilityLabel={`${reportedIdeas.get(item.idea_id)} open reports`}
               >
                 <Ionicons name="flag" size={11} color="#f87171" />
-                <Text className="text-white font-bold text-xs">{reportedIdeas.get(item.idea_id)}</Text>
+                <Text className="text-white font-bold text-xs">
+                  {reportedIdeas.get(item.idea_id)}
+                </Text>
               </View>
             ) : null}
           </View>
@@ -456,7 +602,9 @@ export default function ExploreScreen() {
                 <View className="flex-row items-center gap-1.5">
                   <Avatar profile={item.creator} size={24} small />
                   <Text className="text-zinc-300 text-sm font-medium">
-                    {item.creator_username ? `By @${item.creator_username}` : "Shared by a Venture member"}
+                    {item.creator_username
+                      ? `By @${item.creator_username}`
+                      : "Shared by a Venture member"}
                   </Text>
                 </View>
               </View>
@@ -469,7 +617,7 @@ export default function ExploreScreen() {
   };
 
   // A fresh list starts at the top, so the header should too
-  const {reset: resetHeader} = header;
+  const { reset: resetHeader } = header;
   const showingSkeleton = isLoading && isInitialLoad;
   useEffect(() => {
     resetHeader();
@@ -479,12 +627,19 @@ export default function ExploreScreen() {
   // below still work, and you can be the one to add a place
   const renderNothingNearby = () => (
     <View className="mb-6 flex-row gap-3 p-4 rounded-3xl bg-zinc-900 border border-zinc-800">
-      <Ionicons name="home" size={18} color="#fbbf24" style={{marginTop: 1}} />
+      <Ionicons
+        name="home"
+        size={18}
+        color="#fbbf24"
+        style={{ marginTop: 1 }}
+      />
       <View className="flex-1">
-        <Text className="text-white font-bold text-base">No places near you yet</Text>
+        <Text className="text-white font-bold text-base">
+          No places near you yet
+        </Text>
         <Text className="text-zinc-400 text-sm mt-1 leading-5">
-          Venture is starting in Provo and Salt Lake City. Until it reaches you, these stay-in
-          ideas work anywhere.
+          Venture is starting in Provo and Salt Lake City. Until it reaches you,
+          these stay-in ideas work anywhere.
         </Text>
         <Pressable
           onPress={() => router.push("/create")}
@@ -492,7 +647,9 @@ export default function ExploreScreen() {
           className="self-start mt-3 active:opacity-70"
           hitSlop={8}
         >
-          <Text className="text-amber-400 font-semibold text-sm">Share a place you love</Text>
+          <Text className="text-amber-400 font-semibold text-sm">
+            Share a place you love
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -570,12 +727,12 @@ export default function ExploreScreen() {
         {isLoading && isInitialLoad ? (
           <Animated.ScrollView
             {...header.scrollProps}
-            style={{flex: 1, backgroundColor: "#000"}}
-            contentContainerStyle={{paddingBottom: 96}}
+            style={{ flex: 1, backgroundColor: "#000" }}
+            contentContainerStyle={{ paddingBottom: 96 }}
             showsVerticalScrollIndicator={false}
           >
             {renderHeader(false)}
-            <View style={{paddingHorizontal: 20, paddingTop: 8}}>
+            <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
               {[1, 2, 3].map((i) => (
                 <SkeletonIdea key={i} />
               ))}
@@ -584,13 +741,16 @@ export default function ExploreScreen() {
         ) : (
           <Animated.FlatList
             {...header.scrollProps}
-            style={{flex: 1, backgroundColor: "#000"}}
+            style={{ flex: 1, backgroundColor: "#000" }}
             ListHeaderComponent={renderHeader(false)}
             data={ideas}
             keyExtractor={(item) => `idea-${item.idea_id}`}
             renderItem={(info) => (
               <View
-                style={{paddingHorizontal: 20, paddingTop: info.index === 0 ? 8 : 0}}
+                style={{
+                  paddingHorizontal: 20,
+                  paddingTop: info.index === 0 ? 8 : 0,
+                }}
               >
                 {info.index === 0 && nothingNearby && renderNothingNearby()}
                 {renderIdeaItem(info)}
@@ -598,7 +758,18 @@ export default function ExploreScreen() {
             )}
             ListEmptyComponent={renderEmptyState}
             refreshControl={refresh.control}
-            contentContainerStyle={{paddingBottom: 60}}
+            // The next page as you near the end
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.6}
+            ListFooterComponent={
+              loadingMore ? (
+                <ActivityIndicator
+                  color="#FF9D0A"
+                  style={{ marginVertical: 24 }}
+                />
+              ) : undefined
+            }
+            contentContainerStyle={{ paddingBottom: 60 }}
             showsVerticalScrollIndicator={false}
           />
         )}
@@ -611,34 +782,32 @@ export default function ExploreScreen() {
     <View className="flex-1 bg-black">
       <StatusBar barStyle="light-content" />
       {error ? (
-          <View className="flex-1 justify-center items-center p-4">
-            <Ionicons
-              name="alert-circle"
-              size={48}
-              color="#ef4444"
-              className="mb-4"
-            />
-            <Text className="text-red-400 font-bold mb-6">{error}</Text>
-            <Pressable
-              onPress={() => fetchIdeas()}
-              className="bg-red-500/20 px-8 py-3 rounded-full border border-red-500/30"
-            >
-              <Text className="text-red-300 font-bold">Try Again</Text>
-            </Pressable>
-          </View>
+        <View className="flex-1 justify-center items-center p-4">
+          <Ionicons
+            name="alert-circle"
+            size={48}
+            color="#ef4444"
+            className="mb-4"
+          />
+          <Text className="text-red-400 font-bold mb-6">{error}</Text>
+          <Pressable
+            onPress={() => fetchIdeas()}
+            className="bg-red-500/20 px-8 py-3 rounded-full border border-red-500/30"
+          >
+            <Text className="text-red-300 font-bold">Try Again</Text>
+          </Pressable>
+        </View>
       ) : (
         <View className="flex-1">
           <MapView
-            style={{flex: 1}}
-            initialRegion={{
-              latitude: userLocation?.latitude ?? 40.2312,
-              longitude: userLocation?.longitude ?? -111.6614,
-              latitudeDelta: 0.15,
-              longitudeDelta: 0.15,
-            }}
+            style={{ flex: 1 }}
+            initialRegion={mapStart}
             userInterfaceStyle="dark"
             showsUserLocation={hasPermission}
             showsMyLocationButton={hasPermission}
+            // The places in the area on screen (as it opens, and after each move)
+            onMapReady={() => loadMapArea(mapStart)}
+            onRegionChangeComplete={loadMapArea}
             onPress={() => {
               if (Date.now() - lastMarkerPress.current < 250) return;
               setSelectedIdea(null);
@@ -665,7 +834,7 @@ export default function ExploreScreen() {
                   latitude: selectedIdea.latitude,
                   longitude: selectedIdea.longitude,
                 }}
-                anchor={{x: 0.5, y: 0.5}}
+                anchor={{ x: 0.5, y: 0.5 }}
                 zIndex={999}
                 tracksViewChanges={true}
                 onPress={() => {
@@ -684,7 +853,7 @@ export default function ExploreScreen() {
                     alignItems: "center",
                     justifyContent: "center",
                     shadowColor: "#000",
-                    shadowOffset: {width: 0, height: 3},
+                    shadowOffset: { width: 0, height: 3 },
                     shadowOpacity: 0.6,
                     shadowRadius: 5,
                     elevation: 8,
@@ -708,13 +877,13 @@ export default function ExploreScreen() {
           {selectedIdea && (
             <View
               className="absolute left-4 right-4 z-40"
-              style={{bottom: floatingBottom}}
+              style={{ bottom: floatingBottom }}
             >
               <Pressable
                 onPress={() =>
                   router.push({
                     pathname: "/(tabs)/explore/detail/[id]",
-                    params: {id: selectedIdea.idea_id.toString()},
+                    params: { id: selectedIdea.idea_id.toString() },
                   })
                 }
                 className="active:opacity-90"
@@ -723,10 +892,14 @@ export default function ExploreScreen() {
                   <Image
                     source={
                       selectedIdea.image_urls?.[0] || selectedIdea.image_url
-                        ? sizedImage(selectedIdea.image_urls?.[0] || selectedIdea.image_url, 84)
+                        ? sizedImage(
+                            selectedIdea.image_urls?.[0] ||
+                              selectedIdea.image_url,
+                            84,
+                          )
                         : ideaTile(selectedIdea)
                     }
-                    style={{width: 84, height: 84, borderRadius: 18}}
+                    style={{ width: 84, height: 84, borderRadius: 18 }}
                     contentFit="cover"
                   />
 
@@ -750,7 +923,9 @@ export default function ExploreScreen() {
 
                     {/* No star rating until there are real ones (#19) */}
                     <Text className="text-zinc-500 text-xs">
-                      {selectedIdea.creator_username ? `@${selectedIdea.creator_username}` : "A Venture member"}
+                      {selectedIdea.creator_username
+                        ? `@${selectedIdea.creator_username}`
+                        : "A Venture member"}
                     </Text>
                   </View>
 
