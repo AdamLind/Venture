@@ -1,8 +1,7 @@
 // components/ideas/PlaceHours.tsx
 // A place's opening hours (#8), as the first row of the idea page's details
 // card: open or closed right now, tap for the week, and a reminder that
-// hours change (with the idea's link, if it has one). Nothing when the
-// hours aren't known. Hours from OpenStreetMap (#5) credit it, as its
+// hours change. Nothing when the hours aren't known. Hours from OpenStreetMap (#5) credit it, as its
 // licence asks ("© OpenStreetMap contributors", linked).
 
 import React, {useState} from "react";
@@ -22,7 +21,6 @@ export default function PlaceHours({
   hours,
   checkedAt,
   source,
-  url,
   at,
   className = "",
 }: {
@@ -31,8 +29,6 @@ export default function PlaceHours({
   checkedAt?: string | null;
   /** venues.hours_source: "osm" credits OpenStreetMap */
   source?: string | null;
-  /** The idea's website / menu link */
-  url?: string | null;
   /** The place (for daylight-only hours) */
   at?: {latitude: number; longitude: number} | null;
   /** Spacing around it (it renders nothing when the hours aren't known) */
@@ -109,22 +105,9 @@ export default function PlaceHours({
         </View>
       </Reanimated.View>
 
-      <View className="mt-2 flex-row items-center gap-3">
-        <Text className="flex-1 text-zinc-500 text-xs">
-          Hours can change. Check before you go.{checked ? ` Last checked ${checked}.` : ""}
-        </Text>
-        {url ? (
-          <Pressable
-            onPress={() => Linking.openURL(url).catch(() => {})}
-            hitSlop={8}
-            accessibilityRole="link"
-            className="flex-row items-center gap-1 active:opacity-70"
-          >
-            <Ionicons name="open-outline" size={13} color="#60a5fa" />
-            <Text className="text-blue-400 text-xs font-semibold">Website</Text>
-          </Pressable>
-        ) : null}
-      </View>
+      <Text className="mt-2 text-zinc-500 text-xs">
+        Hours can change. Check before you go.{checked ? ` Last checked ${checked}.` : ""}
+      </Text>
       {source === "osm" && (
         <Pressable
           onPress={() => Linking.openURL(OSM_COPYRIGHT).catch(() => {})}

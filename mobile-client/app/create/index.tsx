@@ -58,6 +58,7 @@ import {useSavedStore} from "@/src/store/useSavedStore";
 import {usePrefsStore} from "@/src/store/usePrefsStore";
 import {SUSPENDED_MESSAGE, useAccountStore} from "@/src/store/useAccountStore";
 import {confirmDeleteIdea, confirmUnpublishIdea} from "@/src/lib/ideaActions";
+import {LINK_LABEL_MAX} from "@/src/lib/links";
 import {POSTER_PROMISE} from "@/src/lib/ideaGuidelines";
 import {peopleLabel} from "@/src/lib/ideas";
 import {RISK_LABELS, SAFETY_NOTE_MAX, type RiskLabel} from "@/src/lib/safety";
@@ -379,6 +380,7 @@ export default function CreateScreen() {
   const [minAge, setMinAge] = useState("");
   const [description, setDescription] = useState("");
   const [url, setUrl] = useState("");
+  const [urlLabel, setUrlLabel] = useState("");
   // Safety (#81): what to know before going, and a short heads-up
   const [riskLabels, setRiskLabels] = useState<RiskLabel[]>([]);
   const [safetyNote, setSafetyNote] = useState("");
@@ -619,6 +621,7 @@ export default function CreateScreen() {
       setTitle(data.title ?? "");
       setDescription(data.description ?? "");
       setUrl(data.url ?? "");
+      setUrlLabel(data.url_label ?? "");
       setImageUri(data.image_urls?.[0] ?? null);
       const loadedPlace: PickedPlace | null =
         data.venue_id && data.venues && coords
@@ -750,7 +753,8 @@ export default function CreateScreen() {
   const snapshot = JSON.stringify([
     imageUri, title, whereMode, place?.name ?? null, activityType, selectedTags, feel, exertion, environment,
     weatherNeeds, timeOfDay, yearMode, months, holidays, paid, price, durationMin, isDurationVariable, groupSize,
-    minPeople, maxPeople, ageChoice, minAge, description, url, riskLabels, safetyNote, visibility,
+    minPeople, maxPeople, ageChoice, minAge, description, url, urlLabel, riskLabels, safetyNote,
+    visibility,
   ]);
   // What the edit started as (set once it has loaded, while rendering)
   const [baseline, setBaseline] = useState<string | null>(null);
@@ -957,6 +961,8 @@ export default function CreateScreen() {
         title: tidyTitle(title),
         description: description.trim(),
         url: url.trim() || null,
+        // (a title only goes with a link)
+        url_label: (url.trim() && urlLabel.trim()) || null,
         image_urls: imageUrls,
         modality,
         activity_type: activityType,
@@ -1818,15 +1824,30 @@ export default function CreateScreen() {
         />
       </Question>
       <Question title="Link (optional)" missing={false}>
-        <TextInput
-          value={url}
-          onChangeText={setUrl}
-          placeholder="Website, menu, tickets, recipe"
-          placeholderTextColor="#71717a"
-          keyboardType="url"
-          autoCapitalize="none"
-          className="bg-zinc-900 text-white px-4 py-3.5 rounded-2xl border border-zinc-700"
-        />
+        <View className="gap-2">
+          <TextInput
+            value={urlLabel}
+            onChangeText={setUrlLabel}
+            placeholder="Its title, like Menu or Book a time"
+            placeholderTextColor="#71717a"
+            maxLength={LINK_LABEL_MAX}
+            returnKeyType="next"
+            className="bg-zinc-900 text-white px-4 py-3.5 rounded-2xl border border-zinc-700"
+          />
+          <TextInput
+            value={url}
+            onChangeText={setUrl}
+            placeholder="The link: website, menu, tickets, recipe"
+            placeholderTextColor="#71717a"
+            keyboardType="url"
+            autoCapitalize="none"
+            autoCorrect={false}
+            className="bg-zinc-900 text-white px-4 py-3.5 rounded-2xl border border-zinc-700"
+          />
+          <Text className="text-zinc-500 text-xs ml-1">
+            Shows as a button with the title, and the link under it. No title: it says Website.
+          </Text>
+        </View>
       </Question>
       <Question title="Safety (optional)" missing={false}>
         <View className="flex-row flex-wrap gap-2 mb-3">

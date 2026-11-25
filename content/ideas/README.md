@@ -70,7 +70,8 @@ Files starting with `_` are examples and never imported: see
 | `tags` | From: brunch, cafes, casual, desserts, global, upscale · adventure, games, nature, sports, views, walks, water · comedy, festivals, movies, museums, music, theater · board games, cooking, crafts, romantic, spa |
 | `risks` | What to know: `HEIGHTS`, `WATER`, `REMOTE`, `PERMIT`, `GUIDE` |
 | `safety_note` | A short heads-up, up to 300 characters |
-| `url` | The place's site, a menu, or tickets |
+| `url` | A link: the place's site, a menu, tickets, a recipe |
+| `url_label` | The link button's title, up to 60 characters ("Menu", "The questions"). Without one it says "Website" |
 | `photos` | Links, or files next to this one (`"photos/rock-canyon.jpg"`, ~1200 px wide). Use photos you took or ones whose licence allows it |
 | `notes` | For us; never imported |
 

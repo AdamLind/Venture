@@ -26,6 +26,8 @@ export interface BaseActivity {
   description: string;
   image_urls: string[] | null; // DB is an array of text
   url: string | null;
+  /** The link button's title ("Menu"); null: "Website" */
+  url_label?: string | null;
 
   // ─── CATEGORIZATION ───
   modality: "STAY_IN" | "GO_OUT";

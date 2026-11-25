@@ -30,6 +30,7 @@ import {IDEA_STATUS, peopleLabel} from "@/src/lib/ideas";
 import {WEATHER_NEEDS_OPTIONS} from "@/src/lib/weatherRules";
 import {normalizeTimeOfDay, TIME_OF_DAY_LABEL} from "@/src/lib/timeOfDay";
 import PlaceHours from "@/components/ideas/PlaceHours";
+import IdeaLink from "@/components/ideas/IdeaLink";
 import EditPlaceSheet, {type EditablePlace} from "@/components/places/EditPlaceSheet";
 import ReviewPanel from "@/components/moderation/ReviewPanel";
 import {useStaffStore} from "@/src/store/useStaffStore";
@@ -433,7 +434,6 @@ export default function IdeaDetailScreen() {
                 hours={idea.venues.opening_hours}
                 checkedAt={idea.venues.hours_checked_at}
                 source={idea.venues.hours_source}
-                url={idea.url}
                 at={coords}
                 className="w-full mb-4 pb-4 border-b border-zinc-800"
               />
@@ -550,6 +550,9 @@ export default function IdeaDetailScreen() {
               <Text className="flex-1 text-zinc-500 text-xs leading-5">{safetyDisclaimer(!!idea.users?.official)}</Text>
             </View>
           ) : null}
+
+          {/* LINK: its title, and where it goes */}
+          {idea.url ? <IdeaLink url={idea.url} label={idea.url_label} className="mb-8" /> : null}
 
           {/* VENUE & MAP */}
           {idea.modality === "GO_OUT" && idea.venues && (

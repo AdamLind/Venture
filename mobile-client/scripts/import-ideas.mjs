@@ -274,6 +274,8 @@ function checkFile(file, tags) {
     if (risks.some((r) => !RISKS.includes(r))) problem("✗", `risks are from ${RISKS.join(", ")}`);
     if (idea.safety_note && idea.safety_note.length > NOTE_MAX) problem("✗", `safety_note is over ${NOTE_MAX} characters`);
     if (idea.url && !/^https?:\/\/\S+$/.test(idea.url)) problem("✗", "url isn't a link");
+    if (idea.url_label && !idea.url) problem("✗", "url_label without a url");
+    if (idea.url_label && idea.url_label.length > LINK_LABEL_MAX) problem("✗", `url_label is over ${LINK_LABEL_MAX} characters`);
     const photos = idea.photos ?? [];
     if (!photos.length) problem("!", "no photo (shows a tile for its kind: a color and an icon)");
     for (const photo of photos) {
@@ -291,6 +293,7 @@ function checkFile(file, tags) {
       title,
       description,
       url: idea.url ?? null,
+      url_label: idea.url_label?.trim() || null,
       modality: goingOut ? "GO_OUT" : "STAY_IN",
       // (the posting form has no Active type any more: effort says it)
       activity_type: idea.type === "ACTIVE" ? "OTHER" : idea.type,
@@ -424,9 +427,15 @@ async function savePhotos(key, photos, file) {
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const numberish = new Set(["est_price_per_person"]);
+/**
+ * Columns added after ideas were first imported: left out of the
+ * fingerprint while empty, so older imports don't look changed in the app
+ */
+const ADDED_LATER = new Set(["url_label"]);
+const LINK_LABEL_MAX = 60;
 /** The idea columns the import writes (and compares on a re-run) */
 const FIELD_COLUMNS = [
-  "title", "description", "url", "modality", "activity_type", "environment", "weather_needs", "time_of_day",
+  "title", "description", "url", "url_label", "modality", "activity_type", "environment", "weather_needs", "time_of_day",
   "est_price_per_person", "est_duration_minutes", "is_duration_variable", "feel", "exertion", "months", "holidays",
   "min_people", "max_people", "min_age", "risk_labels", "safety_note",
 ];
@@ -440,7 +449,7 @@ function fingerprint({fields, venue_id, image_urls, tagIds}) {
     FIELD_COLUMNS.map((k) => {
       const v = fields[k] ?? null;
       return [k, v === null ? null : numberish.has(k) ? Number(v) : k === "risk_labels" ? [...v].sort() : v];
-    }),
+    }).filter(([k, v]) => !(ADDED_LATER.has(k) && v === null)),
   );
   const text = JSON.stringify({...norm, venue_id: venue_id ?? null, image_urls: image_urls ?? [], tags: [...tagIds].sort((a, b) => a - b)});
   return createHash("sha256").update(text).digest("hex").slice(0, 32);
