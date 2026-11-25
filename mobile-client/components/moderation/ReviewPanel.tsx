@@ -58,6 +58,7 @@ const DONE_TOAST: Record<Decision, string> = {
 export default function ReviewPanel({
   idea,
   onDecided,
+  onPlaceEdited,
 }: {
   idea: {
     idea_id: number;
@@ -68,6 +69,9 @@ export default function ReviewPanel({
     /** Its place: a new one goes public with this idea (#88) */
     venue_id?: string | null;
     venues?: {
+      venue_id?: string | null;
+      /** Who added it (null: the app's own place, which admins can edit) */
+      created_by?: string | null;
       name?: string | null;
       address?: string | null;
       coordinates?: string | null;
@@ -78,6 +82,8 @@ export default function ReviewPanel({
   };
   /** After a decision: the idea's new state */
   onDecided: (visibility: IdeaVisibility, note: string | null, rules: RuleId[] | null) => void;
+  /** An admin edited its place in the place check (read it again) */
+  onPlaceEdited?: (venueId: string) => void;
 }) {
   const router = useRouter();
   const role = useStaffStore((s) => s.role);
@@ -487,6 +493,10 @@ export default function ReviewPanel({
         checked={placeChecked}
         onClose={() => setPlaceSheetOpen(false)}
         onChecked={setPlaceChecked}
+        // The app's own places: admins fix them right here (a member's place
+        // goes back to them with Changes)
+        editable={role === "ADMIN" && !!idea.venues?.venue_id && idea.venues.created_by == null}
+        onEdited={onPlaceEdited}
       />
 
       <ReviewNoteSheet

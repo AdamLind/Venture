@@ -61,6 +61,8 @@ const FAR_MILES = 80;
 /** Reusing a place already on Venture: this close, and the name this alike */
 const SAME_PLACE_METERS = 75;
 const SAME_NAME = 0.78;
+/** An idea keeps its place while the file's pin is this close (an admin may have moved or renamed it) */
+const KEEP_PLACE_METERS = 300;
 /** Local photos are uploaded as they are: bigger than this, resize first */
 const PHOTO_MAX_BYTES = 600_000;
 const PHOTO_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"};
@@ -276,9 +278,31 @@ function checkFile(file, tags) {
     if (idea.url && !/^https?:\/\/\S+$/.test(idea.url)) problem("✗", "url isn't a link");
     if (idea.url_label && !idea.url) problem("✗", "url_label without a url");
     if (idea.url_label && idea.url_label.length > LINK_LABEL_MAX) problem("✗", `url_label is over ${LINK_LABEL_MAX} characters`);
-    const photos = idea.photos ?? [];
-    if (!photos.length) problem("!", "no photo (shows a tile for its kind: a color and an icon)");
-    for (const photo of photos) {
+    // A photo is a link or a file, or an Unsplash photo with its credit
+    // (written by scripts/pick-photos.mjs)
+    const entries = Array.isArray(idea.photos) ? idea.photos : [];
+    if (idea.photos !== undefined && !Array.isArray(idea.photos)) problem("✗", "photos is a list");
+    if (!entries.length) problem("!", "no photo: pick one in the app (Staff tools on, the idea page's Pick a photo), or it shows its tile");
+    const photos = [];
+    const credits = [];
+    for (const entry of entries) {
+      if (entry && typeof entry === "object") {
+        const credit = unsplashCredit(entry);
+        if (!credit) {
+          problem("✗", 'an Unsplash photo has "url" (https://images.unsplash.com/…), "unsplash", "by" and "username"');
+          continue;
+        }
+        photos.push(entry.url);
+        credits.push(credit);
+        continue;
+      }
+      if (typeof entry !== "string" || !entry.trim()) {
+        problem("✗", "a photo is a link, a file, or an Unsplash photo");
+        continue;
+      }
+      photos.push(entry);
+      credits.push(null);
+      const photo = entry;
       if (/^https?:\/\//.test(photo)) continue;
       const path = resolve(dirname(file), photo);
       if (!existsSync(path)) problem("✗", `photo not found: ${photo}`);
@@ -314,7 +338,12 @@ function checkFile(file, tags) {
       risk_labels: [...new Set([...risks.filter((r) => r !== "STRENUOUS"), ...(exertion === "HARD" ? ["STRENUOUS"] : [])])].sort(),
       safety_note: idea.safety_note?.trim() || null,
     };
-    return {idea, issues, fields, place, at, photos, tags: ideaTags, draft: idea.status === "draft"};
+    return {
+      idea, issues, fields, place, at, photos,
+      // (null when no photo needs a credit, as before credits existed)
+      credits: credits.some(Boolean) ? credits : null,
+      tags: ideaTags, draft: idea.status === "draft",
+    };
   });
   return {file, city, problems, ideas};
 }
@@ -425,6 +454,19 @@ async function savePhotos(key, photos, file) {
   return urls;
 }
 
+/** An Unsplash photo entry's credit (activities.image_credits), or null if it's incomplete */
+function unsplashCredit(entry) {
+  const ok = (v) => typeof v === "string" && v.trim() !== "";
+  if (!ok(entry.url) || !entry.url.startsWith("https://images.unsplash.com/")) return null;
+  if (!ok(entry.unsplash) || !ok(entry.by) || !ok(entry.username)) return null;
+  return {source: "unsplash", photo_id: entry.unsplash.trim(), name: entry.by.trim(), username: entry.username.trim()};
+}
+/** Credits in one key order (the database's jsonb reorders keys) */
+const canonCredits = (credits) =>
+  Array.isArray(credits) && credits.some(Boolean)
+    ? credits.map((c) => (c ? {source: c.source, photo_id: c.photo_id, name: c.name, username: c.username} : null))
+    : null;
+
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const numberish = new Set(["est_price_per_person"]);
 /**
@@ -444,21 +486,35 @@ const FIELD_COLUMNS = [
  * import stores it (import_hash); a different one on the next run means
  * someone changed the idea in the app.
  */
-function fingerprint({fields, venue_id, image_urls, tagIds}) {
+function fingerprint({fields, venue_id, image_urls, image_credits, tagIds}) {
   const norm = Object.fromEntries(
     FIELD_COLUMNS.map((k) => {
       const v = fields[k] ?? null;
       return [k, v === null ? null : numberish.has(k) ? Number(v) : k === "risk_labels" ? [...v].sort() : v];
     }).filter(([k, v]) => !(ADDED_LATER.has(k) && v === null)),
   );
-  const text = JSON.stringify({...norm, venue_id: venue_id ?? null, image_urls: image_urls ?? [], tags: [...tagIds].sort((a, b) => a - b)});
+  // (credits came later too: only in the fingerprint when there are some)
+  const credits = canonCredits(image_credits);
+  const text = JSON.stringify({
+    ...norm,
+    venue_id: venue_id ?? null,
+    image_urls: image_urls ?? [],
+    ...(credits ? {image_credits: credits} : {}),
+    tags: [...tagIds].sort((a, b) => a - b),
+  });
   return createHash("sha256").update(text).digest("hex").slice(0, 32);
 }
-const rowFingerprint = (row) =>
+/**
+ * An idea as it's saved now. Photos count only when its file has some: with
+ * none, the photo is picked in the app (an admin's "Pick a photo") and the
+ * import leaves it alone
+ */
+const rowFingerprint = (row, filePhotos) =>
   fingerprint({
     fields: row,
     venue_id: row.venue_id,
-    image_urls: row.image_urls,
+    image_urls: filePhotos ? row.image_urls : [],
+    image_credits: filePhotos ? row.image_credits : null,
     tagIds: (row.activity_tags ?? []).map((t) => t.tag_id),
   });
 
@@ -517,20 +573,29 @@ async function main() {
   const officialId = await officialAccount();
   const known = await loadPlaces();
   const existing = await rest(
-    `activities?select=idea_id,import_key,import_hash,user_id,visibility,venue_id,image_urls,${FIELD_COLUMNS.join(",")},activity_tags(tag_id)&import_key=not.is.null&limit=10000`,
+    `activities?select=idea_id,import_key,import_hash,user_id,visibility,venue_id,image_urls,image_credits,${FIELD_COLUMNS.join(",")},activity_tags(tag_id)&import_key=not.is.null&limit=10000`,
   );
   const byKey = new Map(existing.map((row) => [row.import_key, row]));
   const counts = {added: 0, updated: 0, unchanged: 0, "changed in the app": 0, failed: 0, retired: 0};
 
   for (const {file, ideas} of checked) {
-    for (const {idea, issues, fields, place, at, photos, tags: ideaTags, draft} of ideas) {
+    for (const {idea, issues, fields, place, at, photos, credits, tags: ideaTags, draft} of ideas) {
       if (draft || issues.some((i) => i.level === "✗")) continue;
       try {
         const row = byKey.get(idea.key);
         if (row && row.user_id !== officialId) {
           throw new Error(`the key is taken by an idea @${OFFICIAL_USERNAME} didn't post`);
         }
-        const venue = place ? await savePlace(known, place, at) : {venue_id: null, note: null};
+        // An idea keeps the place it has while the file's pin is still near
+        // it: an admin may have renamed it or moved its pin in the app, and
+        // matching by name could add the place again
+        const kept = place && row?.venue_id ? known.find((v) => v.venue_id === row.venue_id) : null;
+        const venue =
+          kept && milesBetween(kept.at, at) * 1609.34 <= KEEP_PLACE_METERS
+            ? {venue_id: kept.venue_id, note: null}
+            : place
+              ? await savePlace(known, place, at)
+              : {venue_id: null, note: null};
         const tagIds = ideaTags.map((t) => tags.get(t)).sort((a, b) => a - b);
 
         if (!row) {
@@ -543,7 +608,8 @@ async function main() {
               user_id: officialId,
               venue_id: venue.venue_id,
               image_urls,
-              import_hash: fingerprint({fields, venue_id: venue.venue_id, image_urls, tagIds}),
+              ...(credits ? {image_credits: credits} : {}),
+              import_hash: fingerprint({fields, venue_id: venue.venue_id, image_urls, image_credits: credits, tagIds}),
               visibility: PUBLISH ? "PUBLISHED" : "PENDING_REVIEW",
             }),
           });
@@ -560,7 +626,8 @@ async function main() {
         }
 
         // Changed in the app since the last import: leave it (unless --force)
-        if (row.import_hash && row.import_hash !== rowFingerprint(row) && !FORCE) {
+        const filePhotos = photos.length > 0;
+        if (row.import_hash && row.import_hash !== rowFingerprint(row, filePhotos) && !FORCE) {
           counts["changed in the app"]++;
           console.log(`! ${idea.key}: changed in the app since the last import, so it's left alone (copy the change into the file, or --force)`);
           continue;
@@ -575,10 +642,12 @@ async function main() {
           if (!same(current, v)) changes[k] = v;
         }
         // Photos: uploaded again only when the list in the file changed (a
-        // local file edited in place keeps its old upload: rename it)
-        if (!same(photos.map((p, i) => photoUrl(idea.key, p, i)), row.image_urls ?? [])) {
+        // local file edited in place keeps its old upload: rename it). None
+        // in the file: the one picked in the app stays
+        if (filePhotos && !same(photos.map((p, i) => photoUrl(idea.key, p, i)), row.image_urls ?? [])) {
           changes.image_urls = await savePhotos(idea.key, photos, file);
         }
+        if (filePhotos && !same(canonCredits(credits), canonCredits(row.image_credits))) changes.image_credits = credits;
         const rowTags = (row.activity_tags ?? []).map((t) => t.tag_id).sort((a, b) => a - b);
         const tagsChanged = !same(rowTags, tagIds);
 
@@ -586,7 +655,8 @@ async function main() {
         const saved = fingerprint({
           fields,
           venue_id: venue.venue_id,
-          image_urls: changes.image_urls ?? row.image_urls,
+          image_urls: filePhotos ? changes.image_urls ?? row.image_urls : [],
+          image_credits: filePhotos ? credits : null,
           tagIds,
         });
         if (!Object.keys(changes).length && !tagsChanged) {

@@ -1,6 +1,9 @@
 import React, {useCallback, useRef, useState} from "react";
 import {IMAGE_SIZE, sizedImage} from "@/src/lib/images";
 import {ideaTile} from "@/src/lib/ideaTiles";
+import PhotoCredit from "@/components/ideas/PhotoCredit";
+import PhotoPickerSheet from "@/components/ideas/PhotoPickerSheet";
+import PlaceMarker from "@/components/places/PlaceMarker";
 import {
   View,
   Text,
@@ -15,7 +18,7 @@ import {Image} from "expo-image";
 import {useFocusEffect, useRouter, useLocalSearchParams} from "expo-router";
 import Ionicons from "@expo/vector-icons/build/Ionicons";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
-import MapView, {Marker} from "react-native-maps";
+import MapView from "react-native-maps";
 import {LinearGradient} from "expo-linear-gradient";
 import {supabase} from "@/src/supabase";
 import {useLocationStore} from "@/src/store/useLocationStore";
@@ -62,6 +65,7 @@ export default function IdeaDetailScreen() {
   const [isMapModalVisible, setIsMapModalVisible] = useState(false);
   // Editing a place you added (#6)
   const [editingPlace, setEditingPlace] = useState<EditablePlace | null>(null);
+  const [pickingPhoto, setPickingPhoto] = useState(false);
 
   const {hasPermission, requestLocation} = useLocationStore();
   const myUserId = useProfileStore((s) => s.userId);
@@ -201,6 +205,22 @@ export default function IdeaDetailScreen() {
   const isMine = !!myUserId && idea.user_id === myUserId;
   // The app's own ideas (the launch set, #71): admins edit them here
   const canEdit = isMine || (staffRole === "ADMIN" && !!idea.users?.official);
+  // The app's own ideas get Unsplash photos, picked by admins (Staff tools on)
+  const canPickPhoto = staffRole === "ADMIN" && staffToolsOn && !!idea.users?.official;
+  // ...and edit the app's own places (nobody added them: created_by is null)
+  const canEditListedPlace =
+    staffRole === "ADMIN" && staffToolsOn && !!idea.venues && idea.venues.created_by == null && !!coords;
+  /** Reads its place again after an admin edited it (here, or in the review's place check) */
+  const refreshPlace = (venueId: string) => {
+    supabase
+      .from("venues")
+      .select("coordinates, address, opening_hours, hours_checked_at, hours_source, access_note, name")
+      .eq("venue_id", venueId)
+      .maybeSingle()
+      .then(({data}) => {
+        if (data) setIdea((prev: any) => (prev ? {...prev, venues: {...prev.venues, ...data}} : prev));
+      });
+  };
   // Staff review: asked for (queue / menu), or tools on and it needs a look
   // (in review, sent back, rejected, or reported). Never on private ideas
   const showReview =
@@ -332,12 +352,30 @@ export default function IdeaDetailScreen() {
             ) : (
               <Text className="text-zinc-400 text-base font-medium">Shared by a Venture member</Text>
             )}
+            {/* Its photo's photographer (Unsplash photos), next to the idea's own credit */}
+            <PhotoCredit credits={idea.image_credits} className="mt-1.5" />
+            {/* Admins, Staff tools on: an Unsplash photo for an official idea */}
+            {canPickPhoto && (
+              <Pressable
+                onPress={() => setPickingPhoto(true)}
+                accessibilityRole="button"
+                className={`self-start flex-row items-center gap-1.5 mt-3 px-3.5 py-2 rounded-full active:opacity-70 ${
+                  idea.image_urls?.length ? "bg-zinc-900 border border-zinc-800" : "bg-orange-500/15 border border-orange-400/40"
+                }`}
+              >
+                <Ionicons name="image-outline" size={15} color={idea.image_urls?.length ? "#d4d4d8" : "#fdba74"} />
+                <Text className={`text-sm font-semibold ${idea.image_urls?.length ? "text-zinc-300" : "text-orange-200"}`}>
+                  {idea.image_urls?.length ? "Change photo" : "Pick a photo"}
+                </Text>
+              </Pressable>
+            )}
           </View>
 
           {/* STAFF REVIEW */}
           {showReview && (
             <ReviewPanel
               idea={idea}
+              onPlaceEdited={refreshPlace}
               onDecided={(visibility, note, rules) => {
                 setIdea((prev: any) =>
                   prev
@@ -600,7 +638,10 @@ export default function IdeaDetailScreen() {
                     {/* You added this place and it's still private: change its name,
                         directions or hours (#6). Once anything here is published,
                         changes are suggested and checked (#10) */}
-                    {myUserId && idea.venues.created_by === myUserId && idea.visibility !== "PUBLISHED" ? (
+                    {/* ...and admins (Staff tools on) edit the app's own places
+                        (nobody added them: the launch import's), pin included */}
+                    {(myUserId && idea.venues.created_by === myUserId && idea.visibility !== "PUBLISHED") ||
+                    canEditListedPlace ? (
                       <Pressable
                         onPress={() =>
                           setEditingPlace({
@@ -608,6 +649,9 @@ export default function IdeaDetailScreen() {
                             name: idea.venues.name,
                             accessNote: idea.venues.access_note ?? null,
                             openingHours: idea.venues.opening_hours ?? null,
+                            ...(canEditListedPlace && coords
+                              ? {listed: {address: idea.venues.address ?? null, ...coords}}
+                              : {}),
                           })
                         }
                         hitSlop={8}
@@ -636,6 +680,8 @@ export default function IdeaDetailScreen() {
                 {coords && (
                   <View className="h-48 w-full pointer-events-none">
                     <MapView
+                      // (keyed: a pin an admin moved re-centres it)
+                      key={`${coords.latitude},${coords.longitude}`}
                       style={{flex: 1}}
                       initialRegion={{
                         latitude: coords.latitude,
@@ -647,7 +693,7 @@ export default function IdeaDetailScreen() {
                       pitchEnabled={false}
                       scrollEnabled={false}
                     >
-                      <Marker coordinate={coords} pinColor="#FF9D0A" />
+                      <PlaceMarker coordinate={coords} />
                     </MapView>
                   </View>
                 )}
@@ -787,6 +833,26 @@ export default function IdeaDetailScreen() {
       </View>
       )}
 
+      {/* PICK A PHOTO (admins, official ideas) */}
+      <PhotoPickerSheet
+        idea={
+          pickingPhoto
+            ? {
+                idea_id: idea.idea_id,
+                title: idea.title,
+                place: idea.modality === "GO_OUT" ? idea.venues?.name ?? null : null,
+                // (its pin, for photos taken near it)
+                latitude: idea.modality === "GO_OUT" ? coords?.latitude ?? null : null,
+                longitude: idea.modality === "GO_OUT" ? coords?.longitude ?? null : null,
+              }
+            : null
+        }
+        onClose={() => setPickingPhoto(false)}
+        onPicked={(url, credit) =>
+          setIdea((prev: any) => (prev ? {...prev, image_urls: [url], image_credits: [credit]} : prev))
+        }
+      />
+
       {/* EDIT A PLACE YOU ADDED */}
       <EditPlaceSheet
         place={editingPlace}
@@ -804,11 +870,15 @@ export default function IdeaDetailScreen() {
                     hours_checked_at: saved.hoursCheckedAt,
                     // (typed in: the server labels them community hours)
                     hours_source: saved.openingHours ? "community" : null,
+                    ...(saved.listed ? {address: saved.listed.address} : {}),
                   },
                 }
               : prev,
           );
           setEditingPlace(null);
+          // One of the app's own places: read it back (its moved pin, and its
+          // hours' source, which unchanged hours keep)
+          if (saved.listed) refreshPlace(saved.venueId);
         }}
       />
 
@@ -834,11 +904,7 @@ export default function IdeaDetailScreen() {
               showsUserLocation={hasPermission}
               showsMyLocationButton={true}
             >
-              <Marker
-                coordinate={coords}
-                pinColor="#FF9D0A"
-                title={idea.venues.name}
-              />
+              <PlaceMarker coordinate={coords} title={idea.venues.name} />
             </MapView>
           )}
 

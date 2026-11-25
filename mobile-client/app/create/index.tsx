@@ -964,6 +964,8 @@ export default function CreateScreen() {
         // (a title only goes with a link)
         url_label: (url.trim() && urlLabel.trim()) || null,
         image_urls: imageUrls,
+        // A new photo is the poster's own: the old photo's credit goes with it
+        ...(photoChanged ? {image_credits: null} : {}),
         modality,
         activity_type: activityType,
         environment,

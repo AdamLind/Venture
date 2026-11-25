@@ -150,6 +150,34 @@ export async function addPlace(place: Extract<PickedPlace, {kind: "new"}>): Prom
 }
 
 /**
+ * Change one of the app's own places (admins; places nobody added, like the
+ * launch import's): its name, address, pin, how to get there and hours. The
+ * database checks who may, and logs it. Throws a readable Error.
+ */
+export async function adminUpdatePlace(
+  venueId: string,
+  changes: {
+    name: string;
+    address: string | null;
+    accessNote: string | null;
+    openingHours: string | null;
+    latitude: number;
+    longitude: number;
+  },
+): Promise<void> {
+  const {error} = await supabase.rpc("admin_update_place", {
+    p_venue_id: venueId,
+    p_name: changes.name.trim(),
+    p_address: changes.address?.trim() || null,
+    p_access_note: changes.accessNote?.trim() || null,
+    p_opening_hours: changes.openingHours,
+    p_latitude: changes.latitude,
+    p_longitude: changes.longitude,
+  });
+  if (error) throw new Error(friendlyError(error));
+}
+
+/**
  * Change a place you added (#6): its name, how-to-get-there note and hours
  * (null: not sure). Only while it's private (no published idea there); the
  * database says so otherwise. Throws a readable Error.

@@ -397,6 +397,11 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Unsplash photos for official ideas (admins only). It checks the caller
+# itself: the gateway's JWT check doesn't work with the new API keys
+[functions.unsplash]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

@@ -459,6 +459,14 @@ const PERSON_HISTORY_LABEL: Record<string, string> = {
 const wasNamed = (entry: LogEntry) =>
   entry.action === "RESET_USERNAME" && typeof entry.detail?.from === "string" ? ` (was @${entry.detail.from})` : "";
 
+/** “Rock Canyon Park” (was “Rock Canyon Trailhead”), for a place an admin edited */
+function placeEdited(entry: LogEntry) {
+  const before = (entry.detail?.before ?? {}) as {name?: string};
+  const after = (entry.detail?.after ?? {}) as {name?: string};
+  const name = after.name ?? before.name ?? "a place";
+  return before.name && after.name && before.name !== after.name ? `“${name}” (was “${before.name}”)` : `“${name}”`;
+}
+
 /** How many people reported it, for an automatic hold */
 const heldAfter = (entry: LogEntry) => {
   const people = Number(entry.detail?.people ?? 0);
@@ -497,6 +505,7 @@ export function logLine(entry: LogEntry, myUsername?: string | null) {
     return `“${entry.idea_title ?? "An idea"}” was hidden automatically${heldAfter(entry)}`;
   }
   const who = whoDid(entry, myUsername);
+  if (entry.action === "EDIT_PLACE") return `${who} edited the place ${placeEdited(entry)}`;
   const person = entry.subject ? `@${entry.subject}` : "someone";
   if (PERSON_LABEL[entry.action]) return `${who} ${PERSON_LABEL[entry.action](person)}${wasNamed(entry)}`;
   if (entry.action === "SUSPEND" || entry.action === "UNSUSPEND") {

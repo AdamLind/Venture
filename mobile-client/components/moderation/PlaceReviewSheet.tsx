@@ -4,17 +4,24 @@
 // different), what the poster entered, a warning if it's near their home,
 // and what to check. "Looks right" marks it checked, which lets the idea be
 // approved (and the place go public with it). Staff only.
+//
+// The app's own places (no one added them: the launch import's) can be fixed
+// right here by an admin: Edit place (name, address, pin, how to get there,
+// hours; components/places/EditPlaceSheet.tsx).
 
 import React, {useState} from "react";
 import {Modal, Pressable, ScrollView, Text, View} from "react-native";
-import MapView, {Marker} from "react-native-maps";
+import MapView from "react-native-maps";
 import {Ionicons} from "@expo/vector-icons";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 import {parseCoordinates} from "@/utils/itineraryEngine";
+import EditPlaceSheet, {type EditablePlace} from "@/components/places/EditPlaceSheet";
+import PlaceMarker from "@/components/places/PlaceMarker";
 import {weekLines} from "@/utils/openingHours";
 
 export type ReviewPlace = {
+  venue_id?: string | null;
   name?: string | null;
   address?: string | null;
   coordinates?: string | null;
@@ -37,6 +44,8 @@ export default function PlaceReviewSheet({
   checked,
   onClose,
   onChecked,
+  editable = false,
+  onEdited,
 }: {
   visible: boolean;
   place: ReviewPlace | null | undefined;
@@ -46,11 +55,26 @@ export default function PlaceReviewSheet({
   onClose: () => void;
   /** "Looks right" (true) or undone (false) */
   onChecked: (checked: boolean) => void;
+  /** An admin, and one of the app's own places: Edit place */
+  editable?: boolean;
+  /** Saved an edit (the idea page reads the place again) */
+  onEdited?: (venueId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
   const [satellite, setSatellite] = useState(true);
   const [now] = useState(() => Date.now());
   const pin = parseCoordinates(place?.coordinates ?? null);
+  const [editing, setEditing] = useState<EditablePlace | null>(null);
+  const edit = () => {
+    if (!place?.venue_id || !pin) return;
+    setEditing({
+      venueId: place.venue_id,
+      name: place.name ?? "",
+      accessNote: place.access_note ?? null,
+      openingHours: place.opening_hours ?? null,
+      listed: {address: place.address ?? null, latitude: pin.latitude, longitude: pin.longitude},
+    });
+  };
   const hours = weekLines(place?.opening_hours ?? null, now);
 
   return (
@@ -70,9 +94,21 @@ export default function PlaceReviewSheet({
 
         <ScrollView contentContainerClassName="px-6 pt-5 gap-4" contentContainerStyle={{paddingBottom: insets.bottom + 24}}>
           <Text className="text-zinc-400 text-sm leading-5">
-            It goes public when this idea is approved. Check it here; if the pin or name is off, send the idea back
-            with Changes (there are quick picks for places).
+            {editable
+              ? "It goes public when this idea is approved. It's one of the app's own places, so if anything is off, fix it here."
+              : "It goes public when this idea is approved. Check it here; if the pin or name is off, send the idea back with Changes (there are quick picks for places)."}
           </Text>
+
+          {editable && pin ? (
+            <Pressable
+              onPress={edit}
+              accessibilityRole="button"
+              className="self-start flex-row items-center gap-1.5 px-3.5 py-2 rounded-full bg-zinc-900 border border-zinc-800 active:opacity-70"
+            >
+              <Ionicons name="pencil-outline" size={14} color="#60a5fa" />
+              <Text className="text-blue-400 text-sm font-semibold">Edit place</Text>
+            </Pressable>
+          ) : null}
 
           {nearHome && (
             <View className="flex-row gap-2 rounded-2xl px-3.5 py-3 bg-red-500/15 border border-red-400/40">
@@ -87,6 +123,8 @@ export default function PlaceReviewSheet({
           {pin ? (
             <View className="h-72 rounded-2xl overflow-hidden">
               <MapView
+                // (keyed: a pin moved with Edit place re-centres it)
+                key={`${pin.latitude},${pin.longitude}`}
                 style={{flex: 1}}
                 mapType={satellite ? "satellite" : "standard"}
                 userInterfaceStyle="dark"
@@ -94,7 +132,7 @@ export default function PlaceReviewSheet({
                 pitchEnabled={false}
                 rotateEnabled={false}
               >
-                <Marker coordinate={pin} pinColor="#FF9D0A" />
+                <PlaceMarker coordinate={pin} scale={0.8} />
               </MapView>
               <Pressable
                 onPress={() => setSatellite((s) => !s)}
@@ -157,6 +195,16 @@ export default function PlaceReviewSheet({
           </Pressable>
         </ScrollView>
       </View>
+
+      {/* (over this sheet: a modal opened from inside it) */}
+      <EditPlaceSheet
+        place={editing}
+        onClose={() => setEditing(null)}
+        onSaved={(saved) => {
+          setEditing(null);
+          onEdited?.(saved.venueId);
+        }}
+      />
     </Modal>
   );
 }

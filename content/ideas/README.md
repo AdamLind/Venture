@@ -72,8 +72,46 @@ Files starting with `_` are examples and never imported: see
 | `safety_note` | A short heads-up, up to 300 characters |
 | `url` | A link: the place's site, a menu, tickets, a recipe |
 | `url_label` | The link button's title, up to 60 characters ("Menu", "The questions"). Without one it says "Website" |
-| `photos` | Links, or files next to this one (`"photos/rock-canyon.jpg"`, ~1200 px wide). Use photos you took or ones whose licence allows it |
+| `photos` | Links, files next to this one (`"photos/rock-canyon.jpg"`, ~1200 px wide), or Unsplash photos (below; usually picked in the app). Use photos you took or ones whose licence allows it. The app shows the first one |
 | `notes` | For us; never imported |
+
+## Photos from Unsplash
+
+Pick them in the app: with Staff tools on, an admin sees **Pick a photo** on
+an official idea's page (**Change photo** once it has one). It shows
+Unsplash's photos for the idea; tap one, then **Use this photo**. The idea
+page credits the photographer under "Curated by": "Photo by *name* on
+Unsplash", linking to their profile and to Unsplash.
+
+- A place's picker opens on **Near this place**: Wikimedia Commons photos
+  taken near its pin (free, no limit; freely licensed, credited as "Photo by
+  *name*, CC BY-SA 2.0"). **Unsplash** only searches once you open its tab.
+  Commons photos are picked in the app only (not written into files)
+- An idea with no `photos` in its file keeps the photo picked in the
+  app: the import leaves it alone. Photos in the file win over the app's
+- A place: only a photo of the place itself. No real one: leave it, and
+  it keeps its tile until someone takes a photo
+- Unsplash's API rules: the photo is shown from Unsplash (never copied
+  into our storage), using it tells Unsplash, and the photographer is
+  credited with links. The server function and the app do all three
+- The Unsplash key is a secret of the server function
+  (`supabase/functions/unsplash`), never in the app. 50 requests an hour
+  (a search or a pick is one)
+- Changing the photo with the edit form makes it the poster's own and
+  drops the credit
+- Written into a file by hand, an Unsplash photo looks like this (the import
+  checks every field):
+
+```json
+"photos": [
+  {
+    "unsplash": "<photo id>",
+    "by": "<the photographer's name>",
+    "username": "<their Unsplash username>",
+    "url": "https://images.unsplash.com/photo-…"
+  }
+]
+```
 
 ## A place
 

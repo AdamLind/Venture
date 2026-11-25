@@ -25,6 +25,8 @@ export interface BaseActivity {
   title: string;
   description: string;
   image_urls: string[] | null; // DB is an array of text
+  /** Credit for each photo, in image_urls' order (src/lib/images.ts PhotoCredit) */
+  image_credits?: unknown[] | null;
   url: string | null;
   /** The link button's title ("Menu"); null: "Website" */
   url_label?: string | null;
