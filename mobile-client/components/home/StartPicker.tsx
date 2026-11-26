@@ -15,9 +15,13 @@ const QUARTER = 15 * MINUTE;
 const HALF_HOUR = 30 * MINUTE;
 /** Days in the strip: today and the next five (the calendar for the rest) */
 const DAYS_SHOWN = 6;
+/** Today's tile, this many times as wide as the others */
+const DAY_TILE_WIDE = 1.6;
 /** Likely starts, in hours: weekday evenings after work; weekends, the day too */
 const LIKELY_WEEKDAY = [18, 19, 20];
 const LIKELY_WEEKEND = [11, 14, 19];
+/** Switching days from "Now": the likely time closest to this hour */
+const EVENING = 19;
 /** Times before "Other" (today: "Now" and two) */
 const TIME_SLOTS = 3;
 /** Today's first time after "Now" is at least this much later */
@@ -93,15 +97,26 @@ export default function StartPicker({value: given, onChange}: {value: Date; onCh
   });
   // A day further out (from the calendar) shows in the calendar's tile
   const farDay = days.some((d) => sameDay(d, value)) ? null : dayStart(value);
-  // Another day keeps the time you had, unless it's already gone by then
-  const pickDay = (day: Date) => pick(at(day, value));
-
   // ─── Times for the day you picked ───
   const isToday = sameDay(value, now);
   const isNow = isToday && value.getTime() <= soonest.getTime();
   const times = timesFor(value, now);
   // Any other time (7:45, or one chosen for your ideas) shows in "Other"'s place
   const other = !isNow && !times.some((d) => d.getTime() === value.getTime()) ? value : null;
+
+  // Another day: a time you picked yourself with "Other" stays; otherwise
+  // that day's likely time closest to the one you had (from "Now": to the
+  // evening), so it lands on one of its chips rather than in "Other"
+  const pickDay = (day: Date) => {
+    if (other) return pick(at(day, value));
+    const target = (isNow ? atHour(day, EVENING) : at(day, value)).getTime();
+    const options = timesFor(day, now);
+    if (!options.length) return pick(at(day, value));
+    const nearest = options.reduce((best, d) =>
+      Math.abs(d.getTime() - target) < Math.abs(best.getTime() - target) ? d : best,
+    );
+    pick(nearest);
+  };
   // Empty places keep "Other" in the last one (late at night: just "Now")
   const blanks = TIME_SLOTS - times.length - (isToday ? 1 : 0);
 
@@ -134,6 +149,8 @@ export default function StartPicker({value: given, onChange}: {value: Date; onCh
             bottom={String(d.getDate())}
             label={i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString([], {weekday: "long", month: "long", day: "numeric"})}
             on={!farDay && sameDay(d, value)}
+            // "Today" needs more room than "Fri"
+            wide={i === 0}
             onPress={() => pickDay(d)}
           />
         ))}
@@ -164,10 +181,12 @@ export default function StartPicker({value: given, onChange}: {value: Date; onCh
         {Array.from({length: Math.max(0, blanks)}, (_, i) => (
           <View key={`blank-${i}`} className="flex-1" />
         ))}
+        {/* Still says "Other" when it holds a time you picked there */}
         <TimeChip
           label={other ? timeLabel(other) : "Other"}
-          a11yLabel={other ? `${timeLabel(other)}. Pick another time` : "Another time"}
-          icon="time-outline"
+          caption={other ? "Other" : undefined}
+          a11yLabel={other ? `Other time, ${timeLabel(other)}. Pick another time` : "Another time"}
+          icon={other ? undefined : "time-outline"}
           on={!!other}
           onPress={() => open("time")}
         />
@@ -205,6 +224,8 @@ export default function StartPicker({value: given, onChange}: {value: Date; onCh
 
 const OPEN_MS = 260;
 const CLOSE_MS = 200;
+/** The iOS time wheel's own height */
+const WHEEL_HEIGHT = 216;
 
 /**
  * iOS: the calendar (a tap picks the day) or a time wheel (Done picks it).
@@ -263,7 +284,8 @@ function PickSheet({
         style={{transform: [{translateY: y}]}}
       >
         <View className="bg-zinc-950 border-t border-zinc-800 p-6 pb-12 rounded-t-3xl">
-          <View className="flex-row justify-between items-center mb-4">
+          {/* Above the picker, so nothing it draws covers Cancel or Done */}
+          <View className="flex-row justify-between items-center mb-4" style={{zIndex: 1}}>
             <Pressable onPress={() => leave()} hitSlop={8}>
               <Text className="text-zinc-400 font-semibold text-base">Cancel</Text>
             </Pressable>
@@ -277,21 +299,25 @@ function PickSheet({
               <View style={{width: 48}} />
             )}
           </View>
-          <DateTimePicker
-            value={draft}
-            mode={mode}
-            display={mode === "date" ? "inline" : "spinner"}
-            minimumDate={mode === "date" ? today : undefined}
-            minuteInterval={15}
-            onValueChange={(_event, chosen) => {
-              if (!chosen) return;
-              if (mode === "date") leave(chosen);
-              else setDraft(chosen);
-            }}
-            themeVariant="dark"
-            textColor="white"
-            accentColor="#f59e0b"
-          />
+          {/* The wheel in a box its own height: unboxed, it spread up over
+              the header and took Done's taps */}
+          <View style={mode === "time" ? {height: WHEEL_HEIGHT, justifyContent: "center", overflow: "hidden"} : undefined}>
+            <DateTimePicker
+              value={draft}
+              mode={mode}
+              display={mode === "date" ? "inline" : "spinner"}
+              minimumDate={mode === "date" ? today : undefined}
+              minuteInterval={15}
+              onValueChange={(_event, chosen) => {
+                if (!chosen) return;
+                if (mode === "date") leave(chosen);
+                else setDraft(chosen);
+              }}
+              themeVariant="dark"
+              textColor="white"
+              accentColor="#f59e0b"
+            />
+          </View>
         </View>
       </Animated.View>
     </View>
@@ -307,6 +333,7 @@ function DayTile({
   icon,
   label,
   on = false,
+  wide = false,
   onPress,
 }: {
   top?: string;
@@ -315,6 +342,8 @@ function DayTile({
   /** For VoiceOver ("Saturday, November 28") */
   label: string;
   on?: boolean;
+  /** A wider tile (today's, for its longer label) */
+  wide?: boolean;
   onPress: () => void;
 }) {
   return (
@@ -323,7 +352,8 @@ function DayTile({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{selected: on}}
-      className={`flex-1 h-14 items-center justify-center rounded-2xl border active:opacity-70 ${
+      style={{flex: wide ? DAY_TILE_WIDE : 1}}
+      className={`h-14 items-center justify-center rounded-2xl border active:opacity-70 ${
         on ? "bg-zinc-700 border-zinc-500" : "bg-zinc-900 border-zinc-800"
       }`}
     >
@@ -352,6 +382,7 @@ function TimeChip({
   icon,
   on = false,
   onPress,
+  caption,
 }: {
   label: string;
   /** For VoiceOver, when it says more than the label */
@@ -359,6 +390,8 @@ function TimeChip({
   icon?: IconName;
   on?: boolean;
   onPress: () => void;
+  /** A small line above the label ("Other", over the time picked there) */
+  caption?: string;
 }) {
   return (
     <Pressable
@@ -366,18 +399,25 @@ function TimeChip({
       accessibilityRole="button"
       accessibilityLabel={a11yLabel ?? label}
       accessibilityState={{selected: on}}
-      className={`flex-1 h-11 flex-row items-center justify-center gap-1 rounded-xl border active:opacity-70 ${
+      className={`flex-1 h-11 items-center justify-center rounded-xl border active:opacity-70 ${
         on ? "bg-zinc-700 border-zinc-500" : "bg-zinc-900 border-zinc-800"
       }`}
     >
-      {icon && <Ionicons name={icon} size={13} color={on ? "white" : "#a1a1aa"} />}
-      <Text
-        className={`font-bold text-sm ${on ? "text-white" : "text-zinc-300"}`}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-      >
-        {label}
-      </Text>
+      {caption && (
+        <Text className={`text-[9px] font-bold uppercase ${on ? "text-zinc-300" : "text-zinc-500"}`}>
+          {caption}
+        </Text>
+      )}
+      <View className="flex-row items-center gap-1">
+        {icon && <Ionicons name={icon} size={13} color={on ? "white" : "#a1a1aa"} />}
+        <Text
+          className={`font-bold ${caption ? "text-[13px]" : "text-sm"} ${on ? "text-white" : "text-zinc-300"}`}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {label}
+        </Text>
+      </View>
     </Pressable>
   );
 }
