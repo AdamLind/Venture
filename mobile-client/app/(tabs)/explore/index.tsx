@@ -208,6 +208,192 @@ const PricePin = React.memo(
     prev.item.longitude === next.item.longitude,
 );
 
+// How far a go-out idea is from you ("2.3 mi"); "Go out" without your location
+const whereLabel = (item: DateIdea, userLocation: LatLng | null): string => {
+  if (!userLocation || item.latitude == null || item.longitude == null)
+    return "Go out";
+  const miles = getDistance(userLocation, {
+    latitude: item.latitude,
+    longitude: item.longitude,
+  });
+  if (miles < 0.2) return "Nearby";
+  return `${miles < 10 ? miles.toFixed(1) : Math.round(miles)} mi`;
+};
+
+// --- IDEA CARD ---
+// Memoized: loading the next page (or its spinner) doesn't redraw the cards
+// already showing, only the new ones
+interface IdeaCardProps {
+  item: DateIdea;
+  /** How far, from whereLabel */
+  where: string;
+  /** Open reports on it, with Staff tools on (0: none) */
+  reports: number;
+  onOpen: (ideaId: number) => void;
+}
+
+const IdeaCard = React.memo(function IdeaCard({
+  item,
+  where,
+  reports,
+  onOpen,
+}: IdeaCardProps) {
+  // Its photo, or its kind's tile (src/lib/ideaTiles.ts)
+  const photo = item.image_urls?.[0] || item.image_url;
+  const displayImage = photo
+    ? sizedImage(photo, IMAGE_SIZE.full)
+    : ideaTile(item);
+
+  return (
+    <Pressable
+      onPress={() => onOpen(item.idea_id)}
+      className="mb-6 active:opacity-95 shadow-xl shadow-black"
+    >
+      <View className="h-80 w-full rounded-3xl overflow-hidden bg-zinc-900 border border-zinc-800 relative">
+        <Image
+          source={displayImage}
+          style={{ width: "100%", height: "100%" }}
+          contentFit="cover"
+        />
+
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.9)"]}
+          locations={[0.5, 1]}
+          style={{ position: "absolute", width: "100%", height: "100%" }}
+        />
+
+        {/* Price, how far (or at home), and for your own unpublished ideas a
+            status icon: same height, same look as the save button */}
+        <View className="absolute top-4 left-4 flex-row items-center gap-2">
+          <View
+            className="h-7 justify-center px-3 rounded-full"
+            style={CARD_PILL}
+          >
+            <Text className="text-white font-bold text-xs">
+              {formatPrice(item.est_price_per_person)}
+            </Text>
+          </View>
+
+          {/* Where: stay-in ideas are at home; go-out ones say how far */}
+          <View
+            className="h-7 flex-row items-center gap-1 px-3 rounded-full"
+            style={CARD_PILL}
+            accessible
+            accessibilityLabel={
+              item.modality === "STAY_IN"
+                ? "Stay in, at home"
+                : `Go out, ${where}`
+            }
+          >
+            <Ionicons
+              name={item.modality === "STAY_IN" ? "home" : "navigate"}
+              size={11}
+              color={item.modality === "STAY_IN" ? "#fbbf24" : "#34d399"}
+            />
+            <Text className="text-white font-bold text-xs">
+              {item.modality === "STAY_IN" ? "Home" : where}
+            </Text>
+          </View>
+
+          {/* Yours and not public: a small icon in the same row (only you see
+              this card), out of the way of the photo */}
+          {item.visibility !== "PUBLISHED" && IDEA_STATUS[item.visibility] && (
+            <View
+              className="h-7 w-7 items-center justify-center rounded-full"
+              style={CARD_PILL}
+              accessible
+              accessibilityLabel={
+                item.visibility === "PRIVATE"
+                  ? "Only you can see this"
+                  : `${IDEA_STATUS[item.visibility].label}. Only you can see this`
+              }
+            >
+              <Ionicons
+                name={IDEA_STATUS[item.visibility].icon}
+                size={13}
+                color={IDEA_STATUS[item.visibility].color}
+                // (the glyphs sit a hair left of their box)
+                style={{ marginLeft: 1 }}
+              />
+            </View>
+          )}
+
+          {/* Staff tools on: open reports on this idea */}
+          {reports ? (
+            <View
+              className="h-7 flex-row items-center gap-1 px-2.5 rounded-full"
+              style={CARD_PILL}
+              accessible
+              accessibilityLabel={`${reports} open reports`}
+            >
+              <Ionicons name="flag" size={11} color="#f87171" />
+              <Text className="text-white font-bold text-xs">{reports}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View className="absolute top-4 right-4">
+          <SaveButton ideaId={item.idea_id} />
+        </View>
+
+        <View className="absolute bottom-0 w-full p-5">
+          <View className="flex-row justify-between items-end">
+            <View className="flex-1 pr-4">
+              <Text className="text-2xl font-extrabold text-white mb-1 shadow-black drop-shadow-md">
+                {item.title}
+              </Text>
+              <View className="flex-row items-center gap-1.5">
+                <Avatar profile={item.creator} size={24} small />
+                <Text className="text-zinc-300 text-sm font-medium">
+                  {item.creator_username
+                    ? `By @${item.creator_username}`
+                    : "Shared by a Venture member"}
+                </Text>
+              </View>
+            </View>
+            {/* No star rating until there are real ones (#19) */}
+          </View>
+        </View>
+      </View>
+    </Pressable>
+  );
+});
+
+// Above the list when nothing to go out to is near you: the stay-in ideas
+// below still work, and you can be the one to add a place
+function NothingNearby() {
+  const router = useRouter();
+  return (
+    <View className="mb-6 flex-row gap-3 p-4 rounded-3xl bg-zinc-900 border border-zinc-800">
+      <Ionicons
+        name="home"
+        size={18}
+        color="#fbbf24"
+        style={{ marginTop: 1 }}
+      />
+      <View className="flex-1">
+        <Text className="text-white font-bold text-base">
+          No places near you yet
+        </Text>
+        <Text className="text-zinc-400 text-sm mt-1 leading-5">
+          Venture is starting in Provo and Salt Lake City. Until it reaches you,
+          these stay-in ideas work anywhere.
+        </Text>
+        <Pressable
+          onPress={() => router.push("/create")}
+          accessibilityRole="button"
+          className="self-start mt-3 active:opacity-70"
+          hitSlop={8}
+        >
+          <Text className="text-amber-400 font-semibold text-sm">
+            Share a place you love
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 // --- SKELETON COMPONENT ---
 const SkeletonIdea = () => (
   <View className="mb-6 h-80 w-full rounded-3xl bg-zinc-900 border border-zinc-800 overflow-hidden">
@@ -474,147 +660,31 @@ export default function ExploreScreen() {
   }, []);
 
   // --- UI COMPONENTS ---
-  // How far a go-out idea is from you ("2.3 mi"); "Go out" without your location
-  const whereLabel = (item: DateIdea): string => {
-    if (!userLocation || item.latitude == null || item.longitude == null)
-      return "Go out";
-    const miles = getDistance(userLocation, {
-      latitude: item.latitude,
-      longitude: item.longitude,
-    });
-    if (miles < 0.2) return "Nearby";
-    return `${miles < 10 ? miles.toFixed(1) : Math.round(miles)} mi`;
-  };
+  const openIdea = useCallback(
+    (ideaId: number) =>
+      router.push({
+        pathname: "/(tabs)/explore/detail/[id]",
+        params: { id: ideaId.toString() },
+      }),
+    [router],
+  );
 
-  const renderIdeaItem = ({ item }: { item: DateIdea }) => {
-    // Its photo, or its kind's tile (src/lib/ideaTiles.ts)
-    const photo = item.image_urls?.[0] || item.image_url;
-    const displayImage = photo
-      ? sizedImage(photo, IMAGE_SIZE.full)
-      : ideaTile(item);
-
-    return (
-      <Pressable
-        onPress={() =>
-          router.push({
-            pathname: "/(tabs)/explore/detail/[id]",
-            params: { id: item.idea_id.toString() },
-          })
-        }
-        className="mb-6 active:opacity-95 shadow-xl shadow-black"
-      >
-        <View className="h-80 w-full rounded-3xl overflow-hidden bg-zinc-900 border border-zinc-800 relative">
-          <Image
-            source={displayImage}
-            style={{ width: "100%", height: "100%" }}
-            contentFit="cover"
-          />
-
-          <LinearGradient
-            colors={["transparent", "rgba(0,0,0,0.9)"]}
-            locations={[0.5, 1]}
-            style={{ position: "absolute", width: "100%", height: "100%" }}
-          />
-
-          {/* Price, how far (or at home), and for your own unpublished ideas a
-              status icon: same height, same look as the save button */}
-          <View className="absolute top-4 left-4 flex-row items-center gap-2">
-            <View
-              className="h-7 justify-center px-3 rounded-full"
-              style={CARD_PILL}
-            >
-              <Text className="text-white font-bold text-xs">
-                {formatPrice(item.est_price_per_person)}
-              </Text>
-            </View>
-
-            {/* Where: stay-in ideas are at home; go-out ones say how far */}
-            <View
-              className="h-7 flex-row items-center gap-1 px-3 rounded-full"
-              style={CARD_PILL}
-              accessible
-              accessibilityLabel={
-                item.modality === "STAY_IN"
-                  ? "Stay in, at home"
-                  : `Go out, ${whereLabel(item)}`
-              }
-            >
-              <Ionicons
-                name={item.modality === "STAY_IN" ? "home" : "navigate"}
-                size={11}
-                color={item.modality === "STAY_IN" ? "#fbbf24" : "#34d399"}
-              />
-              <Text className="text-white font-bold text-xs">
-                {item.modality === "STAY_IN" ? "Home" : whereLabel(item)}
-              </Text>
-            </View>
-
-            {/* Yours and not public: a small icon in the same row (only you see
-                this card), out of the way of the photo */}
-            {item.visibility !== "PUBLISHED" &&
-              IDEA_STATUS[item.visibility] && (
-                <View
-                  className="h-7 w-7 items-center justify-center rounded-full"
-                  style={CARD_PILL}
-                  accessible
-                  accessibilityLabel={
-                    item.visibility === "PRIVATE"
-                      ? "Only you can see this"
-                      : `${IDEA_STATUS[item.visibility].label}. Only you can see this`
-                  }
-                >
-                  <Ionicons
-                    name={IDEA_STATUS[item.visibility].icon}
-                    size={13}
-                    color={IDEA_STATUS[item.visibility].color}
-                    // (the glyphs sit a hair left of their box)
-                    style={{ marginLeft: 1 }}
-                  />
-                </View>
-              )}
-
-            {/* Staff tools on: open reports on this idea */}
-            {reportedIdeas?.get(item.idea_id) ? (
-              <View
-                className="h-7 flex-row items-center gap-1 px-2.5 rounded-full"
-                style={CARD_PILL}
-                accessible
-                accessibilityLabel={`${reportedIdeas.get(item.idea_id)} open reports`}
-              >
-                <Ionicons name="flag" size={11} color="#f87171" />
-                <Text className="text-white font-bold text-xs">
-                  {reportedIdeas.get(item.idea_id)}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          <View className="absolute top-4 right-4">
-            <SaveButton ideaId={item.idea_id} />
-          </View>
-
-          <View className="absolute bottom-0 w-full p-5">
-            <View className="flex-row justify-between items-end">
-              <View className="flex-1 pr-4">
-                <Text className="text-2xl font-extrabold text-white mb-1 shadow-black drop-shadow-md">
-                  {item.title}
-                </Text>
-                <View className="flex-row items-center gap-1.5">
-                  <Avatar profile={item.creator} size={24} small />
-                  <Text className="text-zinc-300 text-sm font-medium">
-                    {item.creator_username
-                      ? `By @${item.creator_username}`
-                      : "Shared by a Venture member"}
-                  </Text>
-                </View>
-              </View>
-              {/* No star rating until there are real ones (#19) */}
-            </View>
-          </View>
-        </View>
-      </Pressable>
-    );
-  };
+  // Stable between renders, so the list only redraws a card when its own
+  // props change (a location update redraws only the cards whose distance did)
+  const renderItem = useCallback(
+    ({ item, index }: { item: DateIdea; index: number }) => (
+      <View style={{ paddingHorizontal: 20, paddingTop: index === 0 ? 8 : 0 }}>
+        {index === 0 && nothingNearby && <NothingNearby />}
+        <IdeaCard
+          item={item}
+          where={whereLabel(item, userLocation ?? null)}
+          reports={reportedIdeas?.get(item.idea_id) ?? 0}
+          onOpen={openIdea}
+        />
+      </View>
+    ),
+    [nothingNearby, userLocation, reportedIdeas, openIdea],
+  );
 
   // A fresh list starts at the top, so the header should too
   const { reset: resetHeader } = header;
@@ -622,38 +692,6 @@ export default function ExploreScreen() {
   useEffect(() => {
     resetHeader();
   }, [viewMode, showingSkeleton, resetHeader]);
-
-  // Above the list when nothing to go out to is near you: the stay-in ideas
-  // below still work, and you can be the one to add a place
-  const renderNothingNearby = () => (
-    <View className="mb-6 flex-row gap-3 p-4 rounded-3xl bg-zinc-900 border border-zinc-800">
-      <Ionicons
-        name="home"
-        size={18}
-        color="#fbbf24"
-        style={{ marginTop: 1 }}
-      />
-      <View className="flex-1">
-        <Text className="text-white font-bold text-base">
-          No places near you yet
-        </Text>
-        <Text className="text-zinc-400 text-sm mt-1 leading-5">
-          Venture is starting in Provo and Salt Lake City. Until it reaches you,
-          these stay-in ideas work anywhere.
-        </Text>
-        <Pressable
-          onPress={() => router.push("/create")}
-          accessibilityRole="button"
-          className="self-start mt-3 active:opacity-70"
-          hitSlop={8}
-        >
-          <Text className="text-amber-400 font-semibold text-sm">
-            Share a place you love
-          </Text>
-        </Pressable>
-      </View>
-    </View>
-  );
 
   const renderEmptyState = () => {
     if (isLoading) return null;
@@ -745,17 +783,7 @@ export default function ExploreScreen() {
             ListHeaderComponent={renderHeader(false)}
             data={ideas}
             keyExtractor={(item) => `idea-${item.idea_id}`}
-            renderItem={(info) => (
-              <View
-                style={{
-                  paddingHorizontal: 20,
-                  paddingTop: info.index === 0 ? 8 : 0,
-                }}
-              >
-                {info.index === 0 && nothingNearby && renderNothingNearby()}
-                {renderIdeaItem(info)}
-              </View>
-            )}
+            renderItem={renderItem}
             ListEmptyComponent={renderEmptyState}
             refreshControl={refresh.control}
             // The next page as you near the end
