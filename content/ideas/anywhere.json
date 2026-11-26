@@ -40,7 +40,7 @@
       "description": "Make the dough from scratch (or cheat with store-bought), set out every topping you can find, and each build a pizza for the other person. Rate them like a cooking show judge.",
       "type": "MEAL",
       "where": "in",
-      "price": 10,
+      "price": 5,
       "minutes": 120,
       "best_time": ["EVENING"],
       "months": "any",
@@ -69,7 +69,7 @@
     {
       "key": "anywhere/board-game-tournament",
       "title": "Board game tournament",
-      "description": "Pick three games, play best of three in each, and keep a scoreboard on the fridge. Snacks between rounds, and a prize for the champion that you agree on before the first roll.",
+      "description": "Pick three games, play best of three in each, and keep a scoreboard. Snacks between rounds, and a prize for the champion that you agree on before the first game.",
       "type": "OTHER",
       "where": "in",
       "price": 0,
@@ -86,7 +86,7 @@
     {
       "key": "anywhere/puzzle-and-playlist",
       "title": "Jigsaw puzzle and a shared playlist",
-      "description": "Open a 500-piece puzzle, make a playlist where you take turns adding songs, and see how far you get before the music runs out. No phones, just talking and finding edge pieces.",
+      "description": "Open a 500-piece puzzle and make a new playlist where you take turns adding songs, and see how far you get before the music runs out. No phones, just talking, vibing, and finding that last edge piece.",
       "type": "OTHER",
       "where": "in",
       "price": 0,
@@ -119,10 +119,10 @@
     {
       "key": "anywhere/home-spa-night",
       "title": "At-home spa night",
-      "description": "Dim the lights, light a candle, put on face masks, and trade hand or shoulder massages. Add warm towels from the dryer and cucumber water, and leave your phones in another room.",
+      "description": "Dim the lights, light a candle, put on face masks, and trade hand or shoulder massages. Add warm towels from the dryer and cucumber water. Pro tip: Leave your phones in another room.",
       "type": "OTHER",
       "where": "in",
-      "price": 10,
+      "price": 5,
       "minutes": 90,
       "flexible_length": true,
       "best_time": ["EVENING", "LATE_NIGHT"],
@@ -171,7 +171,7 @@
     {
       "key": "anywhere/dessert-bake-off",
       "title": "Dessert bake-off",
-      "description": "Same recipe, two kitchens' worth of personality: you each make your own version of cookies, brownies, or cupcakes, with one secret ingredient. Taste-test blind and argue about the winner.",
+      "description": "Same recipe, two kitchens' worth of personality: you each make your own version of cookies, brownies, or cupcakes, with one secret ingredient. Taste-test blind, argue about the winner, and each try to guess what the other added.",
       "type": "TREAT",
       "where": "in",
       "price": 10,
@@ -204,7 +204,7 @@
     {
       "key": "anywhere/karaoke-night",
       "title": "Living room karaoke",
-      "description": "Pull up karaoke versions online, use a hairbrush for a mic, and take turns picking each other's songs. Bonus points for duets and dramatic key changes.",
+      "description": "Pull up karaoke versions of songs online, use a hairbrush for a mic, and take turns picking each other's songs. Bonus points for duets and dramatic key changes.",
       "type": "OTHER",
       "where": "in",
       "price": 0,
@@ -237,7 +237,7 @@
     {
       "key": "anywhere/plan-a-dream-trip",
       "title": "Plan your dream trip",
-      "description": "Pick a place you'd both love to go, and plan the whole trip as if money and time didn't matter: flights, where you'd stay, three restaurants, one adventure. Then plan a realistic version you could take this year.",
+      "description": "Pick a place you'd both love to go, and plan the whole trip as if money and time didn't matter: flights, where you'd stay, everything down to the restaurants. Then plan a realistic version you could take this year.",
       "type": "OTHER",
       "where": "in",
       "price": 0,
@@ -271,7 +271,7 @@
     {
       "key": "anywhere/fondue-night",
       "title": "Fondue night",
-      "description": "Melt cheese for dinner and chocolate for dessert, and cut up everything you can think of to dip: bread, apples, pretzels, strawberries, marshmallows. Slow, a little messy, and made for talking.",
+      "description": "Melt cheese for dinner and chocolate for dessert, and cut up everything you can think of to dip: bread, apples, pretzels, strawberries, marshmallows. Slow, a little messy, and a great time for talking.",
       "type": "MEAL",
       "where": "in",
       "price": 15,
@@ -287,7 +287,7 @@
     {
       "key": "anywhere/36-questions",
       "title": "The 36 questions",
-      "description": "Work through the famous 36 questions meant to bring people closer, taking turns to answer each one. They start light and get deeper. Even couples who've been together for years find new things out.",
+      "description": "Work through the famous 36 questions meant to bring people closer, taking turns to answer each one. They start light and get deeper. Even couples who've been together for years find out new things about each other.",
       "url": "https://ggia.berkeley.edu/practice/36_questions_for_increasing_closeness",
       "url_label": "The 36 questions",
       "type": "OTHER",
@@ -322,7 +322,7 @@
     {
       "key": "anywhere/pancake-art-dinner",
       "title": "Breakfast for dinner, with pancake art",
-      "description": "Make pancakes for dinner and use a squeeze bottle of batter to draw on the griddle: initials, animals, each other's faces. Add bacon, fruit, and way too much syrup.",
+      "description": "Make pancakes for dinner and use a squeeze bottle of batter to draw on the griddle: initials, animals, each other's faces. Add bacon, fruit, and tons of syrup.",
       "type": "MEAL",
       "where": "in",
       "price": 8,

@@ -35,49 +35,58 @@
       "id": "battle-creek",
       "name": "Kiwanis Park (Battle Creek Trailhead)",
       "address": "1700 East 200 North, Pleasant Grove, UT",
-      "pin": "40.36352, -111.70069",
+      "pin": "40.36293, -111.70058",
       "hours": "daylight"
     },
     {
       "id": "timpanogos-cave",
       "name": "Timpanogos Cave National Monument",
       "address": "SR-92, American Fork Canyon, UT",
-      "pin": "40.44040, -111.70941",
-      "hours": "unknown"
+      "pin": "40.44378, -111.70561",
+      "hours": "unknown",
+      "access_note": "Park at the lot near the visitors center."
     },
     {
       "id": "cascade-springs",
       "name": "Cascade Springs",
       "address": "Cascade Springs Dr, off the Alpine Loop (SR-92), UT",
-      "pin": "40.45830, -111.55076",
+      "pin": "40.45837, -111.54889",
       "hours": "unknown"
     },
     {
       "id": "sundance",
       "name": "Sundance Resort",
       "address": "8841 North Alpine Loop Road, Sundance, UT",
-      "pin": "40.39135, -111.57836",
+      "pin": "40.39108, -111.57728",
       "hours": "unknown"
+    },
+    {
+      "id": "alpine-loop",
+      "name": "Alpine Loop Scenic Byway",
+      "address": "SR-92 at US-189, Provo Canyon, UT",
+      "pin": "40.36561, -111.55569",
+      "hours": "unknown",
+      "access_note": "Starts where SR-92 turns off US-189 in Provo Canyon and comes out in American Fork Canyon. Narrow and winding, and closed in winter."
     },
     {
       "id": "utah-lake-state-park",
       "name": "Utah Lake State Park",
       "address": "4400 West Center Street, Provo, UT",
-      "pin": "40.23791, -111.73930",
+      "pin": "40.23732, -111.73697",
       "hours": "unknown"
     },
     {
       "id": "provo-river-parkway",
       "name": "Provo River Parkway (Riverwoods)",
       "address": "Riverwoods Greenway, Provo, UT",
-      "pin": "40.29599, -111.66227",
+      "pin": "40.29818, -111.65731",
       "hours": "unknown"
     },
     {
       "id": "vivian-park",
       "name": "Vivian Park",
       "address": "US-189, Provo Canyon, UT",
-      "pin": "40.35531, -111.57362",
+      "pin": "40.35538, -111.57355",
       "hours": "unknown"
     },
     {
@@ -112,8 +121,8 @@
       "id": "rockwell",
       "name": "Rockwell Ice Cream",
       "address": "University Avenue, downtown Provo, UT",
-      "pin": "40.23434, -111.65895",
-      "hours": "Mo-Th 13:00-22:00; Fr,Sa 13:00-23:00"
+      "pin": "40.23437, -111.65893",
+      "hours": "Mo-Th 13:00-22:00; Fr-Sa 13:00-23:00; Su off"
     },
     {
       "id": "sodalicious",
@@ -302,7 +311,7 @@
     },
     {
       "key": "provo/bridal-veil-falls",
-      "title": "Bridal Veil Falls and a canyon stroll",
+      "title": "Walk to Bridal Veil Falls",
       "description": "An easy paved walk to the foot of a 600-foot double waterfall in Provo Canyon. Go in spring when it's roaring, or bundle up in winter when it freezes into ice. Bring a snack and sit by the river after.",
       "type": "ACTIVE",
       "where": "out",
@@ -324,7 +333,7 @@
     {
       "key": "provo/y-mountain-sunrise-hike",
       "title": "Sunrise hike to the Y",
-      "description": "Climb the switchbacks to the giant Y above BYU and watch the sun come up over the valley and Utah Lake. It's short but steep, so start in the dark with headlamps and reward yourselves with breakfast after.",
+      "description": "Climb the switchbacks to the giant Y above BYU and watch the sun come up over the valley and Utah Lake. It's short but steep, so start in the dark with headlamps and bring water.",
       "type": "ACTIVE",
       "where": "out",
       "environment": "OUTDOOR",
@@ -365,8 +374,8 @@
     },
     {
       "key": "provo/battle-creek-falls",
-      "title": "Battle Creek Falls before dinner",
-      "description": "A short, steady climb from a neighborhood park in Pleasant Grove to a waterfall you can walk right up to. Done in under two hours, so it pairs well with dinner in Pleasant Grove or Orem after.",
+      "title": "Battle Creek Falls Hike",
+      "description": "A short, steady climb from a neighborhood park in Pleasant Grove to a waterfall you can walk right up to. Done in under two hours.",
       "type": "ACTIVE",
       "where": "out",
       "environment": "OUTDOOR",
@@ -431,13 +440,13 @@
     {
       "key": "provo/alpine-loop-fall-colors",
       "title": "Fall colors on the Alpine Loop",
-      "description": "Take the winding mountain road from Provo Canyon to American Fork Canyon when the aspens and maples turn. Stop at Sundance for hot chocolate and wander the grounds, then pull over at every overlook you like on the way.",
+      "description": "Take the winding mountain road from Provo Canyon over to American Fork Canyon when the aspens and maples turn gold and red. Roll the windows down, pull over at every overlook you like, and take it slow: the views are what it’s all about.",
       "type": "OTHER",
       "where": "out",
       "environment": "MIXED",
-      "place": "sundance",
+      "place": "alpine-loop",
       "price": 8,
-      "minutes": 180,
+      "minutes": 120,
       "flexible_length": true,
       "best_time": ["AFTERNOON"],
       "months": [9, 10],
@@ -447,7 +456,7 @@
       "people": [2, 4],
       "tags": ["views", "nature", "romantic"],
       "photos": [],
-      "notes": "Peak color is usually late September to early October. Price covers drinks and a canyon fee."
+      "notes": "Pin from OpenStreetMap: where SR-92 leaves US-189 (Nov 2026). Was pinned to Sundance with a hot chocolate stop; that's its own idea now (provo/sundance-hot-chocolate). Price: check the American Fork Canyon fee."
     },
     {
       "key": "provo/sundance-dinner",
@@ -470,6 +479,27 @@
       "notes": "Check which restaurants are open and book a table. Price is a guess per person."
     },
     {
+      "key": "provo/sundance-hot-chocolate",
+      "title": "Hot chocolate at Sundance",
+      "description": "Get something warm to drink at Sundance Resort and wander the grounds under Mount Timpanogos: the wooden buildings, the creek, and the little shops. Cozy when the leaves turn, and even better in the snow.",
+      "type": "TREAT",
+      "where": "out",
+      "environment": "MIXED",
+      "place": "sundance",
+      "price": 6,
+      "minutes": 60,
+      "flexible_length": true,
+      "best_time": ["AFTERNOON", "EVENING"],
+      "months": "any",
+      "weather": "ANY",
+      "feel": "CALM",
+      "exertion": "LIGHT",
+      "people": [2, 6],
+      "tags": ["cafes", "views", "romantic"],
+      "photos": [],
+      "notes": "Split from the Alpine Loop idea (one activity, one place). Check where on the grounds sells hot drinks, and their hours."
+    },
+    {
       "key": "provo/utah-lake-sunset",
       "title": "Sunset on Utah Lake",
       "description": "Walk out along the marina breakwater at Utah Lake State Park and watch the sun drop behind the western mountains. The sky reflects off the water for a long time after. Bring a blanket and something warm to drink.",
@@ -477,7 +507,7 @@
       "where": "out",
       "environment": "OUTDOOR",
       "place": "utah-lake-state-park",
-      "price": 8,
+      "price": 0,
       "minutes": 90,
       "flexible_length": true,
       "best_time": ["EVENING"],
@@ -493,7 +523,7 @@
     {
       "key": "provo/provo-river-parkway-bike",
       "title": "Bike the Provo River Parkway",
-      "description": "Ride the paved trail along the Provo River from Riverwoods toward the canyon, past cottonwoods and little bridges. Go as far as you like, then turn around and grab a treat in Riverwoods at the end.",
+      "description": "Ride the paved trail along the Provo River from Riverwoods toward the canyon, past cottonwoods and little bridges. Go as far as you like, then turn around and coast back.",
       "type": "ACTIVE",
       "where": "out",
       "environment": "OUTDOOR",
@@ -514,7 +544,7 @@
     {
       "key": "provo/vivian-park-picnic",
       "title": "Riverside picnic at Vivian Park",
-      "description": "Pack sandwiches and lemonade and find a shady spot by the Provo River in the canyon. Watch the water, skip rocks, and maybe catch the old Heber Creeper train rolling past.",
+      "description": "Pack sandwiches and lemonade and find a shady spot by the Provo River in the canyon. Watch the water, skip rocks, and maybe catch the old Heber train rolling past.",
       "type": "MEAL",
       "where": "out",
       "environment": "OUTDOOR",
@@ -555,8 +585,8 @@
     },
     {
       "key": "provo/peaks-ice-skating",
-      "title": "Ice skating at the Peaks",
-      "description": "Skate where the 2002 Olympic hockey games were played. Hold hands, laugh when someone wobbles, and warm up with hot chocolate after. Public skating times change, so check before you go.",
+      "title": "Ice skating at the Peaks Arena",
+      "description": "Skate where the 2002 Olympic hockey games were played. Hold hands, laugh when someone wobbles, and see who can skate backwards by the end. Public skating times change, so check before you go.",
       "type": "ACTIVE",
       "where": "out",
       "environment": "INDOOR",
@@ -576,7 +606,7 @@
     {
       "key": "provo/byu-museum-of-art",
       "title": "Wander the BYU Museum of Art",
-      "description": "Free, quiet, and usually not crowded. Each of you picks a favorite piece in every gallery and explains why, then compare notes over a scoop of BYU Creamery ice cream just up the road.",
+      "description": "Free, quiet, and usually not crowded. Each of you picks a favorite piece in every gallery and explains why, then see how often you agreed.",
       "type": "OTHER",
       "where": "out",
       "environment": "INDOOR",
@@ -614,29 +644,28 @@
     },
     {
       "key": "provo/rockwell-downtown-dessert",
-      "title": "Rockwell ice cream and a downtown stroll",
-      "description": "Get a cone of something adventurous at Rockwell on University Avenue, then walk Center Street looking in shop windows and at the old buildings. An easy end to any downtown dinner.",
+      "title": "Adventurous ice cream at Rockwell",
+      "description": "Each pick the strangest flavor in the case at Rockwell on University Avenue, try a bite of each other's, and vote on who chose better. A sweet, easy end to a night downtown.",
       "type": "TREAT",
       "where": "out",
-      "environment": "MIXED",
+      "environment": "INDOOR",
       "place": "rockwell",
       "price": 7,
-      "minutes": 45,
+      "minutes": 30,
       "flexible_length": true,
       "best_time": ["AFTERNOON", "EVENING", "LATE_NIGHT"],
       "months": "any",
-      "weather": "ANY",
       "feel": "CALM",
       "exertion": "LIGHT",
       "people": [2, 6],
-      "tags": ["desserts", "walks"],
+      "tags": ["desserts", "casual"],
       "photos": [],
       "notes": "Hours from OpenStreetMap: check they're current."
     },
     {
       "key": "provo/sodalicious-drive",
-      "title": "Dirty soda and a drive",
-      "description": "Order two custom sodas you've never tried, then take a slow drive with the windows down and your favorite playlist. Utah's most Utah date, and it fits into any free half hour.",
+      "title": "Custom dirty sodas at Sodalicious",
+      "description": "Each order a custom soda you've never tried, swap halfway, and decide whose mix wins. Utah's most Utah date, and it fits into any free half hour.",
       "type": "TREAT",
       "where": "out",
       "environment": "INDOOR",
@@ -752,7 +781,7 @@
     {
       "key": "provo/kneaders-breakfast",
       "title": "French toast breakfast at Kneaders",
-      "description": "Start a Saturday slowly with the all-you-can-eat French toast and a hot drink. Linger over plans for the day, then walk the Riverwoods trail by the river right next door.",
+      "description": "Start a Saturday slowly with the all-you-can-eat French toast and a hot drink, and linger over plans for the day.",
       "type": "MEAL",
       "where": "out",
       "environment": "INDOOR",
@@ -772,7 +801,7 @@
     {
       "key": "provo/velour-live-music",
       "title": "A show at Velour",
-      "description": "Catch a local band at Velour, the small downtown venue that launched a lot of Provo's indie acts. Look up who's playing, get there early for a good spot, and grab a late dessert after.",
+      "description": "Catch a local band at Velour, the small downtown venue that launched a lot of Provo's indie acts. Look up who's playing and get there early for a good spot.",
       "type": "OTHER",
       "where": "out",
       "environment": "INDOOR",
@@ -791,7 +820,7 @@
     {
       "key": "provo/covey-center-show",
       "title": "A show at the Covey Center",
-      "description": "See a play, a concert, or a comedy night at Provo's downtown performing arts center. Check the calendar, pick something neither of you would usually choose, and talk it over at dinner after.",
+      "description": "See a play, a concert, or a comedy night at Provo's downtown performing arts center. Check the calendar, pick something neither of you would usually choose, and talk it over on the way home.",
       "type": "OTHER",
       "where": "out",
       "environment": "INDOOR",
@@ -810,7 +839,7 @@
     {
       "key": "provo/hale-center-theater",
       "title": "Musical at Hale Center Theater",
-      "description": "An intimate theater in Orem with Broadway-style musicals and plays, where every seat is close to the stage. Make a night of it with dinner nearby before the curtain.",
+      "description": "An intimate theater in Orem with Broadway-style musicals and plays, where every seat is close to the stage. Dress up a little and compare favorite songs at intermission.",
       "type": "OTHER",
       "where": "out",
       "environment": "INDOOR",
@@ -998,7 +1027,7 @@
     {
       "key": "provo/pioneer-book-swap",
       "title": "Pick a book for each other at Pioneer Book",
-      "description": "Get lost in the stacks of a big used bookstore on Center Street. Set a five-dollar budget, pick a book you think the other person would love, and swap them over a drink down the street.",
+      "description": "Get lost in the stacks of a big used bookstore on Center Street. Set a five-dollar budget, pick a book you think the other person would love, and swap them at the register.",
       "type": "OTHER",
       "where": "out",
       "environment": "INDOOR",
@@ -1019,7 +1048,7 @@
     {
       "key": "provo/3hive-records",
       "title": "Dig through records at 3hive",
-      "description": "Flip through vinyl at a little record lounge on Center Street, listen to a few, and each pick a record that says something about you. Play them together back at home.",
+      "description": "Flip through vinyl at a little record lounge on Center Street, listen to a few, and each pick a record that says something about you.",
       "type": "OTHER",
       "where": "out",
       "environment": "INDOOR",
