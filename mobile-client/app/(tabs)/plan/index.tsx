@@ -2,6 +2,7 @@ import ActivityTagsSelector from "@/components/home/ActivityTagsSelector";
 import BudgetInput from "@/components/home/BudgetInput";
 import InOrOutSelector from "@/components/home/InOrOutSelector";
 import SocialSelector from "@/components/home/SocialSelector";
+import StartPicker from "@/components/home/StartPicker";
 import React, {useEffect, useRef, useState, useCallback} from "react";
 import {
   Pressable,
@@ -9,13 +10,10 @@ import {
   Text,
   View,
   TextInput,
-  Platform,
   StatusBar,
-  Modal,
   ActivityIndicator,
 } from "react-native";
 import {useFocusEffect, useLocalSearchParams, useRouter} from "expo-router";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import {Ionicons} from "@expo/vector-icons";
 import * as Location from "expo-location";
 import {Image} from "expo-image";
@@ -26,10 +24,10 @@ import {type UserPrefs, usePrefsStore} from "@/src/store/usePrefsStore";
 import {fetchActivityForPlan} from "@/utils/itineraryEngine";
 import {bestStartTime} from "@/utils/bestStart";
 import {getDateWeather, weatherLookup} from "@/src/lib/weather";
-import {homeOf} from "@/utils/timeline";
+import {homeOf, isAwayFromHome} from "@/utils/timeline";
 import {useBuilderStore} from "@/src/store/useBuilderStore";
 import {useProfileStore} from "@/src/store/useProfileStore";
-import {usePlanSeedStore} from "@/src/store/usePlanSeedStore";
+import {type PlanSeed, usePlanSeedStore} from "@/src/store/usePlanSeedStore";
 import {usePartner} from "@/src/store/useConnectionsStore";
 import SurpriseRow from "@/components/dates/SurpriseRow";
 import {ideaDuration} from "@/src/lib/ideas";
@@ -56,6 +54,10 @@ import {
 } from "@/src/constants/tags";
 import {showError, showInfo} from "@/src/lib/notify";
 import {formatMoney} from "@/utils/money";
+import {newSeed} from "@/src/lib/random";
+
+/** Start planning: how long the page holds still while the builder slides over it */
+const LEAVE_SETTLE_MS = 700;
 
 export default function PlanScreen() {
   const router = useRouter();
@@ -113,11 +115,7 @@ export default function PlanScreen() {
   const [fromHome, setFromHome] = useState(false);
 
   const [startDate, setStartDate] = useState(getRoundedDate(new Date()));
-  const [showStartPicker, setShowStartPicker] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
-  const [tempStartDate, setTempStartDate] = useState(
-    getRoundedDate(new Date()),
-  );
 
   // Activity tab's "Plan for this day" passes ?startsOn=YYYY-MM-DD.
   // Start at 7 PM that day (or the next 15-minute mark if that's already passed),
@@ -133,7 +131,6 @@ export default function PlanScreen() {
       const rounded = getRoundedDate(new Date());
       const start = evening > rounded ? evening : rounded;
       setStartDate(start);
-      setTempStartDate(start);
     }
   }
   useEffect(() => {
@@ -145,7 +142,12 @@ export default function PlanScreen() {
   // "Plan a date with this" (an idea's page) or "with these" (Saved): show
   // them as the date's starting ideas, and match the form to them (in or
   // out; long enough to fit them all, with time to get between them)
-  const seeds = usePlanSeedStore((state) => state.seeds);
+  // Leaving for the builder: the page holds still while the builder slides
+  // over it (the new draft's banner, these ideas going to the builder and
+  // the form reset would all show for a moment), then catches up
+  const [leaving, setLeaving] = useState<{seeds: PlanSeed[]; draft: boolean} | null>(null);
+  const storeSeeds = usePlanSeedStore((state) => state.seeds);
+  const seeds = leaving ? leaving.seeds : storeSeeds;
   const removeSeed = usePlanSeedStore((state) => state.removeSeed);
   const commitSeed = usePlanSeedStore((state) => state.commit);
   // Which ideas (not their order: the search below puts them in the best order)
@@ -172,7 +174,6 @@ export default function PlanScreen() {
       const goodStart = nextGoodStart(timed?.time_of_day ?? null, startDate);
       if (goodStart.getTime() !== startDate.getTime()) {
         setStartDate(goodStart);
-        setTempStartDate(goodStart);
       }
     }
   }
@@ -245,7 +246,6 @@ export default function PlanScreen() {
       if (best.changed) {
         const start = new Date(best.startMs);
         setStartDate(start);
-        setTempStartDate(start);
         setTimeNote(start);
       } else {
         setTimeNote(null);
@@ -333,7 +333,6 @@ export default function PlanScreen() {
     const at = new Date(upcoming.date);
     at.setHours(startDate.getHours(), startDate.getMinutes(), 0, 0);
     setStartDate(at);
-    setTempStartDate(at);
     if (upcoming.vibes?.length) {
       const vibes = upcoming.vibes;
       setSelectedTags((prev) => Array.from(new Set([...prev, ...vibes])));
@@ -361,7 +360,6 @@ export default function PlanScreen() {
     setLocation(null);
     setFromHome(false);
     setStartDate(roundedNow);
-    setTempStartDate(roundedNow);
     setDurationHours(4);
     setBudgetTier(defaultIsTier ? defaults.default_budget : 50);
     setIsCustomBudget(!defaultIsTier);
@@ -405,31 +403,6 @@ export default function PlanScreen() {
     return `${date.toLocaleDateString([], {month: "short", day: "numeric"})}, ${timeStr}`;
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    const dateToUse =
-      selectedDate instanceof Date
-        ? selectedDate
-        : event instanceof Date
-          ? event
-          : undefined;
-
-    if (dateToUse) {
-      if (Platform.OS === "android") {
-        setShowStartPicker(false);
-        setStartDate(dateToUse);
-        setTimeNote(null);
-      } else {
-        setTempStartDate(dateToUse);
-      }
-    }
-  };
-
-  const handleDismiss = () => {
-    if (Platform.OS === "android") {
-      setShowStartPicker(false);
-    }
-  };
-
   const handleDiscard = () => {
     resetPrefs(); // Clears dates/budget/banner
     clearBuilder(); // Clears the half-built itinerary
@@ -445,8 +418,6 @@ export default function PlanScreen() {
       budgetRef.current.focus();
       return;
     }
-
-    handleDiscard();
 
     let activeLocation = fromHome && homeLocation ? homeLocation : location;
 
@@ -489,20 +460,33 @@ export default function PlanScreen() {
       }
     }
 
+    // On the quarter hour, and not in the past (the form's time can slip
+    // behind the clock, and the iOS picker lifts it to its minimum, right
+    // now). A start the search picked for your ideas stays as it is: it
+    // only leaves the quarter hour when that's much better (utils/bestStart.ts)
+    const fromSearch = timeNote != null && timeNote.getTime() === startDate.getTime();
+    const planStart = fromSearch
+      ? startDate
+      : getRoundedDate(new Date(Math.max(startDate.getTime(), Date.now())));
     const hoursToPlan = durationHours === null ? 12 : durationHours;
     const computedEndDate = new Date(
-      startDate.getTime() + hoursToPlan * 60 * 60 * 1000,
+      planStart.getTime() + hoursToPlan * 60 * 60 * 1000,
     );
     const computedHeadCount = headCountFor(socialType);
     // Plus the starting idea's cost: the picked budget is for everything else
     const finalBudget =
       (isCustomBudget ? customBudget || 0 : budgetTier) + seedCost;
 
+    // The page holds still until the builder covers it (below)
+    setLeaving({seeds, draft: hasActiveDraft});
+    // A new plan replaces any draft
+    handleDiscard();
+
     // Save configuration to Zustand
     setPrefs({
       socialType,
       modality: modality === ActivityLocation.GoOut ? "GO_OUT" : "STAY_IN",
-      startDate: startDate.toISOString(),
+      startDate: planStart.toISOString(),
       endDate: computedEndDate.toISOString(),
       currentLocation: activeLocation,
       homeLocation,
@@ -511,14 +495,22 @@ export default function PlanScreen() {
       vibes: selectedTags,
       headCount: computedHeadCount,
       surprise: !!partner && surprise,
+      // A new plan, a new shuffle (kept while you work on it)
+      seed: newSeed(),
     });
 
-    resetLocalForm();
     // Hand the "Starting with" idea to the builder, which places it first
     commitSeed();
 
     // PUSH to builder
     router.push("/builder");
+
+    // Once it's covered: a fresh form for next time (resetting it now would
+    // flash as the builder slides in)
+    setTimeout(() => {
+      resetLocalForm();
+      setLeaving(null);
+    }, LEAVE_SETTLE_MS);
   };
 
   // ─── Display helpers ─────────────────────────────────────────────────────────
@@ -536,6 +528,12 @@ export default function PlanScreen() {
     seedCost > 0 ? `${budgetSummary} + ${formatMoney(seedCost)}` : budgetSummary,
   ].join(" · ");
   const homeName = defaults.home_label ?? "your home area";
+  // Far from home (traveling): the date ends where it starts, and staying in
+  // means where you're staying (utils/timeline.ts)
+  const awayFromHome = isAwayFromHome({
+    currentLocation: fromHome && homeLocation ? homeLocation : location,
+    homeLocation,
+  });
   const locationHint =
     fromHome && homeLocation
       ? `Planning from ${homeName}`
@@ -570,7 +568,7 @@ export default function PlanScreen() {
         />
         <View className="gap-4" style={{paddingHorizontal: 20, paddingTop: 8}}>
           {/* --- DRAFT IN PROGRESS --- */}
-          {hasActiveDraft && (
+          {(leaving ? leaving.draft : hasActiveDraft) && (
             <View className="bg-blue-600/10 border border-blue-500/30 rounded-3xl p-4">
               <View className="flex-row items-center mb-4">
                 <View className="w-10 h-10 rounded-full bg-blue-500/20 items-center justify-center mr-3">
@@ -739,27 +737,31 @@ export default function PlanScreen() {
             {goingOut && (
               <Text className="text-zinc-500 text-xs px-1">{locationHint}</Text>
             )}
+            {awayFromHome && (
+              <View className="flex-row items-center gap-1.5 px-1">
+                <Ionicons name="return-down-back" size={13} color="#a1a1aa" />
+                <Text className="text-zinc-400 text-xs flex-1">
+                  {goingOut
+                    ? "You're far from home, so the date ends back where you started."
+                    : "You're far from home, so staying in means wherever you're staying."}
+                </Text>
+              </View>
+            )}
           </Section>
 
           {/* --- WHEN --- */}
           <Section icon="calendar-outline" title="When">
-            <Pressable
-              onPress={() => {
-                setTempStartDate(startDate);
-                setShowStartPicker(true);
+            {/* The day, then the time: chips, not a spinner */}
+            <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest px-1">
+              Starts
+            </Text>
+            <StartPicker
+              value={startDate}
+              onChange={(start) => {
+                setStartDate(start);
+                setTimeNote(null);
               }}
-              className="bg-zinc-900 rounded-2xl px-4 py-3.5 border border-zinc-800 flex-row items-center active:bg-zinc-800"
-            >
-              <View className="flex-1">
-                <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mb-0.5">
-                  Starts
-                </Text>
-                <Text className="text-white font-bold text-base" numberOfLines={1}>
-                  {formatStartDisplay(startDate)}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#71717a" />
-            </Pressable>
+            />
             {/* Starting with ideas: the time that suits them best */}
             {seeds.length > 0 && (findingTime || timeNote) && (
               <View className="flex-row items-center gap-1.5 px-1">
@@ -776,6 +778,10 @@ export default function PlanScreen() {
               </View>
             )}
 
+            {/* How long it lasts (not when) */}
+            <Text className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest px-1 mt-1">
+              How long
+            </Text>
             <View className="flex-row bg-zinc-900 rounded-2xl border border-zinc-800 p-1.5">
               {[2, 4, 6, null].map((val) => {
                 const active = durationHours === val;
@@ -784,14 +790,15 @@ export default function PlanScreen() {
                     key={val === null ? "inf" : val}
                     onPress={() => setDurationHours(val)}
                     accessibilityRole="button"
-                    accessibilityLabel={val === null ? "Open-ended" : `${val} hours`}
+                    accessibilityLabel={val === null ? "No end time" : `${val} hours long`}
                     accessibilityState={{selected: active}}
                     className={`flex-1 py-3 rounded-xl items-center ${active ? "bg-zinc-700" : ""}`}
                   >
                     <Text
                       className={`font-bold ${active ? "text-white" : "text-zinc-500"}`}
+                      numberOfLines={1}
                     >
-                      {val === null ? "∞" : `${val}h`}
+                      {val === null ? "No end" : `${val} hrs`}
                     </Text>
                   </Pressable>
                 );
@@ -954,61 +961,6 @@ export default function PlanScreen() {
         </View>
       </Animated.ScrollView>
 
-      {/* iOS Date Picker Modal (Prevents hiding under Bottom Tabs) */}
-      {Platform.OS === "ios" && (
-        <Modal visible={showStartPicker} transparent animationType="slide">
-          <View className="flex-1 justify-end bg-black/60">
-            <Pressable
-              className="absolute inset-0"
-              onPress={() => setShowStartPicker(false)}
-            />
-            <View className="bg-zinc-950 border-t border-zinc-800 p-6 pb-12 rounded-t-3xl shadow-2xl">
-              <View className="flex-row justify-between items-center mb-6">
-                <Pressable onPress={() => setShowStartPicker(false)}>
-                  <Text className="text-zinc-400 font-semibold text-base">
-                    Cancel
-                  </Text>
-                </Pressable>
-                <Text className="text-white font-bold text-lg">Plan Ahead</Text>
-                <Pressable
-                  onPress={() => {
-                    setStartDate(tempStartDate);
-                    setTimeNote(null);
-                    setShowStartPicker(false);
-                  }}
-                >
-                  <Text className="text-white font-bold text-base">Done</Text>
-                </Pressable>
-              </View>
-              <View className="h-[220px] w-full justify-center">
-                <DateTimePicker
-                  value={tempStartDate}
-                  mode="datetime"
-                  display="spinner"
-                  minimumDate={new Date()}
-                  minuteInterval={15}
-                  onValueChange={handleDateChange}
-                  textColor="white"
-                />
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* Android Date Picker */}
-      {Platform.OS === "android" && showStartPicker && (
-        <DateTimePicker
-          value={tempStartDate}
-          mode="datetime"
-          display="spinner"
-          minimumDate={new Date()}
-          minuteInterval={15}
-          onValueChange={handleDateChange} // <-- Changed from onChange
-          onDismiss={handleDismiss} // <-- Added this
-          textColor="white"
-        />
-      )}
     </>
   );
 }
