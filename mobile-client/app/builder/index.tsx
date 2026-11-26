@@ -78,9 +78,38 @@ import {GestureDetector} from "react-native-gesture-handler";
 import {showError, showInfo} from "@/src/lib/notify";
 import {confirm} from "@/src/lib/sheets";
 import {formatMoney} from "@/utils/money";
+import {seededShuffle} from "@/src/lib/random";
 
 /** How far out an open-ended date's timeline runs (it never fills up) */
 const OPEN_ENDED_ROOM_MS = 48 * 3_600_000;
+
+// Filling the date (on by default): room to linger, not every minute booked
+/** A stop per this many hours of the date, at most FILL_MAX_STOPS */
+const FILL_HOURS_PER_STOP = 1.5;
+const FILL_MAX_STOPS = 4;
+/** Less free time than this left: done */
+const FILL_MIN_GAP_MINUTES = 45;
+/** Picks among the best few within this much of the top rank, so each plan differs */
+const FILL_SHUFFLE_RANK = 5;
+/** The most a stop grows to use spare time at the end (and never more than doubling) */
+const FILL_LINGER_MAX_MINUTES = 60;
+
+/**
+ * Why nothing more can go on the end of the date, from how the suggestions
+ * fit: the reason most of them were out ("places are closed by then")
+ */
+const whyNothingFits = (scored: {fitStatus: string; planProblem?: unknown}[]): string => {
+  if (scored.some((a) => a.fitStatus === "FITS_NOW")) return "the rest don't suit that time of night";
+  const reasons: [string, string][] = [
+    ["CLOSED", "places are closed by then"],
+    ["OVER_BUDGET", "what's left is over your budget"],
+    ["NO_FIT_TIME", "nothing left is short enough"],
+  ];
+  const counted = reasons
+    .map(([status, text]) => ({text, n: scored.filter((a) => a.fitStatus === status).length}))
+    .sort((a, b) => b.n - a.n);
+  return counted[0].n > 0 ? counted[0].text : "there's nothing else nearby";
+};
 
 /**
  * A suggestion you (or your partner) saved ranks this much higher: a tie-
@@ -269,6 +298,81 @@ export default function BuilderScreen() {
     };
   }, [mySaved, partnerSaves]);
 
+  /**
+   * One suggestion for `plan`: its best slot (#59: before, between or after
+   * the stops, by the evaluator's rules, utils/bestPlacement.ts), whether it
+   * fits, and how it ranks. The picker and filling the date both use this.
+   * `planScore` and `budgetLeft` are the plan's as it is.
+   */
+  const scoreCandidate = (
+    activity: any,
+    plan: typeof placed,
+    {
+      baseMiles,
+      planScore,
+      budgetLeft,
+      weatherAt = rankWeather,
+    }: {baseMiles: number; planScore: number; budgetLeft: number; weatherAt?: WeatherLookup | null},
+  ) => {
+    const placement = bestPlacement(plan, activity, userPrefs, {
+      weatherAt,
+      baseMiles,
+    });
+
+    // Budget Math
+    const totalCost =
+      (Number(activity.est_price_per_person) || 0) * headCount;
+
+    // The Strict Gatekeepers: still done (trip home included) by the end
+    // time, and within budget
+    // How the plan scores with this in its best slot (the same rules as
+    // the stop warnings), plus how well it matches what you asked for;
+    // distance is the extra driving it adds there
+    const planProblem =
+      warningsByStop(placement.evaluation).get(activity.idea_id) ?? null;
+
+    let fitStatus = "FITS_NOW";
+    if (!placement.fits) {
+      fitStatus = "NO_FIT_TIME";
+    } else if (totalCost > budgetLeft) {
+      fitStatus = "OVER_BUDGET";
+    } else if (
+      // Closed even in its best slot (#7)
+      placement.evaluation.issues.some(
+        (issue) => issue.kind === "CLOSED" && issue.stopId === activity.idea_id,
+      )
+    ) {
+      fitStatus = "CLOSED";
+    }
+    const rank =
+      placement.evaluation.score - planScore +
+      preferenceScore(activity, userPrefs, placement.addedMiles) +
+      savedBoost(activity.idea_id);
+
+    return {
+      ...activity,
+      fitStatus,
+      totalCost,
+      planProblem,
+      rank,
+      placeAt: placement.index,
+      spot: placement.spot,
+      addedMiles: placement.addedMiles,
+      fartherFromHome: placement.fartherFromHome,
+    };
+  };
+
+  // This plan's shuffle (set on Start planning; a draft from before seeds
+  // existed uses its start time, so it still holds still)
+  const planSeed = userPrefs.seed ?? new Date(userPrefs.startDate).getTime() >>> 0;
+  /** `ideas` in this plan's random order: the sorts below are stable, so
+   *  ideas that rank the same keep it (the same order each time you look) */
+  const shuffled = <T extends {idea_id: number}>(ideas: readonly T[], salt = 0): T[] =>
+    seededShuffle(
+      [...ideas].sort((a, b) => a.idea_id - b.idea_id),
+      (planSeed + salt * 7919) >>> 0,
+    );
+
   // Only while there's a list to show (the picker, or Top picks before the
   // first stop): each suggestion is tried in every slot of the plan, which
   // shouldn't run on every swap of a drag.
@@ -276,57 +380,14 @@ export default function BuilderScreen() {
   const sortedActivities = useMemo(() => {
     if (!showingSuggestions) return [];
     const baseMiles = drivingMiles(placed, userPrefs);
-    return availableActivities
-      .map((activity) => {
-        // Its best slot in the plan (#59): before, between or after the
-        // stops, by the evaluator's rules (utils/bestPlacement.ts)
-        const placement = bestPlacement(placed, activity, userPrefs, {
-          weatherAt: rankWeather,
+    return shuffled(availableActivities)
+      .map((activity) =>
+        scoreCandidate(activity, placed, {
           baseMiles,
-        });
-
-        // Budget Math
-        const totalCost =
-          (Number(activity.est_price_per_person) || 0) * headCount;
-
-        // The Strict Gatekeepers: still done (trip home included) by the end
-        // time, and within budget
-        // How the plan scores with this in its best slot (the same rules as
-        // the stop warnings), plus how well it matches what you asked for;
-        // distance is the extra driving it adds there
-        const planProblem =
-          warningsByStop(placement.evaluation).get(activity.idea_id) ?? null;
-
-        let fitStatus = "FITS_NOW";
-        if (!placement.fits) {
-          fitStatus = "NO_FIT_TIME";
-        } else if (totalCost > remainingBudget) {
-          fitStatus = "OVER_BUDGET";
-        } else if (
-          // Closed even in its best slot (#7)
-          placement.evaluation.issues.some(
-            (issue) => issue.kind === "CLOSED" && issue.stopId === activity.idea_id,
-          )
-        ) {
-          fitStatus = "CLOSED";
-        }
-        const rank =
-          placement.evaluation.score - evaluation.score +
-          preferenceScore(activity, userPrefs, placement.addedMiles) +
-          savedBoost(activity.idea_id);
-
-        return {
-          ...activity,
-          fitStatus,
-          totalCost,
-          planProblem,
-          rank,
-          placeAt: placement.index,
-          spot: placement.spot,
-          addedMiles: placement.addedMiles,
-          fartherFromHome: placement.fartherFromHome,
-        };
-      })
+          planScore: evaluation.score,
+          budgetLeft: remainingBudget,
+        }),
+      )
       // On a trip, suggestions head home (utils/reach.ts); one you searched
       // for still shows, marked
       .filter((a) => searching || !a.fartherFromHome)
@@ -336,7 +397,11 @@ export default function BuilderScreen() {
         if (searching && a.searchScore !== b.searchScore) return b.searchScore - a.searchScore;
         return b.rank - a.rank;
       });
+    // scoreCandidate reads userPrefs, headCount, rankWeather and savedBoost;
+    // shuffled reads planSeed (all listed)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    planSeed,
     showingSuggestions,
     availableActivities,
     remainingBudget,
@@ -384,14 +449,211 @@ export default function BuilderScreen() {
           text1: ideaIds.length - found.length === 1 ? "One idea isn't available anymore" : "Some ideas aren't available anymore",
         });
       }
-      setPlaced(start);
-      setLoading(false);
+      // The rest of the date filled in around them
+      openFilled(start);
     } else {
       // Gone or unavailable: start the usual way
       Toast.show({
         type: "error",
         text1: "That idea isn't available anymore",
       });
+      openFilled([]);
+    }
+  };
+
+  // ─── Filling the date ─────────────────────────────────────────────────────────
+  // On by default: a new plan opens filled in (around any ideas you started
+  // with), one best-fitting stop at a time, the way you'd add them yourself:
+  // the same suggestions and ranking as the picker. You change it from there
+  // (remove, drag, add), or start empty.
+  const fillDate = async (start: typeof placed): Promise<{plan: typeof placed; stoppedBecause: string | null}> => {
+    const hours = isOpenEnded(userPrefs) ? 6 : (endMs - startMs) / 3_600_000;
+    /** Why it stopped adding stops, when it ran out of ones that fit (for the note) */
+    let stoppedBecause: string | null = null;
+    const maxStops = Math.min(FILL_MAX_STOPS, Math.max(1, Math.ceil(hours / FILL_HOURS_PER_STOP)));
+    // Variety: one meal (two on a long date) and one treat
+    const mealsAllowed = hours >= 6 ? 2 : 1;
+    const weatherAtFill = weatherLookup(weatherNow.current);
+    const openEnded = isOpenEnded(userPrefs);
+    const freeAtEnd = (p: typeof placed): number => {
+      const gap = deriveSequentialTimeline(p, layoutPrefs).find((slot) => slot.type === "AVAILABLE");
+      return gap ? Math.round((gap.endTime - gap.startTime) / 60_000) : 0;
+    };
+
+    // Stops, best fit first, until there are `limit` or no room
+    const addStops = async (from: typeof placed, limit: number): Promise<typeof placed> => {
+      let plan = from;
+      while (plan.length < limit) {
+        const tl = deriveSequentialTimeline(plan, layoutPrefs);
+        const gap = tl.find((slot) => slot.type === "AVAILABLE");
+        const gapMinutes = gap ? Math.round((gap.endTime - gap.startTime) / 60_000) : 0;
+        if (!gap || gapMinutes < FILL_MIN_GAP_MINUTES) {
+          stoppedBecause = "there's not enough time left for another stop";
+          break;
+        }
+
+        const spent = plan.reduce(
+          (sum, p) => sum + (Number(p.activity.est_price_per_person) || 0) * headCount,
+          0,
+        );
+        const budgetLeft = userPrefs.budget - spent;
+        const context = plan.length
+          ? {...evaluateContextAt(tl, gap.startTime), atMs: gap.startTime, weatherAt}
+          : {exhaustion: 0, satiation: 0, atMs: gap.startTime, weatherAt};
+        const result = await queryCandidates(
+          userPrefs,
+          gapMinutes,
+          budgetLeft,
+          plan.length ? plan[plan.length - 1].activity : userPrefs,
+          context,
+          {stops: plan.map((p) => p.activity)},
+        );
+
+        const hidden = useHiddenStore.getState().ids;
+        const blocked = useBlockStore.getState().ids;
+        const count = (type: string) => plan.filter((p) => p.activity.activity_type === type).length;
+        const scoring = {
+          baseMiles: drivingMiles(plan, userPrefs),
+          planScore: evaluatePlan(plan, userPrefs, tl, {weatherAt: weatherAtFill}).score,
+          budgetLeft,
+          weatherAt: weatherAtFill,
+        };
+        // (in this plan's order, so ties go the same way each time)
+        const candidates = shuffled(result.data ?? [], plan.length + 1).filter(
+          (a: any) =>
+            !plan.some((p) => p.activity.idea_id === a.idea_id) &&
+            !hidden.has(a.idea_id) &&
+            !(a.user_id && blocked.has(a.user_id)),
+        );
+        const varied = candidates.filter(
+          (a: any) =>
+            !(a.activity_type === "MEAL" && count("MEAL") >= mealsAllowed) &&
+            !(a.activity_type === "TREAT" && count("TREAT") >= 1),
+        );
+        const scored = varied.map((a: any) => scoreCandidate(a, plan, scoring));
+        const fitting = scored
+          .filter((a) => a.fitStatus === "FITS_NOW" && !a.fartherFromHome)
+          .sort((a, b) => b.rank - a.rank);
+        // Only stops the plan has no warnings about (the first one: the best)
+        const clean = fitting.filter((a) => !a.planProblem);
+        const pool = clean.length ? clean : plan.length ? [] : fitting;
+        if (!pool.length) {
+          stoppedBecause =
+            candidates.length && !varied.length
+              ? "the rest are more meals and treats"
+              : whyNothingFits(scored);
+          break;
+        }
+
+        const near = pool.filter((a) => a.rank >= pool[0].rank - FILL_SHUFFLE_RANK).slice(0, 3);
+        // One of the best few, by this plan's seed: the same seed builds the same date
+        const pick = seededShuffle(near, (planSeed + (plan.length + 1) * 104729) >>> 0)[0];
+        const at = typeof pick.placeAt === "number" ? pick.placeAt : plan.length;
+        plan = [...plan.slice(0, at), {activity: pick}, ...plan.slice(at)];
+      }
+      return plan;
+    };
+
+    // Spare time at the end goes to lingering, not an empty slot: flexible
+    // stops grow 15 minutes at a time, taking turns ("+30m to fit" on the
+    // stop), while the date still ends on time and the plan is no worse.
+    // Under 30 minutes left is Flex Time, as usual.
+    const linger = (from: typeof placed): typeof placed => {
+      if (openEnded) return from;
+      const judge = (p: typeof placed) =>
+        evaluatePlan(p, userPrefs, deriveSequentialTimeline(p, layoutPrefs), {weatherAt: weatherAtFill});
+      const serious = (p: typeof placed) =>
+        judge(p).issues.filter((issue) => issue.kind === "CLOSED" || issue.kind === "PAST_END").length;
+      let plan = from;
+      let score = judge(plan).score;
+      let grew = true;
+      while (grew && freeAtEnd(plan) >= 30) {
+        grew = false;
+        for (let i = 0; i < plan.length && freeAtEnd(plan) >= 30; i++) {
+          const p = plan[i];
+          // Flexible, and not a length you set yourself
+          if ((p.activity as any).is_duration_variable === false) continue;
+          if (p.durationMinutes != null && p.stretchedBy == null) continue;
+          const suggested = suggestedMinutes(p.activity);
+          const by = (p.stretchedBy ?? 0) + 15;
+          if (by > Math.min(FILL_LINGER_MAX_MINUTES, suggested)) continue;
+          const next = [...plan];
+          next[i] = {...p, durationMinutes: suggested + by, stretchedBy: by};
+          const nextScore = judge(next).score;
+          if (nextScore < score || serious(next) > serious(plan)) continue;
+          plan = next;
+          score = nextScore;
+          grew = true;
+        }
+      }
+      return plan;
+    };
+
+    let plan = start;
+    try {
+      plan = linger(await addStops(plan, maxStops));
+      // Still a good while free (stops that can't run long): one more stop
+      if (!openEnded && freeAtEnd(plan) >= FILL_MIN_GAP_MINUTES && plan.length < FILL_MAX_STOPS) {
+        plan = linger(await addStops(plan, plan.length + 1));
+      }
+    } catch (err) {
+      console.error("fillDate error:", err);
+    }
+    return {plan, stoppedBecause};
+  };
+
+  // Filled, but nothing could go in the time left at the end: the date ends
+  // when the plan does (to the quarter hour), with a note saying why, rather
+  // than an empty slot that looks unfinished. "Keep until" puts it back.
+  const [endedEarly, setEndedEarly] = useState<{
+    /** The stops it was worked out for (changing them hides the note) */
+    ids: string;
+    at: string;
+    previousEnd: string | Date;
+    reason: string;
+  } | null>(null);
+  const endWhenPlanDoes = (plan: typeof placed, reason: string | null) => {
+    if (isOpenEnded(userPrefs)) return;
+    const tl = deriveSequentialTimeline(plan, layoutPrefs);
+    const gap = tl.find((slot) => slot.type === "AVAILABLE");
+    if (!gap || gap.endTime - gap.startTime < 30 * 60_000) return;
+    const quarter = 15 * 60_000;
+    const at = new Date(Math.ceil(gap.startTime / quarter) * quarter).toISOString();
+    setPrefs({endDate: at});
+    setEndedEarly({
+      ids: plan.map((p) => p.activity.idea_id).join(","),
+      at,
+      previousEnd: userPrefs.endDate,
+      reason: reason ?? "that's plenty for one night",
+    });
+  };
+
+  const [filling, setFilling] = useState(false);
+  const openFilled = async (start: typeof placed) => {
+    setLoading(true);
+    setFilling(true);
+    // Give the weather a moment, so the stops account for it
+    await Promise.race([requestWeather(), new Promise((resolve) => setTimeout(resolve, 2500))]);
+    const {plan, stoppedBecause} = await fillDate(start);
+    setFilling(false);
+    if (plan.length > start.length) {
+      endWhenPlanDoes(plan, stoppedBecause);
+      setPlaced(plan);
+      setLoading(false);
+      Toast.show({
+        type: "success",
+        text1: "Here's a date to start from",
+        text2: "Change any stop, or tap here to start empty",
+        onPress: () => {
+          Toast.hide();
+          startOver();
+        },
+      });
+    } else if (start.length) {
+      setPlaced(start);
+      setLoading(false);
+    } else {
+      // Nothing to fill it with: pick the first stop yourself
       loadInitialIdeas();
     }
   };
@@ -438,9 +700,9 @@ export default function BuilderScreen() {
       startWithIdeas(startWith.map((x) => x.idea_id));
       return;
     }
-    // Only load initial ideas if we don't already have a draft in progress
+    // A new plan opens filled in; a draft in progress opens as it was
     if (activities.length === 0 && placed.length === 0) {
-      loadInitialIdeas();
+      openFilled([]);
     } else {
       setLoading(false); // Instantly show the saved draft!
     }
@@ -816,6 +1078,28 @@ export default function BuilderScreen() {
       },
     });
   };
+  const clockLabel = (at: string | Date) =>
+    new Date(at).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+  // The note about ending early: only for the plan it was worked out for
+  const endedEarlyShown =
+    !!endedEarly &&
+    endedEarly.ids === placed.map((p) => p.activity.idea_id).join(",") &&
+    new Date(userPrefs.endDate).toISOString() === endedEarly.at;
+  const keepOriginalEnd = () => {
+    if (!endedEarly) return;
+    setPrefs({endDate: new Date(endedEarly.previousEnd).toISOString()});
+    setEndedEarly(null);
+  };
+  // The picker for the end of the date, with nothing that fits: say why,
+  // and offer to end the date when the plan does
+  const offerEndEarly =
+    isDrawerOpen &&
+    placed.length > 0 &&
+    !isInfinite &&
+    !searching &&
+    !isFetchingFillers &&
+    !sortedActivities.some((a) => a.fitStatus === "FITS_NOW");
+
   const stopCount = stopSlots.length;
   const stopsLabel = `${stopCount} ${stopCount === 1 ? "stop" : "stops"}`;
   const budgetLeftLabel = `${formatMoney(Math.max(0, remainingBudget))} left`;
@@ -853,7 +1137,7 @@ export default function BuilderScreen() {
       <View style={{...screenStyle, alignItems: "center", justifyContent: "center"}}>
         <ActivityIndicator size="large" color="#ffffff" />
         <Text className="text-white font-bold text-lg mt-5">
-          Finding ideas that fit
+          {filling ? "Putting your date together" : "Finding ideas that fit"}
         </Text>
         <Text className="text-zinc-500 mt-1">
           {goingOut ? "Going out" : "Staying in"} · {timeRange}
@@ -1100,6 +1384,26 @@ export default function BuilderScreen() {
                 )}
               </View>
             ))}
+
+            {/* Filled, and nothing more fit: why it ends early (and undo) */}
+            {endedEarlyShown && (
+              <View className="mx-5 mb-3 flex-row items-center gap-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3">
+                <Ionicons name="moon-outline" size={18} color="#a1a1aa" />
+                <Text className="flex-1 text-zinc-300 text-sm">
+                  Nothing else fits after {clockLabel(endedEarly!.at)}: {endedEarly!.reason}. Your date ends then.
+                </Text>
+                <Pressable
+                  onPress={keepOriginalEnd}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Keep the date until ${clockLabel(endedEarly!.previousEnd)}`}
+                  className="border border-zinc-700 rounded-full px-3 py-1.5 active:opacity-70"
+                >
+                  <Text className="text-zinc-200 font-bold text-sm">
+                    Keep until {clockLabel(endedEarly!.previousEnd)}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
 
             {timelineView(true)}
 
@@ -1359,6 +1663,27 @@ export default function BuilderScreen() {
           </>
         }
       >
+              {offerEndEarly && (
+                <View className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 gap-3">
+                  <View className="flex-row items-center gap-2.5">
+                    <Ionicons name="moon-outline" size={18} color="#a1a1aa" />
+                    <Text className="flex-1 text-zinc-300 text-sm">
+                      Nothing fits after {realEndTime}: {whyNothingFits(sortedActivities)}.
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => {
+                      setIsDrawerOpen(false);
+                      fitEndToPlan();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityHint="Your stops stay as they are"
+                    className="bg-white rounded-xl h-11 items-center justify-center active:opacity-80"
+                  >
+                    <Text className="text-black font-bold">End the date at {extendedEndLabel}</Text>
+                  </Pressable>
+                </View>
+              )}
               {isFetchingFillers || (searching && searchPool === null) ? (
                 <View className="py-14 items-center justify-center">
                   <ActivityIndicator size="large" color="#3b82f6" />
@@ -1385,7 +1710,7 @@ export default function BuilderScreen() {
                     Nothing by that name fits this stop&apos;s time, budget and group.
                   </Text>
                 </View>
-              ) : (
+              ) : offerEndEarly ? null : (
                 <View className="py-12 items-center px-6">
                   <Ionicons name="search-outline" size={28} color="#52525b" />
                   <Text className="text-white font-bold text-base mt-3">

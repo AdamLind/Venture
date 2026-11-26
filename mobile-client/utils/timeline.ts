@@ -77,12 +77,28 @@ export const HOME_RADIUS_MILES = 2;
 /** Legs shorter than this aren't travel: the same block or plaza (~500 ft), or already there. Short hops beyond it get real walking times with #50. */
 export const SAME_PLACE_MILES = 0.1;
 
+/** Starting farther than this from the saved home area, you're away (staying
+ *  somewhere), not on a day trip: the date ends back where it started */
+export const AWAY_FROM_HOME_MILES = 100;
+
+/**
+ * Away from home: the plan starts more than AWAY_FROM_HOME_MILES from the
+ * saved home area, so where it starts counts as home (for stay-in stops and
+ * the trip back). The Plan tab says so.
+ */
+export const isAwayFromHome = (prefs: Pick<UserPrefs, "currentLocation" | "homeLocation">): boolean => {
+  const start = asLatLng(prefs.currentLocation);
+  const saved = asLatLng(prefs.homeLocation);
+  return !!start && !!saved && getDistance(start, saved) > AWAY_FROM_HOME_MILES;
+};
+
 /**
  * Home, for stay-in stops and the trip back. The saved home is only an area
  * (rounded to ~½ mile for privacy), so if the plan starts within
  * HOME_RADIUS_MILES of it, you're starting from home: use that exact spot.
- * Starting farther away (work, say) uses the saved area; no saved home uses
- * where the plan starts.
+ * Starting farther away (work, say) uses the saved area, unless you're away
+ * from home (isAwayFromHome): then it's where the plan starts, since nobody
+ * drives 500 miles home after dinner. No saved home uses where it starts.
  */
 export const homeOf = (prefs: UserPrefs): LatLng | null => {
   // A re-planned stretch (#63) keeps the date's home (it starts elsewhere)
@@ -90,6 +106,7 @@ export const homeOf = (prefs: UserPrefs): LatLng | null => {
   const start = asLatLng(prefs.currentLocation);
   const saved = asLatLng(prefs.homeLocation);
   if (start && saved && getDistance(start, saved) <= HOME_RADIUS_MILES) return start;
+  if (isAwayFromHome(prefs)) return start;
   return saved ?? start;
 };
 

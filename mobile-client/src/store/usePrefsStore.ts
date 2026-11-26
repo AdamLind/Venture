@@ -22,6 +22,13 @@ export interface UserPrefs {
   /** Hidden from your partner until you invite them or it's over (#35). The
    *  server reads this from the date's saved prefs as it's created. */
   surprise?: boolean;
+  /**
+   * This plan's shuffle (src/lib/random.ts): picked on Start planning and kept
+   * with the draft, so ideas that rank the same come out in one random order
+   * that stays put, and filling the date builds the same plan from it. A new
+   * seed reshuffles.
+   */
+  seed?: number;
 }
 
 interface PrefsState {
